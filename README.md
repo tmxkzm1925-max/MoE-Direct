@@ -4,7 +4,13 @@
 
 MoE-Direct keeps a model's routed expert weights **on disk**, not in memory. A repacked, 4 KiB-aligned expert store is read on demand from NVMe into a fixed slot cache exactly when the router asks for each expert. "Lossless" here means something specific and tested: **expert records are SHA-256-verified byte-equal to the source GGUF**, and under the documented deterministic greedy protocols the served outputs are **token-ID-identical** to the same engine running without direct-read. No approximation, no re-routing, no quality trade.
 
-> **Status: project preview.** This repository currently contains this document set only. Measurement methodology, raw run artifacts, full source (llama.cpp fork + patches), the repacker and the verification harness **will be published with `v0.2`** once the prefetch engine lands. Watch/star to follow.
+> **Status: project preview.** This repository currently contains this document set and the demo video below. Measurement methodology, raw run artifacts, full source (llama.cpp fork + patches), the repacker and the verification harness **will be published with `v0.2`** once the prefetch engine lands. Watch/star to follow.
+
+## Demo — unedited single take
+
+[![MoE-Direct demo: 1T-class MoE on a 32 GB RAM PC](https://img.youtube.com/vi/JDfrWMxwczk/maxresdefault.jpg)](https://youtu.be/JDfrWMxwczk)
+
+**[▶ Watch on YouTube (2:49)](https://youtu.be/JDfrWMxwczk)** — cold boot to answer, no cuts: the 447 GB GGUF on disk, server load in ~19 s, live token streaming while Task Manager shows the NVMe sustaining multi-GB/s reads with system RAM staying under 32 GB, ending with the measured tok/s on screen. A second segment repeats the run on Qwen3.5-122B (5.2 tok/s decode on camera).
 
 ---
 
@@ -62,7 +68,7 @@ We measured the mmap route first, on this hardware, and rejected it on data: und
 
 | Milestone | Content | Status |
 |---|---|---|
-| Project preview | this document set | **now** |
+| Project preview | this document set + demo video | **now** |
 | Phase B: prefetch engine | persistent I/O dispatcher + deterministic next-layer expert prediction (no learned components) | **design under review; implementation has not started** |
 | `v0.2` public release | full source tree (llama.cpp b10057 base + patches), repacker, verification harness, raw artifacts, build guide, Windows binaries | after Phase B validation |
 | Beyond | cache-budget levers, 1T-class performance ladder | planned |
