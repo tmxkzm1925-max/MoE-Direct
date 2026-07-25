@@ -23,7 +23,7 @@ Every number below comes from **one specific machine**. Results scale primarily 
 | CPU | AMD Ryzen 7 7800X3D (8C/16T) |
 | GPU | NVIDIA RTX 5080, 16 GB VRAM |
 | RAM | 32 GB DDR5-6000 (2×16 GB) |
-| Model NVMe | KIOXIA EXCERIA PLUS G4 2 TB, **PCIe 4.0** (~5 GB/s effective reads observed under this workload) |
+| Model NVMe | KIOXIA EXCERIA PLUS G4 2 TB, **PCIe 5.0** (spec ~10 GB/s seq; ~5–8 GB/s effective observed under this workload) |
 | OS | Windows 11 |
 
 ## Measured results — full model ladder
@@ -75,7 +75,7 @@ We measured the mmap route first, on this hardware, and rejected it on data: und
 
 ## Reading these numbers on your hardware
 
-- **Decode speed scales with NVMe read throughput.** This box reads ~5 GB/s (PCIe 4.0) under this workload. A Gen3 drive will be proportionally slower; SATA SSDs are not a realistic substrate for this workload.
+- **Decode speed scales with NVMe read throughput.** This box observes ~5–8 GB/s (PCIe 5.0 drive) under this workload. Gen4/Gen3 drives will be proportionally slower; SATA SSDs are not a realistic substrate for this workload.
 - **RAM sets the cache budget** (8–10 GiB slot cache here), which sets the hit rate. **VRAM only hosts the dense/attention layers** — it does not bound the expert store.
 - **Compare regimes, not numbers.** A 128 GB box tiering RAM→GPU, a phone streaming from UFS, and this box streaming a disk-resident expert store from NVMe are three different sports. The regime here is *model ≫ RAM+VRAM combined* on consumer parts.
 
