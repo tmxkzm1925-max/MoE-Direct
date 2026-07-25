@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use NVMoE or its measurement methodology, please cite it as below."
+title: "NVMoE: Lossless MoE serving from NVMe on consumer hardware"
+type: software
+authors:
+  - name: "tmxkzm1925-max"
+repository-code: "https://github.com/tmxkzm1925-max/nvmoe"
+license: MIT
+date-released: 2026-07-26
+version: "0.1-evidence-preview"
+abstract: >-
+  NVMoE serves Mixture-of-Experts LLMs whose weights vastly exceed system
+  memory by keeping repacked, 4KiB-aligned expert records on NVMe and reading
+  them on demand into a deterministic slot cache, with a token-identity
+  losslessness contract, asynchronous queue-depth I/O, and a counterfactual
+  replay methodology for validating expert prefetch before implementation.
+  Measured on a 32GB RAM / 16GB VRAM Windows PC: 122B MoE (72.8GB Q4) at
+  5.1 tok/s sustained; 1T-class MoE (447GB Q3) functional at 1.03 tok/s.
