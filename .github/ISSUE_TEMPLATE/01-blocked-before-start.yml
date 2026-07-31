@@ -1,0 +1,128 @@
+name: "1. Blocked before the launcher started (no status line)"
+description: "Windows, antivirus or a policy blocked the download or the launcher before it printed anything. Use this when there is no [moe-launcher] status= line and no log file."
+title: "[blocked] "
+labels: ["blocked-before-start", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form when **the launcher never got to run**: SmartScreen or Smart App Control
+        stopped it, antivirus removed or quarantined a file, a policy refused it, or the window
+        closed instantly with nothing in it.
+
+        In this case there is no `[moe-launcher] status=` line and there is usually no log file
+        under `%LOCALAPPDATA%\MoE-Direct\logs\` at all - that is expected, and it is why this form
+        exists separately.
+
+        **We will not ask you to disable Defender, SmartScreen or Smart App Control, to add
+        antivirus exclusions, to change your machine-wide execution policy, or to run as
+        administrator.** If a security product flags this build, the right fix is a false-positive
+        submission to the vendor with the exact file, and we will help with that.
+
+        Security vulnerabilities do not belong in public issues - see `SECURITY.md`.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Before you file
+      options:
+        - label: "I downloaded `moe-direct-v0.2-win-x64.zip` from the Releases page, not GitHub's auto-generated \"Source code\" archive."
+          required: true
+        - label: "I compared the zip's SHA-256 against `SHA256SUMS.txt`."
+          required: true
+
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Where did it stop?
+      options:
+        - "The download itself was blocked or deleted by the browser / antivirus"
+        - "Extracting the zip failed or files went missing afterwards"
+        - "Double-clicking Start-MoeDirect.cmd showed a SmartScreen / Windows protected your PC dialog"
+        - "Smart App Control or an organisation policy refused to run it"
+        - "A window flashed open and closed with no readable message"
+        - "PowerShell reported an execution policy or script-blocked error"
+        - "Something else before any launcher output"
+    validations:
+      required: true
+
+  - type: textarea
+    id: message
+    attributes:
+      label: Exact message on screen
+      description: "Type it out or attach a screenshot. Include the detection name if a security product named one."
+      placeholder: "e.g. Windows protected your PC / Microsoft Defender SmartScreen prevented an unrecognised app from starting"
+    validations:
+      required: true
+
+  - type: input
+    id: zip_sha
+    attributes:
+      label: SHA-256 of the zip you downloaded
+      description: "`Get-FileHash .\\moe-direct-v0.2-win-x64.zip -Algorithm SHA256`"
+      placeholder: "e.g. 9840760b..."
+    validations:
+      required: true
+
+  - type: input
+    id: extractor
+    attributes:
+      label: How did you extract the zip?
+      placeholder: "e.g. Windows Explorer Extract All / 7-Zip 24.09 / WinRAR 7.10"
+    validations:
+      required: true
+
+  - type: input
+    id: windows
+    attributes:
+      label: Windows edition and build
+      description: "`winver`, or run: (Get-ComputerInfo).WindowsProductName + (Get-ComputerInfo).OsBuildNumber"
+      placeholder: "e.g. Windows 11 Home 26100"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: sac
+    attributes:
+      label: Smart App Control state
+      description: "Windows Security > App & browser control > Smart App Control settings"
+      options:
+        - "Off"
+        - "On"
+        - "Evaluation"
+        - "Not present on this Windows version"
+        - "I do not know"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: managed
+    attributes:
+      label: Is this PC managed by an organisation?
+      options:
+        - "No, personal machine"
+        - "Yes, work or school managed"
+        - "I do not know"
+    validations:
+      required: true
+
+  - type: input
+    id: av
+    attributes:
+      label: Security software in use
+      placeholder: "e.g. Microsoft Defender only / Defender + third-party AV (name and version)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Anything under %LOCALAPPDATA%\MoE-Direct\logs\ ?
+      description: |
+        Usually empty for this kind of failure - "the folder does not exist" is a useful answer.
+        If files are there, put them in a .zip and drag it into this box (GitHub does not accept
+        .jsonl uploads directly). Please skim them first: they contain local paths that usually
+        include your Windows user name.
+      placeholder: "The folder does not exist."
+    validations:
+      required: true

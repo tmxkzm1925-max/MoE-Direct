@@ -1,0 +1,129 @@
+name: "2. The launcher printed a status and stopped"
+description: "The launcher ran and ended with a [moe-launcher] status= line. Pick the status, attach the diagnostic log."
+title: "[status] "
+labels: ["launcher-status", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form when the launcher **did** run and its last line on screen was
+        `[moe-launcher] status=<something>`.
+
+        Please read the matching section of `README.md > Troubleshooting > <status>` first - most
+        statuses have a one-step fix listed there, and it is faster than waiting for a reply.
+
+        The log to attach is the newest `launcher_*.jsonl` in
+        `%LOCALAPPDATA%\MoE-Direct\logs\`. **Put it in a .zip** - GitHub does not accept `.jsonl`
+        uploads directly. Please skim it before attaching: it records local file paths, which
+        usually include your Windows user name.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Before you file
+      options:
+        - label: "I read the section for this status in README.md > Troubleshooting."
+          required: true
+        - label: "I extracted the release zip into a new empty folder (not over an older bundle)."
+          required: true
+
+  - type: dropdown
+    id: status
+    attributes:
+      label: Status value
+      description: "The exact enum from the last line."
+      options:
+        - "fail_model_path (exit 3) - model path missing, unsupported GGUF, or incomplete/ambiguous shard set"
+        - "fail_resource (exit 3) - RAM or disk preflight stopped the run"
+        - "fail_instance_lock (exit 3) - another instance or a held profile/output/port lock"
+        - "fail_partial_cleanup (exit 3) - leftover repack outputs could not be deleted or confirmed absent"
+        - "fail_repack (exit 3) - repacker exited abnormally or produced no verify report"
+        - "fail_custom_args (exit 3) - a custom value failed the type/bounds check (non-interactive)"
+        - "fail_gate_bundle (exit 4) - bundle integrity: manifest, schema or file set did not match"
+        - "fail_gate_catalog (exit 4) - models.json schema, prefetch_state or expect digest check"
+        - "fail_gate_verify (exit 4) - the 7-item repack gate rejected the verify report or its binding"
+        - "fail_gate_engine_seal (exit 4) - the engine refused to start and printed its policy gate line"
+        - "fail_server_start (exit 5) - never reached ready: spawn, port, listener PID, health, early exit, CUDA OOM"
+        - "fail_runtime_exit (exit 5) - the server exited unexpectedly after reaching ready"
+        - "fail_teardown (exit 5) - shutdown did not complete cleanly (signal, grace period, surviving child/listener)"
+        - "fail_smoke (exit 6) - a smoke assertion failed while shutdown completed"
+        - "cancelled_user (exit 2) - I cancelled, but something about it looks wrong"
+        - "ok (exit 0) - it succeeded, but something about the run looks wrong"
+        - "ok_smoke (exit 0) - the smoke check passed, but something about the run looks wrong"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What you did and what you expected
+      description: "The step you were on, and what you expected instead."
+      placeholder: |
+        e.g. Second run of the same model. Expected it to skip the repack and go straight to the
+        status screen; instead it stopped right after the bundle check.
+    validations:
+      required: true
+
+  - type: textarea
+    id: console
+    attributes:
+      label: Last ~20 lines of console output
+      description: "Include the two hint lines (what happened / see) and the final status line."
+      render: text
+    validations:
+      required: true
+
+  - type: input
+    id: model
+    attributes:
+      label: Model and profile
+      description: "Which GGUF, and the profile id the launcher identified (if it got that far)."
+      placeholder: "e.g. Qwen3.5-122B-A10B Q4_K_M, profile qwen35-122b-nonextn"
+    validations:
+      required: true
+
+  - type: input
+    id: zip_sha
+    attributes:
+      label: SHA-256 of the release zip you extracted
+      placeholder: "Get-FileHash .\\moe-direct-v0.2-win-x64.zip -Algorithm SHA256"
+    validations:
+      required: true
+
+  - type: textarea
+    id: machine
+    attributes:
+      label: Machine
+      description: "CPU, RAM, GPU and VRAM, Windows build, and the drive holding the model (make/model, PCIe generation, free space)."
+      placeholder: |
+        CPU:
+        RAM:
+        GPU / VRAM:
+        Windows build:
+        Model drive (make, model, Gen, free space):
+    validations:
+      required: true
+
+  - type: dropdown
+    id: custom
+    attributes:
+      label: Were you using default settings?
+      options:
+        - "Defaults - I only pressed Enter"
+        - "I changed values through the custom path (list them below)"
+        - "I ran the launcher with command-line arguments (paste them below)"
+        - "I set MOE_DIRECT_* environment variables myself"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Diagnostic log (required)
+      description: |
+        Zip the newest `launcher_*.jsonl` from `%LOCALAPPDATA%\MoE-Direct\logs\` and drag it into
+        this box. For `fail_server_start`, `fail_runtime_exit` or `fail_gate_engine_seal`, include
+        the matching `server_*_err.log`. For `fail_repack`, include `repack_log.jsonl`.
+      placeholder: "Drag the .zip here."
+    validations:
+      required: true

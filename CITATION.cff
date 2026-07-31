@@ -6,16 +6,17 @@ authors:
   - name: "tmxkzm1925-max"
 repository-code: "https://github.com/tmxkzm1925-max/moe-direct"
 license: MIT
-date-released: 2026-07-26
-version: "0.1-project-preview"
+date-released: 2026-07-31
+version: "0.2"
 abstract: >-
   MoE-Direct serves Mixture-of-Experts LLMs whose weights exceed system memory
   by keeping repacked, 4KiB-aligned expert records on NVMe and reading them on
   demand into a deterministic slot cache, with SHA-verified byte-equal expert
   records, token-ID parity verified under deterministic greedy OFF/ON
-  protocols, asynchronous queue-depth I/O, and a counterfactual replay
-  methodology for validating expert prefetch before implementation. Measured
-  on a 32GB RAM / 16GB VRAM Windows PC: Qwen3.5-122B (72.3GiB GGUF) at
-  5.14 tok/s mean decode (non-gating measured mean); a 1T-class model
-  (416.8GiB GGUF, Q3_K experts) produced coherent output at 1.03 tok/s in a
-  non-gating run.
+  protocols, asynchronous queue-depth I/O, optional next-layer expert prefetch
+  on validated profiles, and a counterfactual replay methodology for
+  validating expert prefetch before implementation. Measured on a 32GB RAM /
+  16GB VRAM Windows PC: Qwen3.5-122B (72.3GiB GGUF) at 5.59-5.69 tok/s decode
+  (official gated runs, 2.32-2.34x over the plain mmap arm); a 1T-class model
+  (416.8GiB GGUF, Q3_K experts) produced coherent output at about 1 tok/s in
+  non-gating runs.

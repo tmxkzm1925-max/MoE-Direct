@@ -1,0 +1,82 @@
+name: "4. Anything else (including model support requests)"
+description: "A GGUF that is not in the catalog, a documentation problem, a question, or a bug that none of the other three forms fit."
+title: "[other] "
+labels: ["needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form when the other three do not fit:
+
+        - **Model support request** - your GGUF is not in the catalog and the launcher stopped with
+          `fail_model_path`. That refusal is deliberate: the launcher will not write hundreds of
+          gigabytes for a layout it has never verified. Tell us which model and we will look at
+          adding a profile.
+        - Documentation that is wrong, missing or misleading.
+        - A question about behaviour.
+        - Anything else.
+
+        Two things that do **not** go here:
+
+        - **Security vulnerabilities** - use the private route in `SECURITY.md`, not a public issue.
+        - **A launcher failure with a `[moe-launcher] status=` line** - form 2 collects what triage
+          needs.
+
+        If you do attach a log: **put it in a .zip** - GitHub does not accept `.jsonl` uploads
+        directly - and please skim it first, because it records local file paths, which usually
+        include your Windows user name.
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What is this about?
+      options:
+        - "Model support request (a GGUF that is not in the catalog)"
+        - "Documentation problem"
+        - "Question about behaviour"
+        - "Bug that does not fit forms 1-3"
+        - "Feature idea"
+        - "Something else"
+    validations:
+      required: true
+
+  - type: textarea
+    id: body
+    attributes:
+      label: Details
+      description: "What you were doing, what happened, what you expected."
+    validations:
+      required: true
+
+  - type: textarea
+    id: model_request
+    attributes:
+      label: If this is a model support request
+      description: |
+        Please give the exact source, not just the model name - the catalog binds a profile to a
+        specific repository and revision, and a different revision can carry different tensors.
+        We do not redistribute weights, so everything is identified by where you got it.
+      placeholder: |
+        Hugging Face repo:
+        Revision (commit hash):
+        Quantization:
+        File name(s) and number of shards:
+        Total size on disk:
+        Architecture reported by the loader, if you know it:
+        Free disk space you have available for the repack:
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "Release tag, or the SHA-256 of the zip you are running."
+      placeholder: "e.g. v0.2"
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment (if relevant)
+      placeholder: |
+        Windows build:
+        CPU / RAM / GPU:
+        Drive holding the model:

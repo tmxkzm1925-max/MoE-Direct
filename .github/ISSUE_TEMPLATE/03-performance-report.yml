@@ -1,0 +1,128 @@
+name: "3. Performance report (it runs, but the speed is unexpected)"
+description: "The server reached ready and serves, but throughput is lower than the launcher's estimate - or you simply want to contribute a measurement from your hardware."
+title: "[perf] "
+labels: ["performance", "community-measurement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Two uses for this form: **a problem** (much slower than the launcher's own estimate for
+        your machine) and **a contribution** (a working measurement from hardware we do not have).
+        Both are welcome, and the second is genuinely useful - the published numbers come from two
+        machines, and the honest answer to "how fast will it be on mine" is currently "measure it".
+
+        Before filing a slowness report, please check the two things that explain most of them:
+
+        - **`[unmeasured]` is not a bug.** The fixed per-token cost is only calibrated on the
+          reference machine; on other hardware the launcher shows the I/O ceiling and an estimate
+          separately and marks what it does not know.
+        - **The I/O ceiling is not an expected speed.** "Effective read speed / miss bytes per
+          token" is an upper bound with a real fixed cost on top of it.
+
+        Community measurements are kept separately from the published gate numbers. They are not
+        automatically folded into defaults.
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What is this report?
+      options:
+        - "Slower than the launcher's own estimate for my machine"
+        - "A working measurement I am contributing (no problem to report)"
+        - "Throughput collapses after a while, or is very inconsistent"
+        - "Repack was far slower than the estimate"
+    validations:
+      required: true
+
+  - type: input
+    id: model
+    attributes:
+      label: Model and profile id
+      placeholder: "e.g. Qwen3.5-122B-A10B Q4_K_M, profile qwen35-122b-nonextn"
+    validations:
+      required: true
+
+  - type: textarea
+    id: status_screen
+    attributes:
+      label: The launcher's status screen (required)
+      description: |
+        Copy the whole screen. It carries the pieces we need: cache budget, the chosen queue depth
+        and why it was chosen, the SSD probe result, format and performance gate state,
+        `effective_prefetch` and its reason, and both the I/O ceiling and the estimate.
+      render: text
+    validations:
+      required: true
+
+  - type: input
+    id: observed
+    attributes:
+      label: What you actually measured
+      description: "Decode tok/s, and how you got it (client-reported, server log, stopwatch)."
+      placeholder: "e.g. 2.1 tok/s decode, reported by the server log over a 500-token response"
+    validations:
+      required: true
+
+  - type: textarea
+    id: workload
+    attributes:
+      label: Workload
+      description: "Prompt length, generated length, context size, streaming or not, which client, single or repeated turns, cold or warm."
+      placeholder: |
+        Prompt tokens:
+        Generated tokens:
+        Context size:
+        Client:
+        Cold (first request after start) or warm:
+    validations:
+      required: true
+
+  - type: textarea
+    id: storage
+    attributes:
+      label: Storage holding the repacked file (required)
+      description: |
+        This is the single most predictive detail. Exact make and model, interface generation,
+        whether it is DRAM-less, how full it is, and whether the model sits on the OS volume.
+      placeholder: |
+        Drive make/model:
+        Interface (e.g. PCIe Gen4 x4 NVMe / Gen3 / SATA):
+        DRAM cache: yes / no / unknown
+        Free space on that volume:
+        Same volume as Windows: yes / no
+    validations:
+      required: true
+
+  - type: textarea
+    id: machine
+    attributes:
+      label: Rest of the machine
+      placeholder: |
+        CPU:
+        RAM (size, speed, channels):
+        GPU and VRAM:
+        Windows build:
+        Power plan (laptop: plugged in?):
+    validations:
+      required: true
+
+  - type: textarea
+    id: other_load
+    attributes:
+      label: What else was running?
+      description: "Other inference servers, games, browsers, backup or antivirus scans, anything holding VRAM or RAM. 'Nothing, freshly rebooted' is a perfectly good answer and makes the number more useful."
+      placeholder: "e.g. Browser with ~30 tabs, Discord. No other inference server."
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs (recommended)
+      description: |
+        Zip the newest `launcher_*.jsonl` and the matching `server_*_out.log` from
+        `%LOCALAPPDATA%\MoE-Direct\logs\` and drag the zip in. The launcher log contains the raw
+        probe and sweep results, which is what makes a performance report reproducible instead of
+        anecdotal. Skim before attaching - it records local paths that usually include your
+        Windows user name.
+      placeholder: "Drag the .zip here."
