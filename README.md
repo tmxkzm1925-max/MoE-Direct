@@ -173,14 +173,35 @@ compute graph is the stock one - only the storage path underneath the expert ten
    that one process (nothing machine-wide is changed, nothing is installed). If you run the `.ps1` by
    right-click -> "Run with PowerShell", the window can close on failure before you read the error;
    run it from an open console instead. The `.cmd` keeps the window open and prints the log folder.
+
+   ![The extracted bundle folder with Start-MoeDirect.cmd selected](docs/img/01-bundle-extracted.png)
+   *The extracted folder - `Start-MoeDirect.cmd` is the double-click entry point.*
+
+   ![The model selection menu](docs/img/02-model-menu.png)
+   *The first screen after the bundle integrity check: GGUF files found under
+   `<drive>:\moe-models` are listed for arrow-key selection. The menu lists whatever it finds -
+   whether a file is actually supported is decided later, by the catalog and the integrity gates.*
+
 6. **Approve the one-time repack.** The launcher identifies your model, checks RAM and disk, then
    stops and shows you the exact cost - output size, free space left afterwards, expected time -
    and no model or repack output is created until you answer. This is the long step: minutes to
    roughly 18 minutes on the recorded machine, depending on model size, with
    live progress. There is no resume in v0.2; if you cancel, the next run starts the repack from
    the beginning (it will tell you and ask before deleting the partial output).
+
+   ![The repack plan and its confirmation prompt](docs/img/03-repack-plan.png)
+   *The repack plan: exact sizes, RAM and disk preflight, and the y/N prompt - nothing is
+   written until you approve.*
+
 7. **Press Enter at the status screen** to start the server, wait for `ready`, and connect a
    client (see [Connecting a client](#connecting-a-client)).
+
+   ![The status screen](docs/img/04-status-screen.png)
+   *The status screen - gate states, the measured queue-depth sweep, and the reference numbers
+   with the conditions they require.*
+
+   ![Server ready](docs/img/05-ready.png)
+   *`ready` - the server is up on its loopback URL and stays in the foreground until you stop it.*
 
 Runs after the first skip the repack entirely: the launcher re-checks the existing output against
 its integrity gate, re-measures the drive if it has to, and goes straight to the status screen.
