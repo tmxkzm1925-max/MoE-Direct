@@ -562,6 +562,10 @@ Before you rely on it:
 
 ## Model support roadmap
 
+This is an actively developed project, and v0.2 is a preview, not a finished product. The table
+below is the working queue, not a wish list - the v0.2.1 items are already specified, two of
+them as frozen, reviewed designs.
+
 | Where we are | Status |
 |---|---|
 | Serving a 1T-class MoE (Kimi K2.6, deepseek2 architecture) from a 32 GB machine | **Done and shown** - unedited single-take demo below. Format gate passed; performance gate not passed (1.03 tok/s, honestly labelled `PROBE`). |
