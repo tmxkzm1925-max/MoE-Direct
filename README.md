@@ -1,13 +1,33 @@
 # MoE-Direct
 
-**Run Mixture-of-Experts models far larger than your RAM on an ordinary Windows PC - by
-keeping expert weights on your NVMe SSD and fetching routed expert records on demand, with
-optional speculative prefetch on validated profiles.**
+**MoE-Direct runs Mixture-of-Experts models that are far larger than your RAM, by keeping the
+expert weights on an NVMe SSD and reading only the experts each token actually routes to.** Kimi
+K2.6 is a 1T-class model with 416.8 GiB of weights, roughly thirteen times the 32 GiB of RAM in
+the desktop this project was built on, and the ordinary answer to that arithmetic is that you do
+not get to run it. You do: the server is ready in seconds, because experts are never bulk-loaded
+up front, and it answers in coherent English at 1.03 tok/s, which is slow enough that we call it a
+probe rather than a product. The model this release is actually tuned for, Qwen3.5-122B, runs on
+the same box at the speed in the first row below, which comes from a paired run on the exact
+binary in this zip. The frozen release gate, measured earlier on a different working tree,
+recorded 5.59-5.69 tok/s and passed. On gpt-oss-120b, the one profile where we ran the paired
+output-parity comparison, greedy decoding through the direct-read path returned token for token the same output
+as the same engine binary's plain-mmap path; on Qwen3.5-122B the separate check is run-to-run
+reproducibility, with the official run's outputs byte-identical across runs. Every expert byte is
+verified against your original GGUF before it is ever used.
 
-The output is the same. Not almost the same - the same. With greedy decoding we ran the same
-prompts through an ordinary build of the engine and through MoE-Direct, and the two answers came
-out token for token identical.[^same] The weights are not touched either: every expert record in
-the repacked file is checked byte for byte against your original GGUF before it is ever used.[^bytes]
+| What was measured | Result | The conditions it belongs to |
+|---|---|---|
+| Qwen3.5-122B decode | **5.32-6.04 tok/s per probe, arm average 5.71** | `PROBE` grade. Paired run on the release binary in this zip, reference machine (32 GB RAM, one RTX 5080, a Gen5 NVMe). The bundle launcher in its `-Repro` release configuration: warm start and autosave off, budget autotune off with the budget fixed at 8192 MB, ctx 12288, QD 8, prefetch K=8/N=4, greedy. A normal product start on this machine sizes the cache at 12,288 MiB instead. |
+| The same bundle's server started directly on plain mmap | **2.15-2.78 tok/s per probe, arm average 2.49**, so the direct-read configuration ran **2.3x** faster | `PROBE` grade, same pair run. Same binary, same weights, same prompts, arms in A-B-B-A order in one sitting. The mmap arm ran at ctx 65536 against the launcher's 12288, so this is the ratio observed between two real configurations of the same bundle, not a single-variable minimal pair. |
+| Kimi K2.6, 1T class, out of 32 GB of RAM | 1.03 tok/s decode | `PROBE` grade, not a gate pass: budget 10240 MB, QD 8, prefetch off, coherent English output, measured on older staging binaries. |
+| Output through direct-read against the same binary's plain-mmap path | token for token identical on gpt-oss-120b[^same] | The OFF/ON A-B-B-A protocol, greedy, 12 paired responses with identical token IDs. On Qwen3.5-122B the separate check is run-to-run: the official run's 12 token files were byte-identical to the parent anchor. No parity claim is made for K2.6, or for sampled decoding, which differs by construction. |
+| Your weights after the one-time repack | byte for byte the source tensors[^bytes] | Every record SHA-256 compared against the source bytes, all records, no sampling, consumed fail-closed by both the launcher and the engine. |
+
+Each row is expanded, with its full protocol and its caveats, in [Measured results](#measured-results)
+and in [MEASUREMENTS.md](MEASUREMENTS.md). Nothing above is cherry-picked, and no number in this
+document appears without the conditions it was taken under.
+
+Built and verified with AI assistance (Claude, GPT); [full credits below](#credit-and-license).
 
 [^same]: **What was compared, and under what conditions.** The paired protocol runs the same
     engine build twice within one session - once with direct-read off, once on - with greedy
@@ -15,9 +35,10 @@ the repacked file is checked byte for byte against your original GGUF before it 
     request at a time. On gpt-oss-120b the OFF/ON A-B-B-A protocol produced 12 paired responses
     whose token IDs were identical. On Qwen3.5-122B the 12 token files of the official run were
     byte-identical to the parent anchor, i.e. the run is reproducible across runs as well. The
-    claim is scoped to that protocol and to the model/profile rows in
-    [Supported models](#supported-models): it is a statement about greedy decoding, not about
-    sampled decoding, where two runs differ by construction.
+    direct-read against plain-mmap parity claim is scoped to that protocol on gpt-oss-120b; the
+    Qwen3.5-122B statement is the separate run-to-run reproducibility check, not a second parity
+    pair. Both are statements about greedy decoding, not about sampled decoding, where two runs
+    differ by construction.
 [^bytes]: **What "byte-preserving" means, precisely.** The one-time repack rewrites your expert
     tensors into a 4 KiB-aligned direct-read store. Every record written is SHA-256 compared
     against the corresponding source bytes, all records, no sampling; the report is consumed
@@ -26,19 +47,6 @@ the repacked file is checked byte for byte against your original GGUF before it 
     quality/space trade in this project. The general repacker test matrix covers 128-384 experts
     and 1-2 shards across four quantization layouts; separately, the shipped 512-expert, 6-shard
     Qwen3.5-397B profile has passed its model-specific format gate.
-
-> **v0.2 is a public preview aimed at hands-on users.** It runs, it is measured, and its rough
-> edges are written down rather than hidden. It is not a one-click app for casual use yet - that
-> is a direction, not a promise.
-
-**Windows will warn you.** v0.2 is an *unsigned* public preview, so SmartScreen showing
-"Windows protected your PC" is the expected outcome for a new unsigned file, not a sign that
-something is wrong with your download - verify the SHA-256 and decide for yourself. On managed
-PCs, or with Smart App Control enabled, the file may be blocked outright with no "Run anyway"
-option; Smart App Control has no per-app exception. We will never ask you to turn off Defender,
-SmartScreen or Smart App Control, to add antivirus exclusions, to change your machine-wide
-execution policy, or to run anything as administrator. Code signing is planned but not in v0.2,
-and even a signed build does not make first-release warnings disappear immediately.
 
 ---
 
@@ -53,7 +61,7 @@ and even a signed build does not make first-release warnings disappear immediate
 - [How it works](#how-it-works)
 - [Measured results](#measured-results)
 - [Connecting a client](#connecting-a-client)
-- [Manual warm start (advanced)](#manual-warm-start-advanced)
+- [Warm start](#warm-start)
 - [Model support roadmap](#model-support-roadmap)
 - [What gets written to your disk](#what-gets-written-to-your-disk)
 - [Update, reset, uninstall](#update-reset-uninstall)
@@ -63,9 +71,15 @@ and even a signed build does not make first-release warnings disappear immediate
 - [FAQ](#faq)
 - [Credit and license](#credit-and-license)
 
+Measurement detail lives in its own document: [MEASUREMENTS.md](MEASUREMENTS.md).
+
 ---
 
 ## Who this release is for
+
+> **v0.2.1 is a public preview aimed at hands-on users.** It runs, it is measured, and its rough
+> edges are written down rather than hidden. It is not a one-click app for casual use yet - that
+> is a direction, not a promise.
 
 You are comfortable downloading a GGUF from Hugging Face, you have an NVMe SSD and the patience
 for a one-time repack, and you want to run MoE models your RAM says you cannot. If that is you,
@@ -117,19 +131,28 @@ in memory.
 That boundary is why the token-identical claim at the top of this page is even possible: the
 compute graph is the stock one - only the storage path underneath the expert tensors changed.
 
+**Windows will warn you.** v0.2.1 is an *unsigned* public preview, so SmartScreen showing
+"Windows protected your PC" is the expected outcome for a new unsigned file, not a sign that
+something is wrong with your download - verify the SHA-256 and decide for yourself. On managed
+PCs, or with Smart App Control enabled, the file may be blocked outright with no "Run anyway"
+option; Smart App Control has no per-app exception. We will never ask you to turn off Defender,
+SmartScreen or Smart App Control, to add antivirus exclusions, to change your machine-wide
+execution policy, or to run anything as administrator. Code signing is planned but not in v0.2.1,
+and even a signed build does not make first-release warnings disappear immediately.
+
 ## Before you start
 
 **You need, before anything else:**
 
 | | Requirement | Notes |
 |---|---|---|
-| OS | Windows 10 or 11, x64 | Windows only in v0.2. No Linux/macOS build exists; see [FAQ](#faq). |
+| OS | Windows 10 or 11, x64 | Windows only in v0.2.1. No Linux/macOS build exists; see [FAQ](#faq). |
 | Runtime | Microsoft Visual C++ Redistributable (x64) | The engine binaries are built with MSVC. Most machines already have it; if it is missing the server cannot start (see [`fail_server_start`](#fail_server_start)). Install it from Microsoft's [Latest supported Visual C++ Redistributable downloads](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist) page. |
 | Storage | An NVMe SSD | This design is I/O bound by construction. Other storage - a SATA SSD, an external drive - is **not validated and not recommended**: the launcher does not block it, it measures your drive and reports the throughput it found. |
 | Model | A supported GGUF, downloaded by you | Exact repos and revisions in [Supported models](#supported-models). |
 | Disk | About **2x the model size**, plus reserve | The repack writes its output next to your GGUF and the original stays. Nothing is deleted. |
 | Time | **Minutes to roughly 18 minutes on the recorded machine, once per model** | Recorded there: 61 GB store in 130 s, 72.8 GB in 220 s, 436 GB in 18 min. Another drive may take longer. |
-| RAM | Enough for the cache budget the launcher asks for | 8 GB budget for the 122B profile, 4 GB for the 35B profile, 10 GB for K2.6. The launcher checks this before any repack output is written. |
+| RAM | Enough for the cache budget the launcher picks | v0.2.1 sizes the expert cache from your installed RAM and the model's slot geometry, between 4 GB and 12 GB, and you can override it. Each profile also has a minimum below which it cannot be served at all: 8 GB for the 122B, 397B, gpt-oss and DeepSeek profiles, 4 GB for the 35B, 10 GB for K2.6. On a first run the sizing needs the slot geometry that the repack produces, so it happens after the repack and its verification; the preflight that runs before any repack output is written checks the explicit or profile-minimum budget instead. |
 | Python | Not needed | A pinned CPython runtime for the repacker is included in the zip. |
 
 ## Quick start
@@ -142,7 +165,7 @@ compute graph is the stock one - only the storage path underneath the expert ten
 
 | Asset | What it is |
 |---|---|
-| `moe-direct-v0.2-win-x64.zip` | The runtime bundle. This is the one you want. |
+| `moe-direct-v0.2.1-win-x64.zip` | The runtime bundle. This is the one you want. |
 | `SHA256SUMS.txt` | The checksum of that zip. |
 
 > GitHub also shows an automatically generated **"Source code (zip / tar.gz)"** on every release.
@@ -154,13 +177,13 @@ compute graph is the stock one - only the storage path underneath the expert ten
 
 1. **Verify the download.** In PowerShell:
    ```powershell
-   Get-FileHash .\moe-direct-v0.2-win-x64.zip -Algorithm SHA256
+   Get-FileHash .\moe-direct-v0.2.1-win-x64.zip -Algorithm SHA256
    ```
    Compare the result with `SHA256SUMS.txt`. If it does not match, stop and download again.
-2. **Unblock the zip itself** - right-click `moe-direct-v0.2-win-x64.zip` -> Properties -> tick
-   **Unblock** -> OK. (Equivalent: `Unblock-File .\moe-direct-v0.2-win-x64.zip`.)
+2. **Unblock the zip itself** - right-click `moe-direct-v0.2.1-win-x64.zip` -> Properties -> tick
+   **Unblock** -> OK. (Equivalent: `Unblock-File .\moe-direct-v0.2.1-win-x64.zip`.)
 3. **Extract with Windows "Extract All"** into a folder of your choice, for example
-   `C:\moe-direct\v0.2\`. Other archivers differ in how they propagate the mark-of-the-web, so
+   `C:\moe-direct\v0.2.1\`. Other archivers differ in how they propagate the mark-of-the-web, so
    this is the one path we document.
 4. **Put your GGUF somewhere the launcher can find it.** Any path works, but if you place models
    under `<drive>:\moe-models\` (up to three levels deep, e.g.
@@ -186,7 +209,7 @@ compute graph is the stock one - only the storage path underneath the expert ten
    stops and shows you the exact cost - output size, free space left afterwards, expected time -
    and no model or repack output is created until you answer. This is the long step: minutes to
    roughly 18 minutes on the recorded machine, depending on model size, with
-   live progress. There is no resume in v0.2; if you cancel, the next run starts the repack from
+   live progress. There is no resume in v0.2.1; if you cancel, the next run starts the repack from
    the beginning (it will tell you and ask before deleting the partial output).
 
    ![The repack plan and its confirmation prompt](docs/img/03-repack-plan.png)
@@ -221,8 +244,13 @@ model is usable from the very first token. In a long-lived session that keeps a 
 prefix - which is how agent-style clients behave - later turns reuse the prefix cache instead of
 re-reading what was already read, and that reuse is where the multi-turn numbers in
 [Measured results](#measured-results) come from; a turn that changes the prefix pays for the
-changed part again. So judge the speed by the later turns of a session, not its first one - and
-note that stopping the server clears both caches, so the next start begins cold again.
+changed part again. So judge the speed by the later turns of a session, not its first one.
+
+Stopping the server still empties the expert cache, which fills from the NVMe again on the next
+start. The prefix cache is the part that now survives: v0.2.1 saves the slot state when you stop
+cleanly, and restores it next time, so the first turn of the next session does not re-prefill a
+prompt that was already processed. [Warm start](#warm-start) describes what that covers and what it
+does not.
 
 When the server is up, the launcher prints `ready` with the base URL. When you stop it - `stop` in
 the menu, or Ctrl+C - it shuts the server down, confirms the child process and the listening port
@@ -251,7 +279,7 @@ Every profile carries **two independent gates**, and one never implies the other
 |---|---|
 | `reference-validated` | Format gate **and** performance gate passed on the reference machine. |
 | `format-validated` | Format gate passed. Any speed number shown is an observation, not a gate pass. |
-| `experimental` | Neither gate established. Your own risk. Nothing in v0.2 ships at this tier. |
+| `experimental` | Neither gate established. Your own risk. Nothing in v0.2.1 ships at this tier. |
 
 | Model (profile id) | Source | Experts | Repacked expert store | Min cache budget | Tier | Prefetch |
 |---|---|---:|---:|---:|---|---|
@@ -259,7 +287,8 @@ Every profile carries **two independent gates**, and one never implies the other
 | gpt-oss-120b MXFP4 (`gpt-oss-120b`) | [ggml-org/gpt-oss-120b-GGUF](https://huggingface.co/ggml-org/gpt-oss-120b-GGUF) rev `8d158cefb5f175c6f8842bbd8f68eca54d951ab4` | 128 (top-4) | 61 GB | 8192 MB | `format-validated` | `reference-only` |
 | Qwen3.5-35B-A3B Q4_K_M (`qwen35-35b`) | [unsloth/Qwen3.5-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.5-35B-A3B-GGUF) rev `bc014a17be43adabd7066b7a86075ff935c6a4e2` | 256 (top-8) | 19.5 GB | 4096 MB | `format-validated` | `disabled` |
 | Qwen3.5-397B-A17B Q4_K_M, 6 shards (`qwen35-397b`) | [unsloth/Qwen3.5-397B-A17B-GGUF](https://huggingface.co/unsloth/Qwen3.5-397B-A17B-GGUF) rev `da33c16fa4440f831149fcf53b98a22bc07785e5` | 512 (top-10) | shown by the launcher before it writes | 8192 MB | `format-validated` | `disabled` |
-| Kimi K2.6 447 GB mixed-quant (`kimi-k2.6-ram-447gb`) | [baa-ai/Kimi-K2.6-RAM-447GB-GGUF](https://huggingface.co/baa-ai/Kimi-K2.6-RAM-447GB-GGUF) rev `1e8bc2c2c759db5b4bb783965129d4e1e9182bc6` | 384 (top-8) | 436 GB | 10240 MB | `format-validated` | `reference-only` |
+| Kimi K2.6 447 GB mixed-quant (`kimi-k2.6-ram-447gb`) | [baa-ai/Kimi-K2.6-RAM-447GB-GGUF](https://huggingface.co/baa-ai/Kimi-K2.6-RAM-447GB-GGUF) rev `1e8bc2c2c759db5b4bb783965129d4e1e9182bc6` | 384 (top-8) | 436 GB | 10240 MB | `format-validated` | `validated` (K=8, N=4) |
+| DeepSeek-V4-Flash-0731 MXFP4/Q8_0 (`deepseek-v4-flash`) **new** | [bullerwins/DeepSeek-V4-Flash-0731-GGUF](https://huggingface.co/bullerwins/DeepSeek-V4-Flash-0731-GGUF) rev `ed48c7a2df419aaa01e325521cd6f93464969641` | 256 (top-6) | shown by the launcher before it writes | 8192 MB | `format-validated` | `disabled` |
 
 Notes on this table:
 
@@ -269,19 +298,31 @@ Notes on this table:
   that profile on the reference machine. `reference-only` means the signal exists but the
   end-to-end lever has not been qualified, and `disabled` means the family adapter is not built
   yet. The engine and the launcher both refuse a prefetch override on a profile that is not
-  `validated` - this is deliberate, not a bug. Two profiles sit at `reference-only` today,
-  gpt-oss-120b and K2.6; for K2.6 the evidence is the single live run recorded under
-  [Non-official observations](#non-official-observations), and until a paired run promotes it the
-  launcher keeps serving that profile with prefetch off.
-- **Text only.** v0.2 validates text serving. Multimodal (mmproj) inputs are **not verified** -
+  `validated` - this is deliberate, not a bug. K2.6 reached `validated` through a paired A-B-B-A
+  run in which both adjacent pairs favoured the ON arm and all four arms produced byte-identical
+  output. **That row describes the v0.2.1 catalog.** The promotion travels with `models.json`, not
+  with the model: a v0.2 bundle you already downloaded still carries `reference-only` for K2.6 and
+  still serves it with prefetch off, and only a bundle shipping the updated catalog turns it on.
+  The promotion is also about prefetch and nothing else: K2.6's performance gate is exactly where
+  it was, unpassed. gpt-oss-120b is the one profile still sitting at `reference-only`. Both runs
+  are recorded under [Non-official observations](MEASUREMENTS.md#non-official-observations).
+- **DeepSeek-V4-Flash-0731 is new in v0.2.1**, and it is the newest architecture in the catalog
+  rather than the most measured one. Its repack verified 33,024 of 33,024 records, and a smoke run
+  on the reference machine held 3.13-3.28 tok/s across four probes with zero fallback events
+  (`PROBE`: budget 8192 MB, QD 8, prefetch off, ctx 8192). Prefetch is `disabled` for it because
+  the depth constants for that family have not been searched, not because the family is
+  unsupported. The launcher will accept a context up to 131072 on the custom path, but nothing
+  above 8192 has been exercised here, so treat that headroom as untested rather than offered.
+- **Text only.** v0.2.1 validates text serving. Multimodal (mmproj) inputs are **not verified** -
   not blocked, just unlabelled. Reports welcome.
 - **Where these values come from.** The catalog file `models.json` in the bundle is the single
   source of truth for the profile id, the repository and revision, the expert count and top-k, the
   minimum cache budget, the tier and the prefetch state; those columns are rendered from it. The
   **Repacked expert store** column is not a catalog field: it is the size recorded when that model
   was actually repacked here - on the reference machine, except the 35B row, which was repacked on
-  the second machine below. The 397B row has no recorded size yet. The launcher
-  computes the exact size for *your* model and shows it in the repack plan before it writes.
+  the second machine described in [MEASUREMENTS.md](MEASUREMENTS.md). The 397B and DeepSeek rows
+  have no recorded size yet. The launcher computes the exact size for *your* model and shows it in
+  the repack plan before it writes.
 
 ## How it works
 
@@ -297,7 +338,8 @@ Notes on this table:
    overlapped positional reads at a measured queue depth, straight out of the repacked file.
 4. **Startup probes.** Before the status screen the launcher measures *your* drive (a short
    read-only sweep over the repacked file at queue depths 1/2/4/8) and *your* RAM, and picks the
-   defaults from the measurement instead of assuming the reference machine.
+   queue depth and the cache budget from those measurements instead of assuming the reference
+   machine. Both stay overridable, and the budget it chose is printed before you start.
 5. **Dense layers on GPU.** Attention and the other dense weights run on the CUDA backend as
    usual - on the reference machine they do, with `-ngl 99` on an RTX 5080. Only the expert
    stream lives on the CPU/NVMe path. CPU fallback behaviour on machines without CUDA is
@@ -310,143 +352,42 @@ More RAM is not a threshold you have to cross - it is cache budget and headroom,
 hit rate. Whether a given amount of extra RAM pays off on *your* model is `[unmeasured]` unless it
 appears in the table below.
 
+Why the design looks like this, which alternatives were measured and rejected on data, and what
+was underneath each decision, is written up in a technical note with a DOI:
+[10.5281/zenodo.21739367](https://doi.org/10.5281/zenodo.21739367).
+
 ## Measured results
 
-Every number here belongs to a machine, a build, a configuration and a workload window. A number
-without its conditions is a number you should not trust, so all of them are printed with theirs.
-Results scale primarily with NVMe read throughput; treat these as data points from these boxes,
-not as promises for yours.
+Every number in this project belongs to a machine, a build, a configuration and a workload window.
+A number without its conditions is a number you should not trust, so all of them are published with
+theirs. Results scale primarily with NVMe read throughput; treat these as data points from this
+box, not as promises for yours.
 
-**Grades used below**
+Numbers carry a grade. `OFFICIAL` means the frozen release-gate protocol on the reference machine,
+with the gate verdict stated. `PROBE` means a deliberate measurement with a written protocol that
+is not a gate run, and it promotes nothing. `LIVE` means something observed during ordinary use:
+honest, but uncontrolled, and never to be read alongside an `OFFICIAL` number as if it were the
+same kind of thing.
 
-| Grade | Meaning |
-|---|---|
-| `OFFICIAL` | Produced by the frozen release-gate protocol on the reference machine, from a working tree that predates the staging source tree `f5bbfcc4` - see the provenance note under [Official numbers](#official-numbers). Gate verdict stated. |
-| `PROBE` | A deliberate measurement with a written protocol, but not a gate run. Not a tier promotion. |
-| `LIVE` | Observed during ordinary use. Honest, but uncontrolled - never to be read alongside the `OFFICIAL` table as if it were the same kind of number. |
-
-### Reference machine
-
-| Component | Spec |
-|---|---|
-| CPU | AMD Ryzen 7 7800X3D (8C/16T) |
-| GPU | NVIDIA RTX 5080, 16 GB VRAM |
-| RAM | 32 GB DDR5-6000 (2x16 GB) |
-| Model NVMe | KIOXIA EXCERIA PLUS G4 2 TB, PCIe Gen5. Two different numbers, kept apart on purpose: about **5.4 GB/s** was the effective read rate observed while serving K2.6, and **6.5-8.1 GB/s** is what `fio` reports for large-block reads on this drive - a device ceiling, not a serving expectation. |
-| OS | Windows 11 |
-
-Second machine used for the 35B row: Acer Aspire Lite 16, Core i7-1355U, 16 GB DDR5-4800,
-HOGE H8A1 512 GB NVMe, Windows 11, CPU-only (`-ngl 0`).
-
-### Official numbers
-
-`OFFICIAL` - reference machine, frozen constants K=8 / N=4 / QD=8.
-
-**Provenance of this run.** The official run predates `f5bbfcc4`. Its working tree differed only by
-the unrelated qwen35-35b catalog row, which was load-time-only and was judged not to affect this run
-retroactively. The release binary's own lineage is stated separately:
-`f5bbfcc4` -> `594d1055` -> `66c83de3`.
-
-| Model | Result | Conditions |
-|---|---|---|
-| Qwen3.5-122B-A10B (`qwen35-122b-nonextn`) | **5.59-5.69 tok/s sustained decode** - `GATE1_SERVE: PASS` (all 4 measured reps >= 5.0) | budget 8192 MB, QD 8, prefetch on (K=8, N=4), ctx 12288, 4 measured reps across 2 ON arms, warmup rep excluded |
-| gpt-oss-120b (`gpt-oss-120b`) | Integrity anchor: OFF/ON A-B-B-A protocol, 12 paired responses token-ID identical; functional gates all pass | paired within one session on identical binaries |
-
-The same official run also produced the mmap comparison arm: OFF decode **2.4106 tok/s** pooled,
-individual reps **2.2842-2.5185 tok/s**. Against the two ON arms that gives the official decode
-ratios **2.3226x** and **2.3439x** - that is how much faster the direct-read path served this model
-than the same engine reading the same weights through mmap, under these conditions. Mandatory
-co-statement, carried in the body rather than a footnote because the deviation exceeds 5 %: *in a
-separate, unofficial ISLC-off mmap-only correction run (no ISLC process, effective timer resolution
-1 ms) the OFF arm's measured mean was 2.7178 tok/s and its measured pooled prefill 3.5954 tok/s.
-Against the official ON pooled figures, the cross-run adjusted estimates are 2.0695x for decode
-(ON1/ON2: 2.0601x / 2.0790x) and 12.713x for measured prefill - respectively 11.3 % below the
-official decode ratio and 8.5 % below the official measured prefill ratio. That is not a matched
-A/B, it does not replace the official ratio, and it is not used in any gate.*
-
-> **This is not "just mmap".** We measured the mmap route first, on this hardware, and rejected it
-> on data: with an expert working set far larger than RAM, page-cache eviction forced repeated
-> re-streaming of expert pages and decode collapsed. MoE-Direct replaces incidental caching with an
-> explicit, expert-granular slot cache: aligned repacked records, explicit positional reads with
-> overlapped I/O at a measured queue depth, and a deterministic LRU with lease pinning. The claim
-> is scoped to what we measured on this box for these models - not a universal law about mmap.
-
-### About the binary in this release
-
-The official numbers above were produced from an earlier working tree, not from the binary in this
-zip. On 2026-07-31 the engine shipped in `moe-direct-v0.2-win-x64.zip` was checked against the
-anchor band by a **single-arm confirmation run** (ON only), driven end to end by the bundled
-launcher on the reference machine: verify-gated repack (36,864/36,864 pairs), sweep-selected QD 8,
-prefetch on with the catalog defaults, cold start (standby list cleared). The run used the bundle
-at zip SHA-256 `4f1c4f16...658b2f`; the published zip is `34e1713b...f28e`, and the only
-difference between the two is a launcher-script revision made after the run (display-only prefill
-progress tags, locked by the launcher selftest) - every engine file is byte-identical. Across the three 256-token probes, decode averaged **6.32 tok/s**
-(6.08 / 6.81 / 6.07), at or above the official anchor band **5.59-5.69 tok/s**; cache integrity was
-clean (0 fallback, 0 touch events). The probe prompts are shorter than the official workload, so
-this is a vicinity check, not an equivalence claim - it shows the shipped binary is not degraded
-relative to the anchor. Run ID `launcher_20260731T045323Z_240740` (metrics
-`metrics_20260731T135350_240740.jsonl`). This was **not** an official-tier measurement, and it
-supports no multiplier claim against an OFF arm.
-
-A full paired re-issue - ON/OFF, A-B-B-A, on the exact release binary - is scheduled as a
-short post-release update. When it lands, the numbers in this README are replaced by that run's
-numbers and the change is noted in the release notes.
-
-### Non-official observations
-
-`PROBE` / `LIVE` - real measurements, no gate. Never mixed into the official table.
-
-| Model | Result | Grade | Conditions |
+| Measurement | Result | Grade | Conditions |
 |---|---|---|---|
-| Kimi K2.6, 1T-class (`kimi-k2.6-ram-447gb`) | 1.03 tok/s decode, coherent English output, ~42 % expert-byte cache hits, zero touch/fallback events | `PROBE` | curiosity run on older staging binaries, budget 10240 MB, QD 8, prefetch off. No token-parity claim for this run. It has **not** passed the performance gate. |
-| Kimi K2.6, next-layer expert prefetch | off 0.96 -> K=8/N=4 **1.04 tok/s** decode (**x1.078**); K=10/N=4 1.03 tok/s; K=12/N=7 0.95 tok/s, i.e. slower than prefetch off. All four arms produced byte-identical output. | `PROBE` | single live run `k26liveA_20260731T092057` on the reference machine, four arms, each arm started cold; decode is the mean of three 256-token probes per arm; budget 10240 MB, QD 8, ctx 8192, `-ngl 99 --n-cpu-moe 61`, so the dense layers ran on CUDA (14,886 of 16,303 MiB VRAM in use, no OOM). Single run, probe tier, not the A-B-B-A protocol - not comparable with the official numbers. |
-| Kimi K2.6, direct-read vs plain mmap | ON 0.851 vs OFF 0.215 tok/s decode (**3.95x**); prefill 0.775 vs 0.232 (3.35x); the two arms produced character-identical output | `PROBE` | matched minimal pair on the reference machine: same engine binary, same short prompt, greedy, 64 generated tokens, both arms cold. ON arm: budget 10240 MB, QD 8, prefetch off. OFF arm: the stock mmap path. One short run each - honest but small, and not comparable with the official table. |
-| Qwen3.5-397B-A17B (`qwen35-397b`) | 1.99 tok/s sustained decode | `PROBE` | function smoke, reference machine, budget 8192 MB, QD 8, prefetch off, ctx 12288, cold (page cache pre-cleared), 96 generated tokens |
-| Qwen3.5-35B-A3B (`qwen35-35b`) | 4.40 tok/s decode | `PROBE` | function smoke on the laptop, CPU-only (`-ngl 0`), budget 4096 MB, QD 2, prefetch off, ctx 4096, cold, first 48 generated tokens |
-| Qwen3.5-122B, first-turn prefill | 45.6-45.9 tok/s cold long-context prefill | `PROBE` | appendix observation recorded inside the official run; deliberately **not** a headline or gate number |
-| Qwen3.5-122B, multi-turn reuse | 314.9-316.5 context-tok/s perceived, from 8.1-8.3x reuse; newly evaluated tokens in the same runs: 9.3-9.6 tok/s | `PROBE` | prefix-cache A/B. The two figures must always be read together - the large number is reuse, the small one is new work. |
-| Qwen3.5-122B, queue depth + prefetch in ordinary use | 4.31 tok/s (QD1, prefetch off) -> 6.60 tok/s (QD8, prefetch on); prefill 31 -> 39.1 tok/s in the same sessions | `LIVE` | one user, one third-party agent client, same workload before/after. Not comparable with the official table. |
+| Qwen3.5-122B sustained decode | **5.59-5.69 tok/s**, `GATE1_SERVE: PASS` | `OFFICIAL` | Reference machine, budget 8192 MB, QD 8, prefetch on (K=8, N=4), ctx 12288, 4 measured reps across 2 ON arms, warmup rep excluded. Measured from a working tree that predates the release binary. |
+| The same run's mmap arm | 2.4106 tok/s pooled, i.e. the direct-read arms were **2.3226x** and **2.3439x** faster | `OFFICIAL` | Same session, identical binaries. A separate ISLC-off correction run puts the adjusted decode ratio at 2.0695x instead; both figures, and why they differ by more than 5 %, are stated in full in MEASUREMENTS.md. |
+| gpt-oss-120b output parity | 12 paired responses, token IDs identical | `OFFICIAL` | OFF/ON in A-B-B-A order within one session, greedy decoding, one request at a time. |
+| Kimi K2.6, 1T class | 1.03 tok/s decode, coherent English, ~42 % expert-byte cache hits | `PROBE` | Budget 10240 MB, QD 8, prefetch off, older staging binaries. It has **not** passed the performance gate; do not plan interactive work around it. |
+| Qwen3.5-122B multi-turn reuse | 314.9-316.5 context-tok/s perceived, from 8.1-8.3x prefix reuse; 9.3-9.6 tok/s of genuinely new work in the same runs | `PROBE` | Prefix-cache A/B on the reference machine. The two figures must always be read together: the large one is reuse, the small one is new work. |
 
-**Size context** (full GGUF vs this machine): Qwen3.5-122B = 72.3 GiB, about **1.5x** the combined
-RAM+VRAM (48 GiB) and about 2.3x system RAM. Kimi K2.6 = 416.8 GiB, about **8.7x** combined and
-about **13x** system RAM.
+**Which build these came from.** The paired figures in the box at the top of this page were
+measured on the bundle in this release. The equivalent pair on the previous release, run on
+2026-08-02 against the v0.2 binary, is kept in
+[MEASUREMENTS.md](MEASUREMENTS.md#the-release-pair-headline-source) as the earlier generation's
+record rather than deleted, because that engine is not this one. The frozen gate record predates
+both and keeps its own section.
 
-**What the K2.6 prefetch run showed, and what it did not.** It is one run at probe tier, and it
-promotes nothing: K2.6 stays `reference-only` and the launcher still serves it with prefetch off.
-Two things in it are worth writing down anyway. The four arms differed only in when expert bytes
-were fetched, and their outputs came out identical byte for byte - on the largest model here, a
-lever that changes speed left the text alone, which is what the boundary above says it should do.
-And more speculation was not better: the K=12/N=7 arm needed the fewest demand reads of the four
-and still finished slowest of all, slower even than prefetch off, because on a drive already
-saturated by demand reads the speculative reads compete for the same queue. The shallow depth is
-the one that helped.
-
-**Where the time goes.** Decode on this workload is read-bound - what paces it is how fast the
-expert bytes for the next token arrive from the NVMe. That is why the levers in this release are
-queue depth (measured per machine at startup) and next-layer expert prefetch (enabled only on
-profiles where it was validated).
-
-**One arithmetic warning.** "Effective read speed / miss bytes per token" is an **I/O ceiling**, not
-an expected tok/s - there is a real fixed cost per token on top of it (an earlier reference
-calibration put it at ~79-82 ms; it has not been re-derived for this release candidate).
-The launcher therefore prints the ceiling and a reference-calibrated estimate as two separate
-numbers, and shows the fixed term as `[unmeasured]` on machines other than the reference one.
-Anyone quoting the ceiling as an expected speed is quoting the wrong number.
-
-**How the numbers were measured.** All published measurements were taken on a machine dedicated to
-the model at that moment: most applications closed, no other heavy programs running, background
-utilities kept to a minimum, and the documented canonical settings applied. That is deliberate - it
-makes them reproducible. It also means that if you run a big MoE next to a browser full of tabs and
-a game, you should expect less headroom than the tables show; the RAM budget in particular assumes
-the machine has room to give.
-
-**Verification culture.** Every claim traces to an append-only run log with raw artifacts. Paired
-comparisons only ever run on identical binaries within one session. Determinism is enforced -
-read-sequence digests, logical cache-tick digests and per-run token hashes must match across paired
-runs, or the run is void. A manual coherence check on K2.6 showed exactly why that matters: a
-degenerate, repetitive output run reported inflated numbers (1.87 "tok/s", 72 % byte-hit) against
-1.03 tok/s / 42 % on coherent output. We publish the honest pair. Changes are verified in layers:
-maintainer verification plus AI-assisted adversarial cross-review, with the raw verdicts kept.
+The release-binary pair the headline comes from, the reference machine's full specification, the
+paired protocol, the historical gate record, the release binary's lineage and every non-official
+observation recorded so far live in **[MEASUREMENTS.md](MEASUREMENTS.md)**. Nothing was moved there
+to bury it. That file exists so this page can stay short enough to read.
 
 ## Connecting a client
 
@@ -508,70 +449,108 @@ aborted attempts resume from the prompt cache. This is a first-turn cost only: i
 the second turn entered generation in under a minute, because the prefix cache absorbed the
 repeated system prompt.
 
-## Manual warm start (advanced)
+## Warm start
 
-The first long prompt on a big model is expensive - on K2.6, the largest and slowest profile here, a
-roughly 16k-token prompt took about an hour on the reference machine, an ordinary-use observation
-rather than a measured protocol - and stopping the server throws that work away, because both caches
-are cleared. llama.cpp upstream can save a slot's state to a file and restore it later, and this
-project changes nothing about that path, so you can use it yourself today. It is a power-user route
-with real sharp edges, listed below; the automated version with identity checks is v0.2.1 work (see
-[Model support roadmap](#model-support-roadmap)).
+Stopping the server used to throw the whole session away. The prefix cache went with the process, so
+the next start had to prefill your prompt again from nothing, and on a long agent-style prompt that
+is minutes of work you had already paid for. v0.2.1 saves the slot state when you stop cleanly and
+restores it the next time you start.
 
-**It only works when you start the server yourself**, without the launcher - the launcher fixes the
-server arguments, so there is no way in through it. Add `--slot-save-path <directory>` to the server
-arguments, and **create that directory first**: if it does not exist, the server refuses to start
-while it is still parsing its arguments.
+You do not have to do anything to get it. The saved state goes under
+`%LOCALAPPDATA%\MoE-Direct\kv\<profile id>\`. One thing to expect on the first clean stop with a
+given model: the integrity sidecar hashes the model file once, and on a very large model that is a
+few minutes of reading with no output yet; the hash is cached, so later stops skip it. The status
+screen tells you what it found before you press Enter:
 
-**Save, before you stop the server.** The slot id is a path parameter, and it is `0` because this
-project serves one request at a time from a single slot:
+```
+  kv               : eligible
+  autosave         : on (every 5 min)
+```
+
+`eligible` means a saved state passed every check and will be restored. `cold(<reason>)` means it
+will not be, and names the reason. `off(user)` and `off(mode)` mean you turned it off, or the run is
+a self-check or reproducibility run where it is off by design. Once the server is up a second line
+reports what actually happened, `kv=restored(<n> tokens)` or `kv=cold(<reason>)`. Verifying a large
+saved state takes a moment, and the launcher prints a line while it does that rather than going
+quiet.
+
+**Restoring the wrong state would be worse than starting cold, so it is not allowed to happen.** A
+slot file written by llama.cpp carries no model hash, no vocabulary, no RoPE settings, no engine
+identity and no checksum of its own; the engine validates its format, not whether it belongs to this
+model. The launcher supplies what the engine cannot. Next to every saved state it writes a sidecar
+recording the profile, the SHA-256 of every shard of your GGUF, the repack manifest hash, the bundle
+hash, a canonical hash of the server configuration that affects state, the context size, the token
+count, the byte count, and the SHA-256 of the saved file itself. All of it has to match before a
+restore is attempted. Anything that does not match is a cold start with the mismatching field named,
+not a gamble.
+
+**Autosave, for the stops you did not plan.** Saving on a clean stop does nothing for a crash, a
+power cut or a forced kill, so v0.2.1 also saves while it is serving. The default is a five-minute
+tick that fires only when two things hold together: nothing is in flight, and the token count has
+actually changed since the last save. Writes alternate between two generations, so a crash during a
+save damages only the generation being written and the previous complete one survives. On the next
+start the most recent state that passes the checks is restored, whether it came from a clean stop or
+from a tick.
+
+**What it does not do.** A slot file holds tokens and cache state, not the server's own prefix
+checkpoints. A request that extends the restored prompt exactly reuses it; a request that diverges
+from it is reprocessed in full on hybrid-attention models such as Qwen3.5. Measured figures for both
+cases are in [MEASUREMENTS.md](MEASUREMENTS.md#warm-start). It also does nothing for the expert slot
+cache, which still fills from the NVMe as you use the model; pre-filling that is separate work and
+is not in this build.
+
+**These files hold your conversation.** A saved state contains the session's tokens verbatim, so
+treat it the way you would treat the conversation itself. It is local, it is never uploaded, and
+nothing in this project collects it. At a 12k context it runs about 190 MB per state. Each profile
+keeps one clean-stop state and two autosave generations, and the launcher tries to hold at most
+four profiles' worth, removing the least recently used beyond that. A removal that fails is recorded
+as a diagnostic rather than failing the run, so the folder can end up holding more than that.
+
+To turn the feature off, set `warmstart` to `off` on the custom path or start the launcher with
+`-Warmstart off`. To keep warm start but stop the periodic saves, set `autosave` to `off`, or to a
+number of minutes between 1 and 1440 to change the interval. Turning it off stops new saves; it does
+not delete what is already there. Delete `%LOCALAPPDATA%\MoE-Direct\kv\` yourself when you want it
+gone.
+
+### Starting the server yourself
+
+The save and restore calls are upstream llama.cpp, and this project changes nothing about them, so
+they are available to anyone who starts `llama-server` directly instead of using the launcher. Add
+`--slot-save-path <directory>` to the server arguments and **create that directory first**: if it
+does not exist the server refuses to start while it is still parsing arguments. The slot id is `0`,
+because this project serves one request at a time from a single slot.
 
 ```powershell
 Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8093/slots/0?action=save" -ContentType "application/json" -Body '{"filename":"my_session.kv"}'
-```
-
-**Restore, after you start it again.** Same shape, `action=restore`:
-
-```powershell
 Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8093/slots/0?action=restore" -ContentType "application/json" -Body '{"filename":"my_session.kv"}'
 ```
 
-**HTTP 200 is not the same as success.** Read the response body: for a save, require
-`n_saved > 0` and `n_written > 0`; for a restore, require a well-formed response with
-`n_restored > 0` and `n_read > 0`. If a restore is not confirmed, `POST /slots/0?action=erase`
-and continue cold only after the erase succeeds - otherwise restart the server without
-restoring. And restored counts alone do not prove the prompt was reused: on hybrid-attention
-models the engine may still re-process the full prompt, so compare `timings.cache_n` against
-`timings.prompt_n` on your next request, and check its time-to-first-token against a cold one.
+**HTTP 200 is not the same as success.** Read the response body: a save needs `n_saved > 0` and
+`n_written > 0`, a restore needs `n_restored > 0` and `n_read > 0`. If a restore is not confirmed,
+`POST /slots/0?action=erase` and continue cold only once the erase succeeds, otherwise restart the
+server without restoring. Restored counts alone do not prove the prompt was reused either, so
+compare `timings.cache_n` against `timings.prompt_n` on your next request and check its
+time-to-first-token against a cold one.
 
-Before you rely on it:
-
-- **The engine does not check that the file matches the model.** A slot file carries no model hash,
-  no vocabulary, no RoPE settings, no engine identity and no checksum; the engine validates its
-  format and only part of its structure, not its identity. Restore only into **exactly the same
-  model file, the same engine build/bundle, the same context size and slot layout, and the same
-  state-relevant server configuration** you saved from. Anything else is undefined behaviour, not
-  an error message.
-- **The file contains your conversation tokens verbatim.** Treat it as you would the conversation
-  itself - it is local, it is yours, and deleting it is the way to get rid of it.
-- **It grows with context.** How large it gets on a given model and context size is `[unmeasured]`
-  here.
-- **This manual route is outside our verification matrix.** It is upstream functionality we are
-  pointing at, not a feature v0.2 validates. The version with identity binding, automatic
-  save/restore and cleanup is what v0.2.1 is for.
+On this path none of the identity binding above applies, because that is the launcher's work. The
+engine will happily restore a file saved from a different model, and the result is undefined
+behaviour rather than an error message. Restore only into exactly the same model file, the same
+engine build and bundle, the same context size and slot layout, and the same state-relevant server
+configuration you saved from.
 
 ## Model support roadmap
 
-This is an actively developed project, and v0.2 is a preview, not a finished product. The table
-below is the working queue, not a wish list - the v0.2.1 items are already specified, two of
-them as frozen, reviewed designs.
+This is an actively developed project, and v0.2.1 is a preview, not a finished product. The table
+below is the working queue, not a wish list.
 
 | Where we are | Status |
 |---|---|
 | Serving a 1T-class MoE (Kimi K2.6, deepseek2 architecture) from a 32 GB machine | **Done and shown** - unedited single-take demo below. Format gate passed; performance gate not passed (1.03 tok/s, honestly labelled `PROBE`). |
-| Prefetch for the deepseek2 family, which is what Kimi K2.6 needs | **Adapter landed, measured once, not promoted.** The signal adapter for that family exists now, and a first live four-arm run on K2.6 selected K=8 / N=4 - the numbers are under [Non-official observations](#non-official-observations). One run is evidence, not a gate: `prefetch_state` for that profile is `reference-only`, the launcher serves it with prefetch off, and overrides stay refused on both sides. The paired A-B-B-A run that can promote it to `validated` - after which the launcher enables prefetch for it by itself - is **v0.2.1** work. |
-| Warm start: saving and restoring slot state across restarts | **Specification frozen; the implementation is the next release.** Stopping the server today clears both the prefix cache and the expert slot cache, so the next start begins cold. The design that removes that cost is written and reviewed, but none of it is in the v0.2 bundle - it ships, if it passes its own verification, in **v0.2.1**. The manual upstream route you can drive by hand today is described in [Manual warm start (advanced)](#manual-warm-start-advanced). |
-| Expert-cache warmer | **Targeted at v0.2.1.** Filling expert slots ahead of the first turn instead of letting them fill as you chat. Not in this build. |
+| Prefetch for the deepseek2 family, which is what Kimi K2.6 needs | **Landed and promoted.** The signal adapter for that family exists, a first live four-arm run on K2.6 selected K=8 / N=4, and the paired A-B-B-A run that one run could not stand in for has since been done: both adjacent pairs favoured the ON arm and all four arms produced byte-identical output. `prefetch_state` for that profile is `validated` in the v0.2.1 catalog, so a bundle shipping that catalog enables prefetch for it by itself; a v0.2 bundle still carries `reference-only` and serves it with prefetch off. Both runs, and the exact protocol, are under [Non-official observations](MEASUREMENTS.md#non-official-observations). None of this touches the performance gate, which K2.6 still has not passed. |
+| DeepSeek-V4-Flash-0731 (284B, `deepseek4`) | **In the catalog since v0.2.1.** The architecture is native to the base commit this release is built on, its expert tensors are MXFP4, which is a layout the repacker already handles, and the repack verified 33,024 of 33,024 records. A direct-read smoke run held 3.13-3.28 tok/s across four probes with zero fallback events (`PROBE`: reference machine, budget 8192 MB, QD 8, prefetch off, ctx 8192). It ships with the format gate passed, the performance gate unpassed and prefetch disabled, which is where the evidence actually stands. |
+| Warm start: saving and restoring slot state across restarts | **Shipped in v0.2.1.** Stopping the server in v0.2 cleared both the prefix cache and the expert slot cache, so the next start began cold. v0.2.1 saves the slot on a clean stop, saves again on a timer while serving, and restores on the next start, measured at **8.1x** faster time to first token on a strict same-prompt pair. The protocol and the caveats are in [MEASUREMENTS.md](MEASUREMENTS.md#warm-start), and the user-facing description is under [Warm start](#warm-start). |
+| Expert-cache warmer | **Designed, targeted at v0.2.2.** Filling expert slots ahead of the first turn instead of letting them fill as you chat. The design is written and reviewed; nothing of it is in this build. |
+| KV cache quantized to `q8_0` | **Measured and gated, switch targeted at v0.2.2.** The quality gate passed on Qwen3.5-122B, with the divergence and perplexity figures in [MEASUREMENTS.md](MEASUREMENTS.md#kv-cache-q8). What is not in v0.2.1 is the opt-in switch that would let you turn it on, so the measurement is published ahead of the feature rather than the other way round. |
 | Kimi K3 (2.8T class) | **Top of the queue the moment llama.cpp upstream supports the architecture.** Its architecture is outside the base commit this release is built on, so support is gated on upstream, and the timing is upstream's, not ours. No promise is made about when. |
 | Wider hardware, wider OS | Windows only today. OS expansion is genuinely hard in the current test environment and will take time. Community ports are welcome. |
 
@@ -621,31 +600,35 @@ tiny lock file, listed below, that marks the folder as claimed - it contains no 
 | `%LOCALAPPDATA%\MoE-Direct\logs\repack_plan_<timestamp>_out.log` / `_err.log` | when the repack plan is computed - **before** you approve anything | The repacker's own output while it is only costing the job out. This is a log, not repack output: no model bytes are written at this step. |
 | `%LOCALAPPDATA%\MoE-Direct\logs\repack_<timestamp>_out.log` / `_err.log` | every repack you approve | The repacker's own output during the repack itself, including the per-layer progress lines. |
 | `%LOCALAPPDATA%\MoE-Direct\logs\metrics_<timestamp>.jsonl` | every serving session | Cache accounting: hit/miss counts, bytes read, wait times, slot and queue-depth configuration. **No prompts, no responses, no token content** - open it in a text editor and check. A few hundred KB per session. |
+| `%LOCALAPPDATA%\MoE-Direct\kv\<profile id>\slot0.kv` and `slot0.kv.meta.json` | when you stop the server cleanly, with warm start on | The saved slot state, and the sidecar that binds it to your model, your repack, this bundle and the server configuration it was saved under. **The state file contains the session's tokens verbatim** - see [Warm start](#warm-start). Roughly 190 MB at a 12k context on the reference machine. |
+| `%LOCALAPPDATA%\MoE-Direct\kv\<profile id>\slot0.auto.a.kv` / `slot0.auto.b.kv` and their `.meta.json` sidecars | on each autosave tick that fires | The two alternating crash-recovery generations. Same contents, same sensitivity, same folder. |
+| `*.tmp.<generation>` / `*.stale.<generation>` in the same `kv\` folder | while a save is being written | A save is written under a temporary name and swapped in, so an interrupted save cannot damage the state you already had. Both are cleaned up at the next start; a cleanup that fails is recorded as a diagnostic and leaves the file in place. |
 | `repack\` next to your GGUF (`experts.bin`, `manifest.json`, `verify_report.json`) | once per model, after you approve the plan | The direct-read expert store, its identity manifest, and the byte-level verification report that the serving gates consume - the repack output. Tens to hundreds of GB. An interrupted repack leaves `experts.bin.partial` here as well. **Never deleted automatically** - see [Update, reset, uninstall](#update-reset-uninstall). |
 
 That is the whole list for the launcher flow. If you ever catch this project writing anywhere
 else, that is a bug - please report it. (One advanced exception you create yourself: if you use
-[Manual warm start](#manual-warm-start-advanced) with a self-started server, the slot files you
-request are written to the directory you point `--slot-save-path` at.)
+[start the server yourself](#starting-the-server-yourself), the slot files you request are
+written to the directory you point `--slot-save-path` at.)
 
 ## Update, reset, uninstall
 
-There is no installer, and nothing is written to the registry. Three things have separate
-lifetimes, and you control all three:
+There is no installer, and nothing is written to the registry. Four things have separate
+lifetimes, and you control all four:
 
 | Thing | Where | What to do |
 |---|---|---|
 | The bundle | wherever you extracted the zip | **To update:** extract the new version into a *new* folder. Do not overwrite an existing bundle - the integrity manifest covers the folder as a set. Delete the old folder when you are done. |
 | Launcher state and logs | `%LOCALAPPDATA%\MoE-Direct\` | **To reset settings:** delete `presets.user.json` (saved configurations), `probe.state.json` and `probe.scratch.json` (measured drive results), `recent_models.json` (the recent list). They are all rebuilt on the next run. Logs live in the `logs\` subfolder. |
+| Saved session state | `%LOCALAPPDATA%\MoE-Direct\kv\` | **To delete it:** remove that folder, or the `<profile id>` subfolder for one model. Setting `warmstart` to `off` stops new saves but does not delete what is there. The launcher itself tries to hold at most four profiles, removing the least recently used beyond that, and records a diagnostic instead of failing the run when a removal does not succeed. |
 | Repack output | a `repack\` folder next to each of your GGUFs | **Not deleted automatically, ever.** This is the big one - tens to hundreds of GB. Delete the `repack\` folder to reclaim the space; the next run for that model will repack from scratch. |
 
-Uninstalling completely = delete all three. Your GGUFs are yours and are never touched.
+Uninstalling completely = delete all four. Your GGUFs are yours and are never touched.
 
 ## Known limitations
 
 - **MoE models only.** Dense models get no benefit from this design.
 - **First-run repack cost is real** - minutes to roughly 18 minutes on the recorded machine, and
-  roughly the model's size again on disk. There is no resume in v0.2: an interrupted repack restarts
+  roughly the model's size again on disk. There is no resume in v0.2.1: an interrupted repack restarts
   from the beginning.
 - **Windows only.** No Linux or macOS build, and no promised numbers for them.
 - **Measured on NVIDIA CUDA only, and this zip carries the CUDA runtime only.** The expert stream -
@@ -653,16 +636,20 @@ Uninstalling completely = delete all three. Your GGUFs are yours and are never t
   which GPU you have; what uses the GPU is the dense-layer offload, and that is stock llama.cpp
   with its dynamic backend loading. Other backends (ROCm/HIP, unified-memory platforms) are
   therefore expected to be structurally compatible, but they are **untested** here and no build for
-  them ships in v0.2. CPU-only serving (`-ngl 0`) needs no GPU at all - that is how the 35B row in
-  the tables above was measured. If you run this on other hardware, the performance-report issue
-  form is where we would like to see the result.
+  them ships in v0.2.1. CPU-only serving (`-ngl 0`) needs no GPU at all - that is how the 35B row in
+  [MEASUREMENTS.md](MEASUREMENTS.md) was measured. If you run this on other hardware, the
+  performance-report issue form is where we would like to see the result.
 - **Unsigned preview build.** Expect SmartScreen friction; some managed machines will refuse it.
 - **One request at a time** (`-np 1`), and the queue is lost on restart.
-- **Prefetch only on validated profiles.** Of the five shipped profiles one is `validated`, two are
-  `reference-only` and two are `disabled`; only the `validated` one serves with prefetch on, and an
-  override is refused on the other four.
+- **Prefetch only on validated profiles.** Of the six shipped profiles two are `validated`, one is
+  `reference-only` and three are `disabled`; only the `validated` ones serve with prefetch on, and
+  an override is refused on the other four.
+- **Warm start reuse needs an exact prefix.** A restored session is reused by a request that
+  extends the saved prompt exactly. A request that diverges from it is reprocessed in full on
+  hybrid-attention models, because a slot file carries no server checkpoints. Warm start also does
+  nothing for the expert slot cache, which still starts empty.
 - **Long-context prefill on a disk tier is slow.** Multi-turn use is where it becomes comfortable,
-  because the prefix cache absorbs the repeat - see the measured numbers above.
+  because the prefix cache absorbs the repeat - see [Measured results](#measured-results).
 - **K2.6 has not passed the performance gate.** It runs, it is coherent, it is honest about 1.03
   tok/s. Do not plan interactive work around it.
 - **Text only.** Multimodal inputs are unverified.
@@ -916,3 +903,14 @@ MoE-Direct additions (c) 2026 tmxkzm1925-max, released under the [MIT License](L
 MoE-Direct name identifies this project and its official builds - see
 [TRADEMARKS.md](TRADEMARKS.md). If you use this work, please cite it
 ([CITATION.cff](CITATION.cff)).
+
+**Thanks.** This project was built by one person with a great deal of machine help, and the help
+was not incidental. Anthropic's Claude and OpenAI's GPT models did design work, implementation and,
+just as usefully, adversarial review of each other's output, under human direction and with every
+change gated by the verification this document describes. Having a second and a third reader who
+never got tired is most of the reason the checking here is as strict as it is.
+
+Thanks are owed as well to the teams whose models this was measured against: Qwen, DeepSeek,
+Moonshot AI, OpenAI for gpt-oss, and Mistral. None of them are affiliated with this project and
+none of them have endorsed it. They published weights that one person with one desktop could
+actually study, and without that there would have been nothing here to run.
