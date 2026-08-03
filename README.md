@@ -635,7 +635,7 @@ Uninstalling completely = delete all four. Your GGUFs are yours and are never to
 
 ## Source
 
-The launcher, its self-test suite, the repacker and the expectation files are published in this
+The launcher, the repacker and the expectation files are published in this
 repository, and the shipped copies are the same bytes: `launcher/Start-MoeDirect.ps1`,
 `launcher/Start-MoeDirect.cmd`, `repacker/repack_experts.py` and the eight `expects/*.expect.json`
 files are byte-identical to the copies inside the release zip (verified by SHA-256 at publish
@@ -644,9 +644,12 @@ it - it is where each profile's `expect_sha256` pin lives, so the binding betwee
 the expectation files can be audited end to end. The launcher's own test suite (925 checks as of
 v0.2.1) is not yet published: it depends
 on fixture files that need to be packaged for standalone use, and it will follow in a later
-release. The engine is a patched llama.cpp build and currently ships as
-binaries sealed by the bundle's SHA manifest; the patch series against the pinned upstream commit
-and a reproducible-build document are follow-up work in preparation.
+release. The engine is a patched llama.cpp build; the binaries are sealed by
+the bundle's SHA manifest, and the full engine delta is published in [`patches/`](patches/) as a
+single reviewed patch against the pinned upstream commit, with a mechanical proof that it
+reproduces the exact source tree the shipped binaries were built from; the same tree is browsable
+as a [fork branch](https://github.com/tmxkzm1925-max/llama.cpp/tree/moe-direct-v0.2.1). A rebased
+mainline PR series is in preparation.
 
 ## Known limitations
 
