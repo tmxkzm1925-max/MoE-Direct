@@ -24,17 +24,18 @@ verified against your original GGUF before it is ever used.
 | Your weights after the one-time repack | byte for byte the source tensors[^bytes] | Every record SHA-256 compared against the source bytes, all records, no sampling, consumed fail-closed by both the launcher and the engine. |
 
 Each row is expanded, with its full protocol and its caveats, in [Measured results](#measured-results)
-and in [MEASUREMENTS.md](MEASUREMENTS.md). Nothing above is cherry-picked, and no number in this
+and in [TECHNICAL.md](TECHNICAL.md). Nothing above is cherry-picked, and no number in this
 document appears without the conditions it was taken under.
 
 Built and verified with AI assistance (Claude, GPT); [full credits below](#credit-and-license).
 
-**Coming in v0.2.2:** the warm-up file precompute, the KV cache `q8_0` opt-in switch, and the
-DeepSeek-V4 prefetch depth search. The working queue lives in
+**Coming in v0.2.2:** the warm-up file precompute, the KV cache `q8_0` opt-in switch, the
+DeepSeek-V4 prefetch depth search, and opening the catalog to any model of an already-supported
+architecture as an `experimental` tier. The working queue lives in
 [Model support roadmap](#model-support-roadmap).
 
 [^same]: **What was compared, and under what conditions.** The paired protocol runs the same
-    engine build twice within one session - once with direct-read off, once on - with greedy
+    engine build as four fresh-process arms in A-B-B-A order - direct-read off and on - with greedy
     decoding (temperature 0), the same prompts, the same seed and sampling parameters, and one
     request at a time. On gpt-oss-120b the OFF/ON A-B-B-A protocol produced 12 paired responses
     whose token IDs were identical. On Qwen3.5-122B the 12 token files of the official run were
@@ -76,7 +77,8 @@ DeepSeek-V4 prefetch depth search. The working queue lives in
 - [FAQ](#faq)
 - [Credit and license](#credit-and-license)
 
-Measurement detail lives in its own document: [MEASUREMENTS.md](MEASUREMENTS.md).
+The long version, with every technique and every number, is in its own document:
+[TECHNICAL.md](TECHNICAL.md).
 
 ---
 
@@ -310,9 +312,9 @@ Notes on this table:
   still serves it with prefetch off, and only a bundle shipping the updated catalog turns it on.
   The promotion is also about prefetch and nothing else: K2.6's performance gate is exactly where
   it was, unpassed. gpt-oss-120b is the one profile still sitting at `reference-only`. Both runs
-  are recorded under [Non-official observations](MEASUREMENTS.md#non-official-observations).
+  are recorded under [Non-official observations](TECHNICAL.md#non-official-observations).
 - **DeepSeek-V4-Flash-0731 is new in v0.2.1**, and it is the newest architecture in the catalog
-  rather than the most measured one. Its repack verified 33,024 of 33,024 records, and a smoke run
+  rather than the most measured one. Its repack verified 33,024 of 33,024 record-part pairs, and a smoke run
   on the reference machine held 3.13-3.28 tok/s across four probes with zero fallback events
   (`PROBE`: budget 8192 MB, QD 8, prefetch off, ctx 8192). Prefetch is `disabled` for it because
   the depth constants for that family have not been searched, not because the family is
@@ -325,40 +327,40 @@ Notes on this table:
   minimum cache budget, the tier and the prefetch state; those columns are rendered from it. The
   **Repacked expert store** column is not a catalog field: it is the size recorded when that model
   was actually repacked here - on the reference machine, except the 35B row, which was repacked on
-  the second machine described in [MEASUREMENTS.md](MEASUREMENTS.md). The 397B and DeepSeek rows
+  the second machine described in [TECHNICAL.md](TECHNICAL.md). The 397B and DeepSeek rows
   have no recorded size yet. The launcher computes the exact size for *your* model and shows it in
   the repack plan before it writes.
 
 ## How it works
 
-1. **One-time repack.** Your GGUF's expert tensors are rewritten once into a direct-read layout
-   (`experts.bin`) - large aligned blocks instead of thousands of scattered small tensors -
-   with every record verified against the original. Two terms are used throughout this document:
-   the **expert store** is that one file, `experts.bin`; the **repack output** is the `repack\`
-   folder that holds it together with `manifest.json` and `verify_report.json`.
-2. **Budgeted expert cache.** At serve time a fixed RAM budget (you choose, e.g. 8 GB) holds the
-   hottest experts in model-aware slots with a deterministic LRU and lease pinning. Everything
-   else stays on disk.
-3. **Direct NVMe reads.** Misses are read unbuffered - no OS page-cache double-caching - with
-   overlapped positional reads at a measured queue depth, straight out of the repacked file.
-4. **Startup probes.** Before the status screen the launcher measures *your* drive (a short
-   read-only sweep over the repacked file at queue depths 1/2/4/8) and *your* RAM, and picks the
-   queue depth and the cache budget from those measurements instead of assuming the reference
-   machine. Both stay overridable, and the budget it chose is printed before you start.
-5. **Dense layers on GPU.** Attention and the other dense weights run on the CUDA backend as
-   usual - on the reference machine they do, with `-ngl 99` on an RTX 5080. Only the expert
-   stream lives on the CPU/NVMe path. CPU fallback behaviour on machines without CUDA is
-   `[unmeasured]`.
-6. **OpenAI-compatible server.** The result is a local `llama-server` endpoint bound to loopback,
-   speaking the implemented OpenAI-compatible subset (see
-   [Connecting a client](#connecting-a-client)).
+Your GGUF's expert tensors are rewritten once into a layout built for reading. After that the model
+runs with only a slice of its experts in memory at a time: a budget you can see holds the ones being
+used, and the rest stay on the NVMe and are read as the router asks for them, straight off the drive
+rather than through the operating system's page cache. Two terms come up throughout this document:
+the **expert store** is the single file the repack produces, `experts.bin`, and the **repack
+output** is the `repack\` folder holding it together with `manifest.json` and `verify_report.json`.
+The dense layers run on the GPU as they always did, with `-ngl 99` on the reference machine's
+RTX 5080; only the expert stream lives on the CPU and NVMe path.
 
-More RAM is not a threshold you have to cross - it is cache budget and headroom, which raises the
-hit rate. Whether a given amount of extra RAM pays off on *your* model is `[unmeasured]` unless it
-appears in the table below.
+What that buys you is the part worth stating plainly. A model far larger than your RAM starts in
+seconds rather than not starting at all, because nothing is bulk-loaded up front. It answers from
+the first token. It gets faster when you keep it on the same kind of work, because the cache fills with whatever
+your work actually touches - a genuinely new topic streams its own experts in first. And where that claim has been put to the test - greedy decoding on gpt-oss-120b, direct reads
+against the same binary's mmap path - it produced token-for-token the same output, because none
+of this changes what is computed, only where the bytes come from; the exact scope of that
+comparison is stated with the headline table above.
 
-Why the design looks like this, which alternatives were measured and rejected on data, and what
-was underneath each decision, is written up in a technical note with a DOI:
+The launcher measures your machine instead of assuming ours. A short read-only sweep picks the queue
+depth for your drive, and the cache budget is sized from your installed RAM and the model's own
+geometry. Both are printed before you start, and both stay overridable. What you get at the end is
+an ordinary local `llama-server` endpoint on loopback, speaking the implemented OpenAI-compatible
+subset (see [Connecting a client](#connecting-a-client)).
+
+Each of those techniques is written up in full, with the problem it solves, what it does, how it
+behaves and what was measured, in
+[The techniques, and what they do](TECHNICAL.md#the-techniques-and-what-they-do). Why the design
+looks like this, which alternatives were measured and rejected on data, and what was underneath each
+decision, is in a technical note with a DOI:
 [10.5281/zenodo.21739367](https://doi.org/10.5281/zenodo.21739367).
 
 ## Measured results
@@ -377,7 +379,7 @@ same kind of thing.
 | Measurement | Result | Grade | Conditions |
 |---|---|---|---|
 | Qwen3.5-122B sustained decode | **5.59-5.69 tok/s**, `GATE1_SERVE: PASS` | `OFFICIAL` | Reference machine, budget 8192 MB, QD 8, prefetch on (K=8, N=4), ctx 12288, 4 measured reps across 2 ON arms, warmup rep excluded. Measured from a working tree that predates the release binary. |
-| The same run's mmap arm | 2.4106 tok/s pooled, i.e. the direct-read arms were **2.3226x** and **2.3439x** faster | `OFFICIAL` | Same session, identical binaries. A separate ISLC-off correction run puts the adjusted decode ratio at 2.0695x instead; both figures, and why they differ by more than 5 %, are stated in full in MEASUREMENTS.md. |
+| The same run's mmap arm | 2.4106 tok/s pooled, i.e. the direct-read arms were **2.3226x** and **2.3439x** faster | `OFFICIAL` | Same session, identical binaries. A separate ISLC-off correction run puts the adjusted decode ratio at 2.0695x instead; both figures, and why they differ by more than 5 %, are stated in full in TECHNICAL.md. |
 | gpt-oss-120b output parity | 12 paired responses, token IDs identical | `OFFICIAL` | OFF/ON in A-B-B-A order within one session, greedy decoding, one request at a time. |
 | Kimi K2.6, 1T class | 1.03 tok/s decode, coherent English, ~42 % expert-byte cache hits | `PROBE` | Budget 10240 MB, QD 8, prefetch off, older staging binaries. It has **not** passed the performance gate; do not plan interactive work around it. |
 | Qwen3.5-122B multi-turn reuse | 314.9-316.5 context-tok/s perceived, from 8.1-8.3x prefix reuse; 9.3-9.6 tok/s of genuinely new work in the same runs | `PROBE` | Prefix-cache A/B on the reference machine. The two figures must always be read together: the large one is reuse, the small one is new work. |
@@ -385,13 +387,13 @@ same kind of thing.
 **Which build these came from.** The paired figures in the box at the top of this page were
 measured on the bundle in this release. The equivalent pair on the previous release, run on
 2026-08-02 against the v0.2 binary, is kept in
-[MEASUREMENTS.md](MEASUREMENTS.md#the-release-pair-headline-source) as the earlier generation's
+[TECHNICAL.md](TECHNICAL.md#the-release-pair-headline-source) as the earlier generation's
 record rather than deleted, because that engine is not this one. The frozen gate record predates
 both and keeps its own section.
 
 The release-binary pair the headline comes from, the reference machine's full specification, the
 paired protocol, the historical gate record, the release binary's lineage and every non-official
-observation recorded so far live in **[MEASUREMENTS.md](MEASUREMENTS.md)**. Nothing was moved there
+observation recorded so far live in **[TECHNICAL.md](TECHNICAL.md)**. Nothing was moved there
 to bury it. That file exists so this page can stay short enough to read.
 
 ## Connecting a client
@@ -500,7 +502,7 @@ from a tick.
 **What it does not do.** A slot file holds tokens and cache state, not the server's own prefix
 checkpoints. A request that extends the restored prompt exactly reuses it; a request that diverges
 from it is reprocessed in full on hybrid-attention models such as Qwen3.5. Measured figures for both
-cases are in [MEASUREMENTS.md](MEASUREMENTS.md#warm-start). It also does nothing for the expert slot
+cases are in [TECHNICAL.md](TECHNICAL.md#warm-start). It also does nothing for the expert slot
 cache, which still fills from the NVMe as you use the model; pre-filling that is separate work and
 is not in this build.
 
@@ -551,14 +553,15 @@ below is the working queue, not a wish list.
 | Where we are | Status |
 |---|---|
 | Serving a 1T-class MoE (Kimi K2.6, deepseek2 architecture) from a 32 GB machine | **Done and shown** - unedited single-take demo below. Format gate passed; performance gate not passed (1.03 tok/s, honestly labelled `PROBE`). |
-| Prefetch for the deepseek2 family, which is what Kimi K2.6 needs | **Landed and promoted.** The signal adapter for that family exists, a first live four-arm run on K2.6 selected K=8 / N=4, and the paired A-B-B-A run that one run could not stand in for has since been done: both adjacent pairs favoured the ON arm and all four arms produced byte-identical output. `prefetch_state` for that profile is `validated` in the v0.2.1 catalog, so a bundle shipping that catalog enables prefetch for it by itself; a v0.2 bundle still carries `reference-only` and serves it with prefetch off. Both runs, and the exact protocol, are under [Non-official observations](MEASUREMENTS.md#non-official-observations). None of this touches the performance gate, which K2.6 still has not passed. |
-| DeepSeek-V4-Flash-0731 (284B, `deepseek4`) | **In the catalog since v0.2.1.** The architecture is native to the base commit this release is built on, its expert tensors are MXFP4, which is a layout the repacker already handles, and the repack verified 33,024 of 33,024 records. A direct-read smoke run held 3.13-3.28 tok/s across four probes with zero fallback events (`PROBE`: reference machine, budget 8192 MB, QD 8, prefetch off, ctx 8192). It ships with the format gate passed, the performance gate unpassed and prefetch disabled, which is where the evidence actually stands; the prefetch depth search for this family is queued for v0.2.2. |
-| Warm start: saving and restoring slot state across restarts | **Shipped in v0.2.1.** Stopping the server in v0.2 cleared both the prefix cache and the expert slot cache, so the next start began cold. v0.2.1 saves the slot on a clean stop, saves again on a timer while serving, and restores on the next start, measured at **8.1x** faster time to first token on a strict same-prompt pair. The protocol and the caveats are in [MEASUREMENTS.md](MEASUREMENTS.md#warm-start), and the user-facing description is under [Warm start](#warm-start). |
+| Prefetch for the deepseek2 family, which is what Kimi K2.6 needs | **Landed and promoted.** The signal adapter for that family exists, a first live four-arm run on K2.6 selected K=8 / N=4, and the paired A-B-B-A run that one run could not stand in for has since been done: both adjacent pairs favoured the ON arm and all four arms produced byte-identical output. `prefetch_state` for that profile is `validated` in the v0.2.1 catalog, so a bundle shipping that catalog enables prefetch for it by itself; a v0.2 bundle still carries `reference-only` and serves it with prefetch off. Both runs, and the exact protocol, are under [Non-official observations](TECHNICAL.md#non-official-observations). None of this touches the performance gate, which K2.6 still has not passed. |
+| DeepSeek-V4-Flash-0731 (284B, `deepseek4`) | **In the catalog since v0.2.1.** The architecture is native to the base commit this release is built on, its expert tensors are MXFP4, which is a layout the repacker already handles, and the repack verified 33,024 of 33,024 record-part pairs. A direct-read smoke run held 3.13-3.28 tok/s across four probes with zero fallback events (`PROBE`: reference machine, budget 8192 MB, QD 8, prefetch off, ctx 8192). It ships with the format gate passed, the performance gate unpassed and prefetch disabled, which is where the evidence actually stands; the prefetch depth search for this family is queued for v0.2.2. |
+| Any model of an already-supported architecture (`experimental` tier) | **Two of the three axes are implemented, the whole path is targeted at v0.2.2.** Today the catalog runs six pinned models and refuses everything else, even a different GGUF of an architecture the engine already serves. The plan keeps the honesty rule that shaped the catalog: take any GGUF of a supported architecture, repack and verify it the same way, derive a profile for it, and run it labelled `experimental` with prefetch off - unverified models get an honest warning, not a block and not a promise. The repacker and launcher sides of this are implemented and dormant in this build; the engine-side acceptance and the switch that activates the path atomically are queued for v0.2.2. |
+| Warm start: saving and restoring slot state across restarts | **Shipped in v0.2.1.** Stopping the server in v0.2 cleared both the prefix cache and the expert slot cache, so the next start began cold. v0.2.1 saves the slot on a clean stop, saves again on a timer while serving, and restores on the next start, measured at **8.1x** faster time to first token on a strict same-prompt pair. The protocol and the caveats are in [TECHNICAL.md](TECHNICAL.md#warm-start), and the user-facing description is under [Warm start](#warm-start). |
 | Warm-up file precompute (`warmup` gains a `file:<path>` mode) | **Designed and implemented, under final review, targeted at v0.2.2.** A fresh session's first turn still pays the full cold prefill; this lets you point the launcher at your actual system-prompt file so that prefix is precomputed right after start. Not in this build. |
 | Expert-cache warmer | **Designed, targeted at v0.2.2.** Filling expert slots ahead of the first turn instead of letting them fill as you chat. The design is written and reviewed; nothing of it is in this build. |
-| KV cache quantized to `q8_0` | **Measured and gated, switch targeted at v0.2.2.** The quality gate passed on Qwen3.5-122B, with the divergence and perplexity figures in [MEASUREMENTS.md](MEASUREMENTS.md#kv-cache-q8). What is not in v0.2.1 is the opt-in switch that would let you turn it on, so the measurement is published ahead of the feature rather than the other way round. |
+| KV cache quantized to `q8_0` | **Measured and gated, switch targeted at v0.2.2.** The quality gate passed on Qwen3.5-122B, with the divergence and perplexity figures in [TECHNICAL.md](TECHNICAL.md#kv-cache-q8). What is not in v0.2.1 is the opt-in switch that would let you turn it on, so the measurement is published ahead of the feature rather than the other way round. |
 | Kimi K3 (2.8T class) | **Top of the queue the moment llama.cpp upstream supports the architecture.** Its architecture is outside the base commit this release is built on, so support is gated on upstream, and the timing is upstream's, not ours. No promise is made about when. |
-| Wider hardware, wider OS | Windows only today. OS expansion is genuinely hard in the current test environment and will take time. Community ports are welcome. |
+| Wider hardware, wider OS | Windows only today. A Vulkan build of the same engine has been measured off-bundle - RTX 5080 at CUDA-parity decode, and a first AMD run (RX 9070 XT, RDNA4) at about 89 percent of that, its arms character-identical among themselves - so cross-vendor GPU support is now a hardening-and-tooling queue item rather than an open question; the numbers are under [Non-official observations](TECHNICAL.md#non-official-observations). OS expansion is genuinely hard in the current test environment and will take time. Community ports are welcome. |
 
 Why K3 is worth naming at all: at 2.8T-class sizes nothing that resembles a consumer machine can
 hold the weights in memory, so keeping experts on disk and streaming the ones each token actually
@@ -649,13 +652,15 @@ and a reproducible-build document are follow-up work in preparation.
   roughly the model's size again on disk. There is no resume in v0.2.1: an interrupted repack restarts
   from the beginning.
 - **Windows only.** No Linux or macOS build, and no promised numbers for them.
-- **Measured on NVIDIA CUDA only, and this zip carries the CUDA runtime only.** The expert stream -
-  the direct reads and the slot cache - runs on the CPU and the NVMe, so it does not depend on
-  which GPU you have; what uses the GPU is the dense-layer offload, and that is stock llama.cpp
-  with its dynamic backend loading. Other backends (ROCm/HIP, unified-memory platforms) are
-  therefore expected to be structurally compatible, but they are **untested** here and no build for
-  them ships in v0.2.1. CPU-only serving (`-ngl 0`) needs no GPU at all - that is how the 35B row in
-  [MEASUREMENTS.md](MEASUREMENTS.md) was measured. If you run this on other hardware, the
+- **This zip carries the CUDA runtime only.** The official numbers were measured on NVIDIA CUDA.
+  The expert stream - the direct reads and the slot cache - runs on the CPU and the NVMe, so it
+  does not depend on which GPU you have; what uses the GPU is the dense-layer offload, and that is
+  stock llama.cpp with its dynamic backend loading. A Vulkan path has in fact been measured
+  off-bundle - an RTX 5080 at CUDA-parity decode, and a first cross-vendor run on an AMD
+  RX 9070 XT whose arms were character-identical among themselves - see
+  [Non-official observations](TECHNICAL.md#non-official-observations) - but nothing Vulkan
+  ships in v0.2.1, and other backends (ROCm/HIP, unified-memory platforms) remain **untested**. CPU-only serving (`-ngl 0`) needs no GPU at all - that is how the 35B row in
+  [TECHNICAL.md](TECHNICAL.md) was measured. If you run this on other hardware, the
   performance-report issue form is where we would like to see the result.
 - **Unsigned preview build.** Expect SmartScreen friction; some managed machines will refuse it.
 - **One request at a time** (`-np 1`), and the queue is lost on restart.
