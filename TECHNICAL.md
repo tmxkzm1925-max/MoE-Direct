@@ -272,21 +272,28 @@ warm start and autosave are off, budget autotune is off and the budget is fixed 
 8192 MB, with ctx 12288, QD 8 and prefetch K=8/N=4. That is deliberately **not** the default
 product start, which on this machine would size the cache at 12,288 MiB instead. The OFF arms are
 the same bundle's `llama-server.exe` started directly with no `MOE_DIRECT` environment at all,
-which is the plain mmap path, and that command line carries **ctx 65536**. The two arms therefore
-differ in context size as well as in the read path.
+which is the plain mmap path, at the same **ctx 12288**. The two arms therefore differ only in
+the read path - a single-variable pair.
 
 | Arm | Decode average | Notes |
 |---|---|---|
-| ON (direct-read, cold) | **5.32-6.04 tok/s per probe, arm average 5.71** | bundle launcher with `-Repro`, ctx 12288, budget 8192 MB, prefetch on |
-| OFF (plain mmap, cold) | **2.15-2.78 tok/s per probe, arm average 2.49** | same binary, same weights, no direct-read, ctx 65536 |
-| OFF (mmap, second pass) | **2.20-2.70 tok/s per probe, arm average 2.46** | fresh server process; OS file cache state as recorded for that arm |
-| ON (second pass) | **5.40-6.03 tok/s per probe, arm average 5.77** | fresh launcher process; OS file cache state as recorded for that arm |
+| ON (direct-read, cold) | **5.65-6.26 tok/s per probe, arm average 5.96** | bundle launcher with `-Repro`, ctx 12288, budget 8192 MB, prefetch on |
+| OFF (plain mmap, cold) | **2.13-3.21 tok/s per probe, arm average 2.66** | same binary, same weights, no direct-read, ctx 12288 |
+| OFF (mmap, second pass) | **2.33-2.73 tok/s per probe, arm average 2.48** | fresh server process; OS file cache state as recorded for that arm |
+| ON (second pass) | **5.56-6.11 tok/s per probe, arm average 5.86** | fresh launcher process; OS file cache state as recorded for that arm |
 
 Ratio, stated once: **2.3x** (ON average over OFF average, cache states as listed).
-Per-probe figures, for the record: `ON cold 6.04 / 5.77 / 5.32; OFF cold 2.53 / 2.78 / 2.15; OFF second 2.48 / 2.70 / 2.20; ON second 5.86 / 6.03 / 5.40 tok/s (probes 1-3)`.
+Per-probe figures, for the record: `ON cold 5.99 / 6.26 / 5.65; OFF cold 2.65 / 3.21 / 2.13; OFF second 2.39 / 2.73 / 2.33; ON second 5.92 / 6.11 / 5.56 tok/s (probes 1-3)`.
 Two details for honest reading: probes 2 and 3 stopped at their natural EOS before the 256-token
 cap (114 and 140 tokens, the same on every arm); and all three probes returned
 character-identical text across all four arms, ON and OFF alike, under greedy decoding.
+An earlier pair the same day, with the OFF arm at ctx 65536, measured 2.3x as well (arm averages
+ON 5.71 / 5.76 against OFF 2.49 / 2.46); it is superseded by the matched pair above and its raw
+responses are kept in the run record. The two pairs together also make a small point worth
+keeping: on this short-prompt workload, the size of the **allocated but unused** context window
+(65536 against 12288) did not materially move the mmap arm's decode rate - what this comparison
+is sensitive to is the read path, not the allocation. That says nothing about long prompts, where
+context actually in use has real costs.
 
 ### v0.2 release bundle, 2026-08-02 (previous generation)
 
