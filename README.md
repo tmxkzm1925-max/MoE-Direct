@@ -144,8 +144,11 @@ something is wrong with your download - verify the SHA-256 and decide for yourse
 PCs, or with Smart App Control enabled, the file may be blocked outright with no "Run anyway"
 option; Smart App Control has no per-app exception. We will never ask you to turn off Defender,
 SmartScreen or Smart App Control, to add antivirus exclusions, to change your machine-wide
-execution policy, or to run anything as administrator. Code signing is planned but not in v0.2.1,
-and even a signed build does not make first-release warnings disappear immediately.
+execution policy, or to run anything as administrator. Code signing is planned but not in v0.2.1:
+this project uses the SignPath Foundation's free open-source code signing program (application
+in progress), and release binaries will be signed via SignPath.io once approved - the policy is
+in [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md). Even a signed build does not make
+first-release warnings disappear immediately.
 
 ## Before you start
 
