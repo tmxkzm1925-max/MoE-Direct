@@ -1,0 +1,28 @@
+{
+ "expect_schema_version": "1.0",
+ "profile_id": "minimax-m27",
+ "arch": "minimax-m2",
+ "n_layer": 62,
+ "n_expert": 256,
+ "n_expert_used": 8,
+ "routed_tensors": 186,
+ "expert_bytes_total": 135725580288,
+ "sources": [
+  {
+   "file_bytes": 39813682144,
+   "data_start": 8251360
+  },
+  {
+   "file_bytes": 39751357024,
+   "data_start": 14944
+  },
+  {
+   "file_bytes": 39773824928,
+   "data_start": 15264
+  },
+  {
+   "file_bytes": 19003520000,
+   "data_start": 6144
+  }
+ ]
+}
