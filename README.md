@@ -29,6 +29,10 @@ document appears without the conditions it was taken under.
 
 Built and verified with AI assistance (Claude, GPT); [full credits below](#credit-and-license).
 
+**Coming in v0.2.2:** the warm-up file precompute, the KV cache `q8_0` opt-in switch, and the
+DeepSeek-V4 prefetch depth search. The working queue lives in
+[Model support roadmap](#model-support-roadmap).
+
 [^same]: **What was compared, and under what conditions.** The paired protocol runs the same
     engine build twice within one session - once with direct-read off, once on - with greedy
     decoding (temperature 0), the same prompts, the same seed and sampling parameters, and one
@@ -65,6 +69,7 @@ Built and verified with AI assistance (Claude, GPT); [full credits below](#credi
 - [Model support roadmap](#model-support-roadmap)
 - [What gets written to your disk](#what-gets-written-to-your-disk)
 - [Update, reset, uninstall](#update-reset-uninstall)
+- [Source](#source)
 - [Known limitations](#known-limitations)
 - [Reporting problems](#reporting-problems)
 - [Troubleshooting](#troubleshooting)
@@ -547,8 +552,9 @@ below is the working queue, not a wish list.
 |---|---|
 | Serving a 1T-class MoE (Kimi K2.6, deepseek2 architecture) from a 32 GB machine | **Done and shown** - unedited single-take demo below. Format gate passed; performance gate not passed (1.03 tok/s, honestly labelled `PROBE`). |
 | Prefetch for the deepseek2 family, which is what Kimi K2.6 needs | **Landed and promoted.** The signal adapter for that family exists, a first live four-arm run on K2.6 selected K=8 / N=4, and the paired A-B-B-A run that one run could not stand in for has since been done: both adjacent pairs favoured the ON arm and all four arms produced byte-identical output. `prefetch_state` for that profile is `validated` in the v0.2.1 catalog, so a bundle shipping that catalog enables prefetch for it by itself; a v0.2 bundle still carries `reference-only` and serves it with prefetch off. Both runs, and the exact protocol, are under [Non-official observations](MEASUREMENTS.md#non-official-observations). None of this touches the performance gate, which K2.6 still has not passed. |
-| DeepSeek-V4-Flash-0731 (284B, `deepseek4`) | **In the catalog since v0.2.1.** The architecture is native to the base commit this release is built on, its expert tensors are MXFP4, which is a layout the repacker already handles, and the repack verified 33,024 of 33,024 records. A direct-read smoke run held 3.13-3.28 tok/s across four probes with zero fallback events (`PROBE`: reference machine, budget 8192 MB, QD 8, prefetch off, ctx 8192). It ships with the format gate passed, the performance gate unpassed and prefetch disabled, which is where the evidence actually stands. |
+| DeepSeek-V4-Flash-0731 (284B, `deepseek4`) | **In the catalog since v0.2.1.** The architecture is native to the base commit this release is built on, its expert tensors are MXFP4, which is a layout the repacker already handles, and the repack verified 33,024 of 33,024 records. A direct-read smoke run held 3.13-3.28 tok/s across four probes with zero fallback events (`PROBE`: reference machine, budget 8192 MB, QD 8, prefetch off, ctx 8192). It ships with the format gate passed, the performance gate unpassed and prefetch disabled, which is where the evidence actually stands; the prefetch depth search for this family is queued for v0.2.2. |
 | Warm start: saving and restoring slot state across restarts | **Shipped in v0.2.1.** Stopping the server in v0.2 cleared both the prefix cache and the expert slot cache, so the next start began cold. v0.2.1 saves the slot on a clean stop, saves again on a timer while serving, and restores on the next start, measured at **8.1x** faster time to first token on a strict same-prompt pair. The protocol and the caveats are in [MEASUREMENTS.md](MEASUREMENTS.md#warm-start), and the user-facing description is under [Warm start](#warm-start). |
+| Warm-up file precompute (`warmup` gains a `file:<path>` mode) | **Designed and implemented, under final review, targeted at v0.2.2.** A fresh session's first turn still pays the full cold prefill; this lets you point the launcher at your actual system-prompt file so that prefix is precomputed right after start. Not in this build. |
 | Expert-cache warmer | **Designed, targeted at v0.2.2.** Filling expert slots ahead of the first turn instead of letting them fill as you chat. The design is written and reviewed; nothing of it is in this build. |
 | KV cache quantized to `q8_0` | **Measured and gated, switch targeted at v0.2.2.** The quality gate passed on Qwen3.5-122B, with the divergence and perplexity figures in [MEASUREMENTS.md](MEASUREMENTS.md#kv-cache-q8). What is not in v0.2.1 is the opt-in switch that would let you turn it on, so the measurement is published ahead of the feature rather than the other way round. |
 | Kimi K3 (2.8T class) | **Top of the queue the moment llama.cpp upstream supports the architecture.** Its architecture is outside the base commit this release is built on, so support is gated on upstream, and the timing is upstream's, not ours. No promise is made about when. |
@@ -623,6 +629,18 @@ lifetimes, and you control all four:
 | Repack output | a `repack\` folder next to each of your GGUFs | **Not deleted automatically, ever.** This is the big one - tens to hundreds of GB. Delete the `repack\` folder to reclaim the space; the next run for that model will repack from scratch. |
 
 Uninstalling completely = delete all four. Your GGUFs are yours and are never touched.
+
+## Source
+
+The launcher, its self-test suite, the repacker and the expectation files are published in this
+repository, and the shipped copies are the same bytes: `launcher/Start-MoeDirect.ps1`,
+`launcher/Start-MoeDirect.cmd`, `repacker/repack_experts.py` and the eight `expects/*.expect.json`
+files are byte-identical to the copies inside the release zip (verified by SHA-256 at publish
+time). The launcher's own test suite (925 checks as of v0.2.1) is not yet published: it depends
+on fixture files that need to be packaged for standalone use, and it will follow in a later
+release. The engine is a patched llama.cpp build and currently ships as
+binaries sealed by the bundle's SHA manifest; the patch series against the pinned upstream commit
+and a reproducible-build document are follow-up work in preparation.
 
 ## Known limitations
 

@@ -156,7 +156,9 @@ the record as the original vicinity check, and the historical gate numbers keep 
 with their own environment notes.
 
 v0.2.1 is a different bundle: a revised launcher, and an engine that accepts BF16 router tensors
-for the `deepseek4` family. The rule that produced the v0.2 pair applies to it unchanged, which is
+for the `deepseek4` family - that family's router tensors only: qwen, gpt-oss and deepseek2
+routers, and every norm and bias tensor, remain F32-only, and the GEMV/TopK worker body is
+byte-identical to the previous build. The rule that produced the v0.2 pair applies to it unchanged, which is
 why the headline for this release is its own pair on its own binary rather than the earlier
 numbers carried forward.
 
