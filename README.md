@@ -641,7 +641,9 @@ repository, and the shipped copies are the same bytes: `launcher/Start-MoeDirect
 files are byte-identical to the copies inside the release zip (verified by SHA-256 at publish
 time). `launcher/models.json` is the catalog the launcher consumes, exactly as the zip resolves
 it - it is where each profile's `expect_sha256` pin lives, so the binding between the launcher and
-the expectation files can be audited end to end. The launcher's own test suite (925 checks as of
+the expectation files can be audited end to end. What runs from a plain checkout: the repacker
+does (its `repacker/expects/` catalog ships in place - see [repacker/README.md](repacker/README.md));
+the launcher does not, since it needs the engine binaries and bundle manifest from the zip. The launcher's own test suite (925 checks as of
 v0.2.1) is not yet published: it depends
 on fixture files that need to be packaged for standalone use, and it will follow in a later
 release. The engine is a patched llama.cpp build; the binaries are sealed by

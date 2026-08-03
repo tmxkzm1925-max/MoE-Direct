@@ -1,0 +1,16 @@
+{
+ "expect_schema_version": "1.0",
+ "profile_id": "gpt-oss-120b",
+ "arch": "gpt-oss",
+ "n_layer": 36,
+ "n_expert": 128,
+ "n_expert_used": 4,
+ "routed_tensors": 216,
+ "expert_bytes_total": 61073326080,
+ "sources": [
+  {
+   "file_bytes": 63387346208,
+   "data_start": 13022240
+  }
+ ]
+}

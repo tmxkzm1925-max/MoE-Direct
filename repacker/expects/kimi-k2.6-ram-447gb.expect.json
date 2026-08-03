@@ -1,0 +1,16 @@
+{
+ "expect_schema_version": "1.0",
+ "profile_id": "kimi-k2.6-ram-447gb",
+ "arch": "deepseek2",
+ "n_layer": 61,
+ "n_expert": 384,
+ "n_expert_used": 8,
+ "routed_tensors": 180,
+ "expert_bytes_total": 435997900800,
+ "sources": [
+  {
+   "file_bytes": 447488532672,
+   "data_start": 6983360
+  }
+ ]
+}
