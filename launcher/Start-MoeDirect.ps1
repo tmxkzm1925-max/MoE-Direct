@@ -1,0 +1,8900 @@
+﻿#Requires -Version 5.1
+<#
+    Start-MoeDirect.ps1 - MoE-Direct release launcher.
+
+    Authority (frozen, do not re-interpret):
+      LAUNCHER_SPEC.md v0.4 (FROZEN 26-07-30, commit 7e2cb41)  -> "LS <section>"
+      RELEASE_SPEC.md  v0.1 (FROZEN)                           -> "RS <section>"
+
+    Wire contract (consumer-visible, implementation has no discretion):
+      - final stderr line: "[moe-launcher] status=<enum>"  exactly one line   (LS 5)
+      - status enum (17) and exit code mapping                                (LS 5)
+      - effective_prefetch echo strings                                       (LS 1-2)
+      - engine policy anchor "[moe-direct] startup_reject=engine_policy_gate" (LS 5 / LS 7)
+      - user preset required fields + schema_version exact-match              (LS 1-7)
+
+    Precedent reused (no new invention, per build order):
+      - kill-on-close Job Object          bench/moe-direct/moe_serve.ps1 :582-607
+      - PID-bound health                  bench/moe-direct/moe_serve.ps1 :695-711
+      - single-instance named mutex       bench/moe-direct/moe_serve.ps1 :802-807
+      - CREATE_NEW_PROCESS_GROUP + GenerateConsoleCtrlEvent(CTRL_BREAK)
+                                          bench/moe-direct/SPEC.md KS3 (:194)
+      - multi-shard discovery rules       bench/repack/repack_experts.py :252-322
+
+    All output is English ASCII (LS 8). File must stay UTF-8 with BOM (PS 5.1 CP949 hazard).
+#>
+
+[CmdletBinding()]
+param(
+    # Model GGUF path (any shard of a split set is accepted; siblings are discovered).
+    [string] $Model,
+    # Bundle root (defaults to this script's directory).
+    [string] $BundleRoot,
+    # Repack output directory (defaults to "<model dir>\repack").
+    [string] $OutDir,
+    # LS 11 (UI-1 3-c): extra root scanned for *.gguf candidates in the first-run selection menu.
+    # CLI only - no setting file, no preset field, and it never reaches the child argv/env.
+    [string] $ModelsRoot,
+    # RS 8 first-run smoke checklist (1..7), then teardown.
+    [switch] $Smoke,
+    # LS 13-2 (WS-1 / WARMSTART_SPEC A-6): a reproducibility or benchmark run. It decides exactly
+    # two things: warmstart hard-OFF, and - since BUDGET_AUTOTUNE_SPEC v0.2 section 2 - that the RAM
+    # budget autotune is forbidden, so the budget falls back to the profile's own min_budget_mb and
+    # two machines size the same run identically. Nothing else: the QD sweep, the probe binding and
+    # the preset round trip are still not touched by it. -Smoke and -Repro may be given together
+    # (both converge on hard-OFF); -Smoke alone does NOT disable the autotune.
+    [switch] $Repro,
+    # Always show the repack plan / expectation block, even on later runs.
+    [switch] $Plan,
+    # Never prompt. Menu answer comes from -Action, confirmations from -AssumeYes/-AssumeNo.
+    [switch] $NonInteractive,
+    [switch] $AssumeYes,
+    [switch] $AssumeNo,
+    # R1-9: taken as raw strings on purpose. A [ValidateSet]/[int] binder failure terminates the
+    # script before any status line can be written, which would produce a zero-status-line exit.
+    [string] $Action = 'start',
+    # Unattended serve duration in seconds (-NonInteractive only). 0 = stop right after ready.
+    [string] $RunSeconds = '0',
+    # Discard the stored user preset before loading (LS 1-7 "reset").
+    [switch] $ResetPreset,
+    # Allowlist overrides (LS 1-2). Declared as [string] on purpose: parameter-binder type
+    # failures would terminate before a status line could be emitted, so this script parses and
+    # bounds-checks them itself and reports fail_custom_args.
+    [string] $Port,
+    [string] $Ctx,
+    [string] $Threads,
+    [string] $BudgetMB,
+    [string] $QD,
+    [string] $Warmup,
+    # LS 13-2 (WS-1): the soft-OFF override channel. Same three layers (CLI / preset / interactive
+    # custom) and the same parsing discipline as the six keys above; on|off, absent = on. It can
+    # never raise a hard-OFF mode back to ON (the mode decision is above this layer).
+    [string] $Warmstart,
+    # LS 13-8 (AUTOSAVE_SPEC 2-D): the periodic crash-recovery save. on | off | <minutes>, absent =
+    # on at the default period. Same three layers and the same raw-string parsing discipline as the
+    # keys above. It is subordinate to warmstart: hard-OFF and soft-OFF turn autosave off as well,
+    # and this key can never raise either of them back on.
+    [string] $Autosave,
+    # OPEN_ARCH C axis (LS OA-1): the private entry point to the arch-template path. Deliberately
+    # undocumented - the same posture the repacker takes with argparse.SUPPRESS on
+    # --experimental-arch-template (repack_experts.py:3519). Release activation is the M5 atomic
+    # gate, not this switch: without it an unregistered model still stops at "unsupported GGUF"
+    # exactly as it does today.
+    [switch] $ExperimentalArchTemplate,
+    # Dot-source hook for launcher_selftest.ps1: define everything, run nothing.
+    [switch] $LibraryMode
+)
+
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Off
+
+# ============================================================================
+# region 1. WIRE CONSTANTS (LS 5 / LS 1-2 / LS 7) - frozen, not tunable
+# ============================================================================
+
+# status enum -> exit code. 17 entries. No status outside this table may be emitted.
+$script:STATUS_EXIT = [ordered]@{
+    'ok'                     = 0
+    'ok_smoke'               = 0
+    'cancelled_user'         = 2
+    'fail_model_path'        = 3
+    'fail_resource'          = 3
+    'fail_instance_lock'     = 3
+    'fail_partial_cleanup'   = 3
+    'fail_repack'            = 3
+    'fail_custom_args'       = 3
+    'fail_gate_bundle'       = 4
+    'fail_gate_catalog'      = 4
+    'fail_gate_verify'       = 4
+    'fail_gate_engine_seal'  = 4
+    'fail_server_start'      = 5
+    'fail_runtime_exit'      = 5
+    'fail_teardown'          = 5
+    'fail_smoke'             = 6
+}
+
+$script:STATUS_LINE_PREFIX = '[moe-launcher] status='
+
+# LS 5 / LS 7 : complete ASCII line, exact match only, substring detection forbidden.
+$script:ENGINE_POLICY_ANCHOR = '[moe-direct] startup_reject=engine_policy_gate'
+
+# R2-6 engine seal SUCCESS line. 1st source (verified):
+#   bench/moe-direct/repro/moedirect-v2-b10057.patch:14681
+#   LLAMA_LOG_INFO("%s: moe-direct: sealed all=%d host=%d nonhost=%d slots=%d/%d moe_layers=%zu"
+#                  " (matched live=%d host=%d nonhost=%d)\n", ...)
+# emitted once, immediately after ggml_moe_direct_seal() returns >= 0.
+# NOTE Why this is matched differently from the policy anchor: the policy anchor is a frozen fixed
+# wire with no variable fields, so it is required to be an EXACT complete line and substring
+# detection is forbidden. This success line intentionally carries variable numeric fields AND is
+# emitted through the engine's log framework, which prefixes it (real capture:
+# "0.09.636.808 I load_tensors: moe-direct: sealed all=..."). It is therefore matched as a marker
+# CONTAINED IN a complete (newline-terminated) line - a line-start anchor would never fire on a
+# real run. That is a documented difference in kind, not a relaxation of the anchor rule.
+$script:ENGINE_SEAL_MARKER      = 'moe-direct: sealed all='
+# Parsed for the diagnostic log only. slots=X/Y is NOT an equality invariant: a real passing run
+# emitted slots=648/128 (attested slots vs required slots are different quantities).
+# Counter-evidence: bench_results/g4_1a/20260724T223305Z_32dc7208/
+#   srv_err_on1_attempt0_20260724T223532Z.log:2249
+#   "... moe-direct: sealed all=216 host=174 nonhost=42 slots=648/128 moe_layers=36 (matched ...)"
+# The seal's own fail-close already happened upstream (seal_rc < 0 aborts startup), so the
+# presence of this line exactly once IS the attestation.
+$script:ENGINE_SEAL_SLOTS_REGEX = 'slots=(\d+)/(\d+)'
+$script:ENGINE_SEAL_COUNTS_REGEX = 'sealed all=(\d+) host=(\d+) nonhost=(\d+)'
+
+# R2-4 / R3-1 cancel evidence, bound to a TASK ID. 1st sources (verified):
+#   tools/server/server-queue.cpp:441   server_response_reader::stop()
+#       SRV_WRN("cancel task, id_task = %d\n", id_task)
+#       SRV_WRN prefix (server-common.h:28) = "srv  %12.*s: "
+#       -> "srv          stop: cancel task, id_task = 12"
+#   tools/server/server-context.cpp:492 server_slot::release()
+#       SLT_INF(*this, "stop processing: n_tokens = %d, truncated = %d\n", ...)
+#       SLT_INF prefix (server-common.h:20) = "slot %12.*s: id %2d | task %d | "
+#       -> "slot      release: id  0 | task 12 | stop processing: n_tokens = 24, truncated = 0"
+# NOTE Counting release lines is NOT sufficient (R3 finding). The INFO logger flushes from its own
+# queue/worker thread (common/log.cpp:200,267), so the PREVIOUS request's release line can appear
+# in stderr after the launcher has taken its baseline. A total-count comparison then mistakes that
+# late line for the cancelled request's release - a false positive that even a server ignoring the
+# disconnect could satisfy. So the evidence must be bound: find the cancel warning for a task, then
+# require that same task's release line to appear AFTER it.
+$script:SLOT_RELEASE_MARKER  = 'stop processing:'
+$script:CANCEL_TASK_REGEX    = 'cancel task, id_task = (\d+)'
+$script:TASK_RELEASE_REGEX   = '\|\s*task\s+(\d+)\s*\|\s*stop processing:'
+
+# UI-9 prefill progress line (DISPLAY ONLY - never a gate, never part of the wire). Captured shape,
+# 1st source bench_results/g2/g2_3/srv_err_20260719-063645.log:21-24,46-47:
+#   "4.53.529.639 I slot print_timing: id  0 | task 0 | prompt processing, n_tokens =   2048,
+#    progress = 0.33, t = 277.07 s / 7.39 tokens per second"
+# Groups: 1=n_tokens 2=progress 3=tokens per second (the t= field is matched but not captured).
+# Matched as a fragment inside a complete line, like ENGINE_SEAL_MARKER and for the same reason: the
+# engine's log framework prefixes the line. An ANSI colour escape, when present, sits at the start of
+# the line only, so it can never fall inside this pattern - no stripping is needed.
+$script:PREFILL_PROGRESS_REGEX = 'prompt processing, n_tokens =\s*(\d+), progress =\s*([0-9.]+), t =\s*[0-9.]+ s / ([0-9.]+) tokens per second'
+# UI-9b request-boundary tag: captures task id from the same line, used only to tell whether two
+# progress lines belong to the same request. Display only, same as PREFILL_PROGRESS_REGEX.
+$script:PREFILL_TASK_REGEX = '\|\s*task\s+(\d+)\s*\|\s*prompt processing,'
+
+# LS 1-2 : effective_prefetch echo strings (wire). R6 revision: 4 reasons, not 3.
+$script:PREFETCH_ECHO_ON                = 'on'
+$script:PREFETCH_ECHO_PROBE_FAILED      = 'off(reason=probe_failed)'
+$script:PREFETCH_ECHO_REFERENCE_ONLY    = 'off(reason=reference_only_live_forbidden)'
+$script:PREFETCH_ECHO_CATALOG_DISABLED  = 'off(reason=catalog_disabled)'
+# R6: the engine turns prefetch OFF by itself when N >= qd_effective (invalid_range, K/N=0), so a
+# launcher that still echoed "on[K8 N4]" was reporting a state the engine never entered. This is
+# the control-plane half of that fix: below the depth the launcher declares OFF and injects no K/N.
+$script:PREFETCH_ECHO_QD_BELOW_DEPTH    = 'off(reason=qd_below_prefetch_depth)'
+
+# LS 1-2 : catalog prefetch_state enum, lowercase exact-match, 3 values.
+$script:PREFETCH_STATES = @('validated', 'reference-only', 'disabled')
+
+# LS 1-7 : user preset required fields + exact schema version.
+# LS 13-2: PRESET_SCHEMA_VERSION stays 1. The unknown-key drop rule already gives both directions
+# of compatibility for the added 'warmstart' key (absent = on), so bumping it - which would discard
+# every stored user preset - buys nothing.
+$script:PRESET_SCHEMA_VERSION = 1
+$script:PRESET_REQUIRED_FIELDS = @('schema_version', 'source_tag', 'profile_id', 'expect_digest', 'overrides')
+$script:PRESET_ALLOWLIST_KEYS  = @('port', 'ctx', 'threads', 'warmup', 'budget_mb', 'qd', 'warmstart', 'autosave')
+
+# LS 13-2: override keys that take no part in argv/env and cannot change a performance condition.
+# They are excluded from the "is this a custom configuration" decision, so following the README's
+# advice to switch warmstart off does not demote the user's performance gate to [unmeasured].
+# Transparency for these keys is carried by their own status line instead (the 'kv :' line).
+$script:PERF_NEUTRAL_OVERRIDE_KEYS = @('warmstart')
+
+# LS 2 : the four artifacts deleted when a .partial marker is found.
+$script:PARTIAL_DELETE_SET = @('experts.bin.partial', 'experts.bin', 'manifest.json', 'verify_report.json')
+
+# Catalog schema (see report: schema is launcher-side until RELEASE_SPEC required item 2 lands).
+$script:CATALOG_SCHEMA_VERSION = 1
+$script:CATALOG_FILE_NAME      = 'models.json'
+$script:BUNDLE_MANIFEST_NAME   = 'bundle_manifest.json'
+$script:BUNDLE_MANIFEST_VERSION = 1
+
+# ---------------------------------------------------------------------------
+# OPEN_ARCH C axis (OPEN_ARCH_DESIGN.md v0.2 sections 0/3, LAUNCHER_SPEC OA-1).
+# ---------------------------------------------------------------------------
+# M5 atomic activation token. The repacker, the engine and this launcher must all carry the SAME
+# string or the v0.2.1 bundle assembly fails. The other two adopt it in their own rounds; the value
+# is frozen here and quoted by LS OA-1.
+$script:OPEN_ARCH_TEMPLATE_ABI = 'open-arch-template/1'
+# The derived profile is a schema of its own, NOT a catalog profile with invented fields. Its
+# validator rejects hf_repo / hf_revision outright: there is no upstream repository for a model the
+# user derived on the spot, and writing a plausible-looking one would be a fabricated provenance.
+$script:DERIVED_PROFILE_SCHEMA_VERSION = 1
+# Written by the repacker into the repack OUTPUT directory, never into the bundle expects dir
+# (repack_experts.py:162 / :1072-1081).
+$script:DERIVED_EXPECT_FILE_NAME = 'derived.expect.json'
+# The profile id doubles as a kv directory name (Get-KvProfileDir) and as a lock token, and the arch
+# it embeds comes from a GGUF the user downloaded - untrusted input. Both are therefore constrained
+# to a path-safe token, and the id is checked against the full shape before anything uses it.
+$script:ARCH_TOKEN_REGEX         = '^[a-z0-9._-]{1,32}$'
+$script:DERIVED_PROFILE_ID_REGEX = '^derived-[a-z0-9._-]{1,32}-[0-9a-f]{16}$'
+# reference_lock.profile_id the repacker writes in template mode (repack_experts.py:1067-1069).
+$script:DERIVED_LOCK_ID_PREFIX = 'arch-template:'
+# Length of the derivation digest carried in the profile id. The digest itself is the full
+# inventory_sha256; 16 hex is what goes into the id so the directory name stays short while the
+# collision domain stays far beyond the number of models one machine will ever derive.
+$script:DERIVED_DIGEST_CHARS = 16
+
+# LS OA-1 surface axes (wire). Three separate questions, never collapsed into one badge:
+#   copy integrity     - did every selected routed slice verify byte-for-byte?
+#   inventory authority- who decided WHICH tensors the routed inventory contains?
+#   serving validation - has this configuration been validated for serving?
+$script:AXIS_COPY_PASS            = 'PASS (every selected routed slice verified)'
+$script:AXIS_COPY_PENDING         = 'pending (repack verify has not run yet)'
+$script:AXIS_INVENTORY_PIN        = 'model-pin'
+$script:AXIS_INVENTORY_UNPINNED   = 'model-pin(unpinned)'
+$script:AXIS_INVENTORY_TEMPLATE   = 'arch-template'
+$script:AXIS_SERVING_VALIDATED    = 'validated'
+$script:AXIS_SERVING_UNVALIDATED  = 'unvalidated'
+# The claim the template path is allowed to make, verbatim. It says what was copied and from where -
+# it does NOT say "your file is byte-verified", which would claim an authority nobody established.
+$script:TEMPLATE_COPY_SENTENCE =
+    'the template-selected routed-expert inventory was copied byte-for-byte from your file'
+$script:UNPINNED_NOTE =
+    'no source pin recorded for this catalog profile: the header fingerprint matched but the file bytes were not checked'
+
+# Derived defaults.argv skeleton. NOT a guess: all five shipped catalog profiles carry a
+# byte-identical argument list apart from '--n-cpu-moe <n_layer>' and '-c' (12288 on four,
+# 4096 on qwen35-35b) - measured 26-08-02 over launcher\models.json. The model-dependent slot is
+# therefore exactly one, and it is filled from the derivation. '-c' takes the CONSERVATIVE observed
+# value because an unvalidated model has no measured context budget; the ctx allowlist key raises it.
+$script:DERIVED_ARGV_NCPUMOE_SLOT = '<n_layer>'
+$script:DERIVED_ARGV_SKELETON = @(
+    '-ngl', '99', '--n-cpu-moe', $script:DERIVED_ARGV_NCPUMOE_SLOT, '-c', '4096', '-t', '8',
+    '-b', '2048', '-ub', '512', '-fa', 'on', '-np', '1',
+    '--host', '127.0.0.1', '--port', '8093', '--no-webui', '--no-warmup')
+# Same source, same rule: the four bounds every shipped profile agrees on, and ctx capped at the
+# SMALLER of the two observed maxima. budget_mb.min is not here - it is the derived structural
+# minimum, which is only known after the plan.
+$script:DERIVED_BOUNDS_PORT    = @{ min = 1024; max = 65535 }
+$script:DERIVED_BOUNDS_CTX     = @{ min = 2048; max = 131072 }
+$script:DERIVED_BOUNDS_THREADS = @{ min = 1;    max = 64 }
+$script:DERIVED_BOUNDS_QD      = @{ min = 1;    max = 63 }
+$script:DERIVED_BOUNDS_BUDGET_MAX = 65536
+
+# Engine env var names (1st source: bench/moe-direct/repro/moedirect-v2-b10057.patch,
+# bench/moe-direct/moe_serve.ps1:497-499).
+$script:ENV_DIRECT       = 'MOE_DIRECT'
+$script:ENV_DIRECT_DIR   = 'MOE_DIRECT_DIR'
+$script:ENV_BUDGET_MB    = 'MOE_DIRECT_BUDGET_MB'
+$script:ENV_EXPECTS_DIR  = 'MOE_DIRECT_EXPECTS_DIR'
+$script:ENV_QD           = 'MOE_DIRECT_QD'
+$script:ENV_PREFETCH_K   = 'MOE_DIRECT_PREFETCH_K'
+$script:ENV_PREFETCH_N   = 'MOE_DIRECT_PREFETCH_N'
+$script:ENV_NO_PREFETCH  = 'MOE_NO_PREFETCH'
+$script:ENV_METRICS      = 'MOE_DIRECT_METRICS'
+
+# Engine hard caps (1st source: moedirect-v2-b10057.patch:3655-3656).
+$script:ENGINE_QD_MIN = 1
+$script:ENGINE_QD_MAX = 63
+
+# R1-11 deny-by-default child environment sanitation. Everything here is stripped from the child
+# block before the launcher injects its own values, so an ambient value from a previous run or a
+# user shell cannot change engine behaviour or bypass the bundle backend closure.
+# Precedent: moe_serve.ps1:560-566 removes every MOE_* plus GGML_BACKEND_PATH.
+$script:ENV_DENY_PREFIXES = @('MOE_', 'GGML_', 'LLAMA_')
+$script:ENV_DENY_NAMES    = @('GGML_BACKEND_PATH', 'GGML_CUDA_ENABLE_UNIFIED_MEMORY',
+                              'GGML_CUDA_FORCE_MMQ', 'GGML_CUDA_FORCE_CUBLAS',
+                              'CUDA_VISIBLE_DEVICES', 'HIP_VISIBLE_DEVICES',
+                              'LLAMA_ARG_MODEL', 'LLAMA_ARG_HOST', 'LLAMA_ARG_PORT',
+                              'LLAMA_ARG_N_PARALLEL', 'LLAMA_ARG_CTX_SIZE', 'LLAMA_ARG_THREADS',
+                              'LLAMA_ARG_N_GPU_LAYERS', 'LLAMA_ARG_NO_WARMUP', 'LLAMA_CACHE')
+
+# ---------------------------------------------------------------------------
+# LS 13-5 (WS-1) explicit child environment block - SERVER ROLE ONLY.
+# Frozen OS bootstrap allowlist, 26 keys, WARMSTART_SPEC A-4c is the authority for the list. These
+# keys are OS bootstrap / path / identity only and therefore take no part in the state-semantics
+# projection: the engine's own bytes are bound by engine_bundle_sha256 and the bundle's DLLs are
+# resolved from the application directory before PATH.
+# Why an explicit block at all: with an inherited (ambient) environment a computation-changing
+# variable such as NVIDIA_TF32_OVERRIDE survives into the child, which breaks the premise that
+# $config.env is the complete semantic environment surface. The repacker role deliberately keeps
+# the old ambient + deny-list contract (LS 13-5 - out of scope for this change).
+# ---------------------------------------------------------------------------
+$script:ENV_OS_BOOTSTRAP_ALLOWLIST = @(
+    'SystemRoot', 'windir', 'SystemDrive', 'ComSpec', 'PATHEXT', 'PATH', 'TEMP', 'TMP',
+    'USERPROFILE', 'LOCALAPPDATA', 'APPDATA', 'ProgramData', 'PUBLIC',
+    'NUMBER_OF_PROCESSORS', 'PROCESSOR_ARCHITECTURE', 'PROCESSOR_IDENTIFIER',
+    'PROCESSOR_LEVEL', 'PROCESSOR_REVISION', 'OS', 'COMPUTERNAME', 'USERNAME',
+    'USERDOMAIN', 'SESSIONNAME', 'LOGONSERVER', 'HOMEDRIVE', 'HOMEPATH')
+
+# ---------------------------------------------------------------------------
+# LS 13 (WS-1) warmstart / slot-save constants. WARMSTART_SPEC v0.5 is the value authority.
+# ---------------------------------------------------------------------------
+# A-1: the KV directory always derives from Get-LauncherStateDir, so the argument the server gets
+# and the directory the GC walks can never drift apart.
+$script:KV_DIR_NAME             = 'kv'
+# A-4b name contract. canonical = the one generation that may ever be restored.
+$script:KV_CANONICAL_DATA       = 'slot0.kv'
+$script:KV_CANONICAL_META       = 'slot0.kv.meta.json'
+# A-4b GC: the four generation patterns, retention 0 for both tmp and stale.
+$script:KV_GC_PATTERNS          = @('slot0.kv.tmp.*', 'slot0.kv.stale.*',
+                                    'slot0.kv.meta.json.tmp.*', 'slot0.kv.meta.json.stale.*')
+# A-4b: more matches than this is a crash-loop signal - WARN diagnostic, same delete-everything action.
+$script:KV_GC_WARN_MATCHES      = 16
+# A-4b canonical retention: at most this many profile directories under <StateDir>\kv\.
+$script:KV_PROFILE_RETENTION    = 4
+$script:KV_META_SCHEMA_VERSION  = 1
+$script:KV_SLOT_ID              = 0
+$script:ARG_SLOT_SAVE_PATH      = '--slot-save-path'
+# Cache of per-shard model hashes (A-4 "safe cache after the first computation").
+# Version 2 = the entry key is the Windows file identity (64 bit volume serial + 128 bit FILE_ID_INFO
+# id + size + mtime). Version 1 keyed on the path and is discarded wholesale: it was not an identity.
+# LS OA-1: the cache now has TWO readers - warmstart eligibility and the M1 source pin - so it moved
+# one level up, out of the kv tree, and lives directly under the state directory. It had to: the
+# LS 13-2 truth table gives -Smoke / -Repro "no contact with the kv tree at all", and a pin hash
+# writing its cache under kv\ would have broken that contract on every reproducibility run. A file
+# left at the old kv\ location by an earlier build is simply not read (one re-hash, then the new
+# location serves it).
+$script:KV_SHARD_CACHE_FILE     = 'model_shards.cache.json'
+$script:KV_SHARD_CACHE_VERSION  = 2
+# Structural deadlines (protocol shape, NOT measured thresholds - the same kind of value as
+# PLAN_TIMEOUT_S / READY_TIMEOUT_S). A-2 (3) only requires the wait to be finite: exceeding it
+# abandons the save and lets the normal teardown continue.
+$script:KV_SAVE_TIMEOUT_S       = 900
+$script:KV_RESTORE_TIMEOUT_S    = 900
+$script:KV_ERASE_TIMEOUT_S      = 120
+
+# LS 13-6 reason enum (frozen). Field disagreements render as "<exact sidecar key>_mismatch";
+# these nine are the special values that are not a field disagreement.
+$script:KV_REASON_SIDECAR_MISSING   = 'sidecar_missing'
+$script:KV_REASON_KV_FILE_MISSING   = 'kv_file_missing'
+$script:KV_REASON_META_PARSE_FAILED = 'meta_parse_failed'
+$script:KV_REASON_FILE_INTEGRITY    = 'file_integrity_broken'
+$script:KV_REASON_OFF_USER          = 'off_user'
+$script:KV_REASON_OFF_MODE          = 'off_mode'
+$script:KV_REASON_RECOVERY_COLD     = 'recovery_cold'
+$script:KV_REASON_UNAVAILABLE       = 'eligibility_unavailable'
+$script:KV_REASON_RESTORE_FAILED    = 'restore_failed'
+$script:KV_SPECIAL_REASONS = @(
+    $script:KV_REASON_SIDECAR_MISSING, $script:KV_REASON_KV_FILE_MISSING,
+    $script:KV_REASON_META_PARSE_FAILED, $script:KV_REASON_FILE_INTEGRITY,
+    $script:KV_REASON_OFF_USER, $script:KV_REASON_OFF_MODE,
+    $script:KV_REASON_RECOVERY_COLD, $script:KV_REASON_UNAVAILABLE,
+    $script:KV_REASON_RESTORE_FAILED)
+
+# ---------------------------------------------------------------------------
+# LS 13-8 / AUTOSAVE_SPEC v0.1 - periodic crash-recovery save while serving.
+# ---------------------------------------------------------------------------
+# B: two alternating generations. The generation being written is the only one that can be damaged
+# by a crash, which is what leaves the previous one intact. The sidecar name of any generation is
+# its data name + '.meta.json' (the canonical pair follows the same rule).
+$script:KV_AUTOSAVE_GEN_A       = 'slot0.auto.a.kv'
+$script:KV_AUTOSAVE_GEN_B       = 'slot0.auto.b.kv'
+$script:KV_AUTOSAVE_GENERATIONS = @($script:KV_AUTOSAVE_GEN_A, $script:KV_AUTOSAVE_GEN_B)
+# A-4c kin: the sidecar of an autosave generation carries the same wire fields plus this origin.
+# An absent origin means the normal stop save (every sidecar written before this feature existed).
+$script:KV_ORIGIN_AUTOSAVE      = 'autosave'
+$script:KV_ORIGIN_STOP          = 'stop'
+# P1 default period, and the structural bounds of the <minutes> form of the surface.
+$script:KV_AUTOSAVE_DEFAULT_MIN = 5
+$script:KV_AUTOSAVE_MIN_MINUTES = 1
+$script:KV_AUTOSAVE_MAX_MINUTES = 1440
+# Idle probe deadline. Protocol shape, not a measured threshold: GET /slots is answered from the
+# server's task queue as a high-priority task, so a slow answer means the server is not in a state
+# worth autosaving into anyway - the tick is skipped.
+$script:KV_SLOTS_TIMEOUT_S      = 30
+
+# LS 13-3: three degraded diagnostic kinds. None of them creates a status enum or an exit code.
+$script:KV_DIAG_SAVE_FAILED    = 'warmstart_save_failed'
+$script:KV_DIAG_RESTORE_FAILED = 'warmstart_restore_failed'
+$script:KV_DIAG_GC_FAILED      = 'warmstart_gc_failed'
+
+# A-4c exclusion table (frozen). A flag is dropped together with its value, at EVERY occurrence,
+# and the comparison is case sensitive: anything not listed here is a semantic key and is hashed,
+# so an unknown or newly added argument can only ever cause an unnecessary cold start (safe), never
+# a restore onto a changed configuration.
+$script:KV_SEMANTICS_ARGV_DROP = @(
+    @{ flag = '--port';            arity = 1 },   # transport
+    @{ flag = '--host';            arity = 1 },   # transport (loopback already locked)
+    @{ flag = '-m';                arity = 1 },   # path string; content is bound by model_shards_sha256[]
+    @{ flag = '-t';                arity = 1 },   # scheduling; takes no part in KV state meaning
+    @{ flag = $script:ARG_SLOT_SAVE_PATH; arity = 1 },   # this feature's own storage location
+    @{ flag = '--no-webui';        arity = 0 })   # UI surface
+# Same rule for env. The comparison is case insensitive here because Windows environment variable
+# names are: two spellings would be ONE variable in the child, so treating them as two would let a
+# per-run path (the metrics file) leak into the hash and make every run cold.
+$script:KV_SEMANTICS_ENV_DROP = @(
+    'MOE_DIRECT_METRICS',       # per-run timestamped path - would make every run cold
+    'MOE_DIRECT_DIR',           # path; content is bound by repack_manifest_sha256
+    'MOE_DIRECT_EXPECTS_DIR',   # path; content is bound by the engine seal gate
+    'MOE_DIRECT_PREFETCH_K', 'MOE_DIRECT_PREFETCH_N', 'MOE_NO_PREFETCH',
+    # WARMSTART_SPEC A-4c / A-7 stage 2 (measured 26-08-02). These two were hashed while the
+    # byte-identity claim was unmeasured. The stage 2 run saved four arms from one token prefix -
+    # baseline, budget-only (8192 -> 10240), QD-only (8 -> 7), K/N-only - and all four produced the
+    # same n_tokens (1397), the same n_bytes (190670760) and the same kv_file_sha256
+    # (37c88ccfcacab1507ef8e903eab855407e969125b7d22dc2e6977cf77dda8067), so neither the resident
+    # budget nor the read queue depth changes the stored KV bytes. Promotion condition met -> both
+    # move here. The K/N result stays an observation only: that pair already had its own exclusion.
+    'MOE_DIRECT_BUDGET_MB', 'MOE_DIRECT_QD')
+
+# Probe binding records (launcher-internal state, not wire).
+# LS 12-4 gives probe.state.json to the SWEEP binding (state_version 2, a target-key map), so the
+# LS 1-4 scratch record - which is provisional and no longer decides QD - keeps its own file. A
+# legacy probe.state.json written by an older build parses as state_version 1 and is therefore a
+# cache miss for the sweep, which is exactly the v1 migration rule LS 12-4 asks for.
+$script:PROBE_STATE_FILE = 'probe.scratch.json'
+$script:PROBE_STATE_VERSION = 1
+$script:SWEEP_STATE_FILE = 'probe.state.json'
+$script:SWEEP_STATE_VERSION = 2
+
+# Structural (non-measured) bounds.
+$script:PORT_MIN = 1024
+$script:PORT_MAX = 65535
+
+# ---------------------------------------------------------------------------
+# [UNMEASURED-TODO] LS 9 item 1 / RS 10 item 3.
+# Numeric thresholds below are deliberately unset. The branch structure is frozen
+# (LS 1-2, LS 1-4); only the numbers are open, and they must come from measurement,
+# never from a guess. While they are $null the launcher degrades honestly instead of
+# fabricating a value (status screen shows [unmeasured], diagnostic log records it).
+# ---------------------------------------------------------------------------
+# SSD probe (MiB/s) -> default queue depth mapping table. Shape when measured:
+#   @( @{ min_mibps = <num>; qd = <int> }, ... ) ordered high -> low.
+$script:PROBE_QD_MAP = $null                 # TODO[unmeasured]
+# Conservative default used until PROBE_QD_MAP is measured, and the RS 5 degraded value.
+$script:QD_DEGRADED = 1                      # RS 5 (spec-given, not a measurement)
+# Available-RAM (MiB) -> default budget mapping table. Same shape as PROBE_QD_MAP with 'budget_mb'.
+$script:PROBE_BUDGET_MAP = $null             # TODO[unmeasured]
+# LS 1-9 RAM verdict formula terms: budget + non-cache fixed term (dense resident + KV + server
+# overhead) + safety headroom. KV scales with ctx, so it is a separate per-token term.
+$script:RAM_DENSE_RESIDENT_MB = $null        # TODO[unmeasured]
+$script:RAM_KV_MB_PER_1K_CTX  = $null        # TODO[unmeasured]
+$script:RAM_SERVER_OVERHEAD_MB = $null       # TODO[unmeasured]
+$script:RAM_HEADROOM_MB   = $null            # TODO[unmeasured]
+# Disk: post-repack residual reserve shown separately (RS 3 preflight). Threshold unmeasured;
+# the free-space hard stop below does not depend on it.
+$script:DISK_POST_RESERVE_MB = $null         # TODO[unmeasured]
+# SSD probe shape. Block size falls back to this when no manifest slot stride is available.
+$script:PROBE_BLOCK_BYTES_FALLBACK = 1048576 # structural (1 MiB, sector-aligned), not a threshold
+$script:PROBE_SAMPLES              = 64
+$script:PROBE_SECTOR_ALIGN         = 4096
+# Scratch file written on the OUTPUT volume when no repack artifact exists yet (R1-2: the probe
+# must measure the volume the expert cache will be read from, not the source model's volume).
+$script:PROBE_SCRATCH_BYTES        = 67108864   # 64 MiB
+$script:PROBE_SCRATCH_NAME         = '.moe-probe.tmp'
+
+# ---------------------------------------------------------------------------
+# LS 12 (QD-1) startup queue-depth sweep. Every value here is STRUCTURAL (protocol shape), not a
+# measured threshold: the sweep produces the numbers, it is not configured by them.
+# ---------------------------------------------------------------------------
+$script:SWEEP_PROBE_ALGORITHM    = 'qd-sweep-v1'
+$script:SWEEP_MEASUREMENT_METHOD = 'engine-overlapped-v1'
+$script:SWEEP_QD_POINTS          = @(1, 2, 4, 8)
+$script:SWEEP_ORDER_FORWARD      = @(1, 2, 4, 8)
+$script:SWEEP_ORDER_REVERSE      = @(8, 4, 2, 1)
+# 2.5 s per point, split into two crossed 1.25 s windows (LS 12-2).
+$script:SWEEP_WINDOW_MS          = 1250
+$script:SWEEP_BLOCK_MIN_BYTES    = 1048576     # 1 MiB
+$script:SWEEP_BLOCK_MAX_BYTES    = 16777216    # 16 MiB
+# The target must hold at least this many distinct full blocks, otherwise the deterministic offset
+# sequence would keep re-reading the same few blocks and the point would measure the device cache
+# rather than the read path. Same kind of precondition as the scratch probe's "4 blocks" floor.
+$script:SWEEP_MIN_BLOCK_SPAN     = 32
+$script:SWEEP_OFFSET_COUNT       = 8192
+# Buffer/offset/length alignment floor for FILE_FLAG_NO_BUFFERING. The real physical sector size is
+# queried per target and used when it is larger.
+$script:SWEEP_FALLBACK_ALIGN     = 4096
+
+# Timeouts (seconds). Structural, not performance thresholds.
+# R2-1: repack --plan only parses GGUF headers and prints a summary (repack_experts.py cmd_plan -
+# no payload copy, no hashing), so it is inherently short. An unbounded wait here can therefore
+# only mean a stuck child, which previously froze the launcher for ever. The full repack run
+# deliberately has NO deadline (it legitimately takes minutes to hours) and relies on the console
+# stop request instead.
+$script:PLAN_TIMEOUT_S     = 120
+# R3-2: the launcher itself sent the abort, so the server owes it a "cancel task, id_task = N"
+# warning. The INFO/WRN logger flushes from its own worker thread, so under load that warning can
+# land after the cancelled stream's natural end. This is a bounded, DIAGNOSTIC-ONLY extra wait used
+# to classify why item 4 failed; it can never turn a failure into a pass, because the pass decision
+# is made against the prompt budget measured from the abort instant.
+$script:CANCEL_WARN_DIAG_MS = 3000
+$script:READY_TIMEOUT_S    = 900
+$script:GRACEFUL_STOP_S    = 60
+$script:LISTENER_GONE_S    = 30
+$script:HEALTH_POLL_MS     = 500
+
+# endregion
+
+# ============================================================================
+# region 2. NATIVE INTEROP (P/Invoke)
+# ============================================================================
+
+if (-not ('MoeLauncher.LauncherExit' -as [type])) {
+    Add-Type -TypeDefinition @'
+namespace MoeLauncher {
+    public class LauncherExit : System.Exception {
+        public string Status;
+        public LauncherExit(string status, string message) : base(message) { this.Status = status; }
+    }
+}
+'@
+}
+
+if (-not ('MoeLauncher.Native' -as [type])) {
+    Add-Type -Namespace 'MoeLauncher' -Name 'Native' -MemberDefinition @'
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MEMORYSTATUSEX {
+        public uint dwLength; public uint dwMemoryLoad;
+        public ulong ullTotalPhys; public ulong ullAvailPhys;
+        public ulong ullTotalPageFile; public ulong ullAvailPageFile;
+        public ulong ullTotalVirtual; public ulong ullAvailVirtual; public ulong ullAvailExtendedVirtual;
+    }
+    [DllImport("kernel32.dll", SetLastError=true)]
+    public static extern bool GlobalMemoryStatusEx(ref MEMORYSTATUSEX m);
+
+    // INSTALLED physical memory from the SMBIOS tables, in KB. Deliberately separate from the
+    // MEMORYSTATUSEX total above: that one is what the OS can address after firmware reservations
+    // (31,900 MiB on a 32 GiB box), this one is what is in the slots. The budget autotune is
+    // calibrated on the installed number (region 8b).
+    [DllImport("kernel32.dll", SetLastError=true)]
+    public static extern bool GetPhysicallyInstalledSystemMemory(out ulong TotalMemoryInKilobytes);
+
+    // ---- kill-on-close job object (precedent: moe_serve.ps1:582-607) ----
+    [StructLayout(LayoutKind.Sequential)]
+    public struct JOBOBJECT_BASIC_LIMIT_INFORMATION {
+        public long PerProcessUserTimeLimit; public long PerJobUserTimeLimit; public uint LimitFlags;
+        public UIntPtr MinimumWorkingSetSize; public UIntPtr MaximumWorkingSetSize;
+        public uint ActiveProcessLimit; public UIntPtr Affinity; public uint PriorityClass; public uint SchedulingClass;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    public struct IO_COUNTERS { public ulong r, w, o, rt, wt, ot; }
+    [StructLayout(LayoutKind.Sequential)]
+    public struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION {
+        public JOBOBJECT_BASIC_LIMIT_INFORMATION BasicLimitInformation; public IO_COUNTERS IoInfo;
+        public UIntPtr ProcessMemoryLimit; public UIntPtr JobMemoryLimit;
+        public UIntPtr PeakProcessMemoryUsed; public UIntPtr PeakJobMemoryUsed;
+    }
+    [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
+    public static extern IntPtr CreateJobObjectW(IntPtr sa, string name);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    public static extern bool SetInformationJobObject(IntPtr job, int cls, ref JOBOBJECT_EXTENDED_LIMIT_INFORMATION info, int len);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    public static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
+
+    // ---- process creation with explicit creation flags (CREATE_NEW_PROCESS_GROUP) ----
+    [StructLayout(LayoutKind.Sequential)]
+    public struct SECURITY_ATTRIBUTES { public int nLength; public IntPtr lpSecurityDescriptor; public int bInheritHandle; }
+    [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
+    public struct STARTUPINFO {
+        public int cb; public string lpReserved; public string lpDesktop; public string lpTitle;
+        public int dwX; public int dwY; public int dwXSize; public int dwYSize;
+        public int dwXCountChars; public int dwYCountChars; public int dwFillAttribute; public int dwFlags;
+        public short wShowWindow; public short cbReserved2; public IntPtr lpReserved2;
+        public IntPtr hStdInput; public IntPtr hStdOutput; public IntPtr hStdError;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    public struct PROCESS_INFORMATION { public IntPtr hProcess; public IntPtr hThread; public int dwProcessId; public int dwThreadId; }
+
+    [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
+    public static extern bool CreateProcessW(string lpApplicationName, System.Text.StringBuilder lpCommandLine,
+        IntPtr lpProcessAttributes, IntPtr lpThreadAttributes, bool bInheritHandles, uint dwCreationFlags,
+        IntPtr lpEnvironment, string lpCurrentDirectory, ref STARTUPINFO si, out PROCESS_INFORMATION pi);
+
+    [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
+    public static extern IntPtr CreateFileW(string name, uint access, uint share, ref SECURITY_ATTRIBUTES sa,
+        uint create, uint flags, IntPtr template);
+    [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode, EntryPoint="CreateFileW")]
+    public static extern IntPtr CreateFileNoSaW(string name, uint access, uint share, IntPtr sa,
+        uint create, uint flags, IntPtr template);
+    // WARMSTART A-4 cache key, size + mtime half. Every FILETIME is expanded into its two DWORDs so
+    // the struct needs no imported time type and stays a plain sequential blob.
+    // NOTE: nFileIndexHigh/Low are part of the OS layout and must stay for it to line up, but they
+    // are deliberately NOT read - see QueryFileId128.
+    [StructLayout(LayoutKind.Sequential)]
+    public struct BY_HANDLE_FILE_INFORMATION {
+        public uint dwFileAttributes;
+        public uint ftCreationTimeLow;   public uint ftCreationTimeHigh;
+        public uint ftLastAccessTimeLow; public uint ftLastAccessTimeHigh;
+        public uint ftLastWriteTimeLow;  public uint ftLastWriteTimeHigh;
+        public uint dwVolumeSerialNumber;
+        public uint nFileSizeHigh;       public uint nFileSizeLow;
+        public uint nNumberOfLinks;
+        public uint nFileIndexHigh;      public uint nFileIndexLow;
+    }
+    [DllImport("kernel32.dll", SetLastError=true)]
+    public static extern bool GetFileInformationByHandle(IntPtr h, out BY_HANDLE_FILE_INFORMATION info);
+
+    // WARMSTART A-4 cache key, IDENTITY half (LS 13-7 (9)). The 64 bit index in
+    // BY_HANDLE_FILE_INFORMATION is documented as NOT guaranteed unique on ReFS - and a Windows 11
+    // Dev Drive IS ReFS - so it cannot key a cache that decides whether a stored model state may be
+    // restored. FILE_ID_INFO (FILE_INFO_BY_HANDLE_CLASS.FileIdInfo = 18) is the 64 bit volume serial
+    // plus the 128 bit file id, which is unique on every supported filesystem.
+    // Read through a raw buffer rather than a marshalled struct: a 16 byte inline array inside an
+    // out-parameter struct is exactly the shape whose marshalling differs between runtimes, and the
+    // answer here decides a fail-close, so it is assembled byte by byte instead.
+    [DllImport("kernel32.dll", SetLastError=true)]
+    public static extern bool GetFileInformationByHandleEx(IntPtr h, int infoClass, IntPtr info, uint size);
+    public const int FILE_ID_INFO_CLASS = 18;
+    // "<16 hex volume serial>:<32 hex file id>", or null when the filesystem or the OS cannot
+    // answer (pre-Windows 8 returns ERROR_INVALID_PARAMETER for this class). Null means "no
+    // identity", which the caller turns into "never cache this file".
+    public static string QueryFileId128(IntPtr h) {
+        IntPtr buf = Marshal.AllocHGlobal(24);
+        try {
+            for (int i = 0; i < 24; i++) { Marshal.WriteByte(buf, i, 0); }
+            if (!GetFileInformationByHandleEx(h, FILE_ID_INFO_CLASS, buf, 24)) { return null; }
+            ulong vol = (ulong)Marshal.ReadInt64(buf, 0);
+            System.Text.StringBuilder sb = new System.Text.StringBuilder();
+            sb.Append(vol.ToString("x16"));
+            sb.Append(":");
+            bool anyId = false;
+            for (int i = 0; i < 16; i++) {
+                byte b = Marshal.ReadByte(buf, 8 + i);
+                if (b != 0) { anyId = true; }
+                sb.Append(b.ToString("x2"));
+            }
+            // An all-zero 128 bit id is not an identity; refuse it exactly like a failed call.
+            if (!anyId) { return null; }
+            return sb.ToString();
+        } finally { Marshal.FreeHGlobal(buf); }
+    }
+    [DllImport("kernel32.dll", SetLastError=true)]
+    public static extern bool ReadFile(IntPtr h, IntPtr buf, uint toRead, out uint read, IntPtr ov);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    public static extern bool SetFilePointerEx(IntPtr h, long dist, out long newPos, uint method);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    public static extern bool CloseHandle(IntPtr h);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    public static extern uint WaitForSingleObject(IntPtr h, uint ms);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    public static extern bool GetExitCodeProcess(IntPtr h, out uint code);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    public static extern bool TerminateProcess(IntPtr h, uint code);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    public static extern bool GenerateConsoleCtrlEvent(uint ctrlEvent, uint processGroupId);
+    // R1-3: the .partial absence decision must use GetFileAttributesW + GetLastError, exactly like
+    // the C++ seal. FileInfo.Exists returns false for permission/IO errors too, which would turn a
+    // "cannot prove absence" into a silent "absent".
+    [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
+    public static extern uint GetFileAttributesW(string path);
+    // Atomic replace. System.IO.File.Replace cannot be used from PowerShell with a null backup
+    // path (PS marshals $null to "" and the API rejects it as an illegal path), and it also fails
+    // when the destination does not exist yet. MoveFileEx handles both cases.
+    [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
+    public static extern bool MoveFileExW(string existing, string newName, uint flags);
+    // R2-3: real volume identity. A path root ("C:\") is not an identity - C:\mnt\ssdA and
+    // C:\mnt\ssdB can be different mounted volumes, and a drive letter can be reassigned to a
+    // different disk. GetVolumePathNameW gives the actual mount point of the path and
+    // GetVolumeNameForVolumeMountPointW turns that into the volume GUID name.
+    [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
+    public static extern bool GetVolumePathNameW(string fileName, System.Text.StringBuilder volumePathName, uint bufferLength);
+    [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
+    public static extern bool GetVolumeNameForVolumeMountPointW(string volumeMountPoint, System.Text.StringBuilder volumeName, uint bufferLength);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    public static extern IntPtr GetStdHandle(int nStdHandle);
+    // LS 11-7 a: discard console keys that arrived while nothing was reading input.
+    [DllImport("kernel32.dll", SetLastError=true)]
+    public static extern bool FlushConsoleInputBuffer(IntPtr hConsoleInput);
+'@
+}
+
+# R1-4: parent-side console control handler. The handler only records the request; the main loop
+# decides what it means for the current state (pre-ready = cancelled_user, after ready = graceful
+# stop). Returning true stops the default terminate-the-process behaviour.
+if (-not ('MoeLauncher.CtrlHandler' -as [type])) {
+    Add-Type -TypeDefinition @'
+namespace MoeLauncher {
+    public class CtrlHandler {
+        public delegate bool Routine(uint ctrlType);
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError=true)]
+        private static extern bool SetConsoleCtrlHandler(Routine handler, bool add);
+        public static bool Requested = false;
+        public static uint LastEvent = 999;
+        public static bool Installed = false;
+        private static Routine _kept;
+        // public so the selftest can prove the CTRL_C_EVENT(0) contract directly: Windows cannot
+        // deliver CTRL_C to a specific foreign process from a test harness (measured - see the
+        // selftest's console-signal section), so the identical treatment of event 0 and event 1 is
+        // asserted by invoking the handler, while OS delivery is proven with CTRL_BREAK_EVENT(1).
+        public static bool OnCtrl(uint t) {
+            // CTRL_C_EVENT(0) and CTRL_BREAK_EVENT(1) are both "the user asked to stop".
+            if (t == 0 || t == 1) { LastEvent = t; Requested = true; return true; }
+            return false;
+        }
+        public static bool Install() {
+            if (Installed) { return true; }
+            _kept = new Routine(OnCtrl);
+            Installed = SetConsoleCtrlHandler(_kept, true);
+            return Installed;
+        }
+    }
+}
+'@
+}
+
+# LS 12-2 sweep executor: measurement_method 'engine-overlapped-v1'. ONE file handle opened with
+# FILE_FLAG_NO_BUFFERING | FILE_FLAG_OVERLAPPED, one OVERLAPPED + one event per outstanding read,
+# and a completed read is immediately re-issued so the queue stays at the target depth (the engine's
+# own queue-depth semantics). A thread-per-read or handle-per-read arrangement would measure a
+# different thing, which is why the method name is recorded in the binding key.
+if (-not ('MoeLauncher.Sweep' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+namespace MoeLauncher {
+
+    // One measured window for one queue depth. ElapsedTicks is in 100 ns units.
+    public class SweepPoint {
+        public int Qd;
+        public bool Ok;
+        public long Bytes;
+        public long ElapsedTicks;
+        public int Reads;
+        public string Error;
+    }
+
+    public class Sweep {
+        const uint GENERIC_READ = 0x80000000;
+        const uint FILE_SHARE_READ = 0x00000001;
+        const uint FILE_SHARE_WRITE = 0x00000002;
+        const uint OPEN_EXISTING = 3;
+        const uint FILE_FLAG_NO_BUFFERING = 0x20000000;
+        const uint FILE_FLAG_OVERLAPPED = 0x40000000;
+        const uint MEM_COMMIT = 0x1000;
+        const uint MEM_RESERVE = 0x2000;
+        const uint MEM_RELEASE = 0x8000;
+        const uint PAGE_READWRITE = 0x04;
+        const uint WAIT_TIMEOUT_CODE = 258;
+        const int ERROR_IO_PENDING = 997;
+        const int READ_WAIT_MS = 30000;
+        const int DRAIN_WAIT_MS = 60000;
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct OVERLAPPED_X {
+            public IntPtr Internal;
+            public IntPtr InternalHigh;
+            public uint Offset;
+            public uint OffsetHigh;
+            public IntPtr hEvent;
+        }
+
+        [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
+        private static extern IntPtr CreateFileW(string name, uint access, uint share, IntPtr sa,
+            uint create, uint flags, IntPtr template);
+        [DllImport("kernel32.dll", SetLastError=true)]
+        private static extern bool ReadFile(IntPtr h, IntPtr buf, uint toRead, IntPtr bytesRead, IntPtr overlapped);
+        [DllImport("kernel32.dll", SetLastError=true)]
+        private static extern bool GetOverlappedResult(IntPtr h, IntPtr overlapped, out uint transferred, bool wait);
+        [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)]
+        private static extern IntPtr CreateEventW(IntPtr sa, bool manualReset, bool initialState, string name);
+        [DllImport("kernel32.dll", SetLastError=true)]
+        private static extern bool ResetEvent(IntPtr h);
+        [DllImport("kernel32.dll", SetLastError=true)]
+        private static extern uint WaitForMultipleObjects(uint count, IntPtr[] handles, bool waitAll, uint ms);
+        [DllImport("kernel32.dll", SetLastError=true)]
+        private static extern bool CloseHandle(IntPtr h);
+        [DllImport("kernel32.dll", SetLastError=true)]
+        private static extern IntPtr VirtualAlloc(IntPtr addr, UIntPtr size, uint allocType, uint protect);
+        [DllImport("kernel32.dll", SetLastError=true)]
+        private static extern bool VirtualFree(IntPtr addr, UIntPtr size, uint freeType);
+        [DllImport("kernel32.dll", SetLastError=true)]
+        private static extern bool QueryPerformanceCounter(out long value);
+        [DllImport("kernel32.dll", SetLastError=true)]
+        private static extern bool QueryPerformanceFrequency(out long value);
+        [DllImport("kernel32.dll", SetLastError=true)]
+        private static extern bool GetFileInformationByHandleEx(IntPtr h, int infoClass, IntPtr info, uint size);
+
+        private static readonly IntPtr INVALID = new IntPtr(-1);
+
+        // FILE_STORAGE_INFO (FILE_INFO_BY_HANDLE_CLASS.FileStorageInfo = 16): first two ULONGs are
+        // LogicalBytesPerSector and PhysicalBytesPerSector. The answer is sanity-checked here, so a
+        // wrong class id or an unsupported filesystem can only yield 0 ("unknown"), never a value
+        // that would relax the caller's alignment.
+        public static long QueryPhysicalSectorBytes(string path) {
+            IntPtr h = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, IntPtr.Zero,
+                                   OPEN_EXISTING, 0, IntPtr.Zero);
+            if (h == INVALID) { return 0; }
+            IntPtr buf = Marshal.AllocHGlobal(64);
+            try {
+                for (int i = 0; i < 64; i++) { Marshal.WriteByte(buf, i, 0); }
+                if (!GetFileInformationByHandleEx(h, 16, buf, 64)) { return 0; }
+                long logical = (long)((uint)Marshal.ReadInt32(buf, 0));
+                long physical = (long)((uint)Marshal.ReadInt32(buf, 4));
+                if (!IsSaneSectorSize(logical) || !IsSaneSectorSize(physical)) { return 0; }
+                if (physical < logical) { return 0; }
+                return physical;
+            } catch (Exception) {
+                return 0;
+            } finally {
+                Marshal.FreeHGlobal(buf);
+                CloseHandle(h);
+            }
+        }
+
+        private static bool IsSaneSectorSize(long v) {
+            if (v < 512 || v > 1048576) { return false; }
+            return ((v & (v - 1)) == 0);
+        }
+
+        // One measured window at one queue depth. The offset sequence is supplied by the caller and
+        // is identical for every point (LS 12-2 determinism).
+        public static SweepPoint RunPoint(string path, int qd, long blockBytes, long[] offsets,
+                                          int windowMs, long alignBytes) {
+            SweepPoint r = new SweepPoint();
+            r.Qd = qd; r.Ok = false; r.Bytes = 0; r.ElapsedTicks = 0; r.Reads = 0; r.Error = null;
+            if (qd < 1 || qd > 64) { r.Error = "queue depth out of range"; return r; }
+            if (offsets == null || offsets.Length == 0) { r.Error = "empty offset sequence"; return r; }
+            if (blockBytes <= 0 || blockBytes > 268435456L) { r.Error = "block size out of range"; return r; }
+            if (windowMs <= 0) { r.Error = "window duration out of range"; return r; }
+
+            IntPtr h = INVALID;
+            IntPtr bufBase = IntPtr.Zero;
+            IntPtr ovBase = IntPtr.Zero;
+            IntPtr[] events = new IntPtr[qd];
+            bool[] pending = new bool[qd];
+            int ovSize = Marshal.SizeOf(typeof(OVERLAPPED_X));
+            long bytes = 0;
+            long ticks = 0;
+            int reads = 0;
+            try {
+                long freq = 0;
+                if (!QueryPerformanceFrequency(out freq) || freq <= 0) {
+                    r.Error = "QueryPerformanceFrequency failed"; return r;
+                }
+                h = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, IntPtr.Zero,
+                                OPEN_EXISTING, FILE_FLAG_NO_BUFFERING | FILE_FLAG_OVERLAPPED, IntPtr.Zero);
+                if (h == INVALID) {
+                    r.Error = "CreateFile(NO_BUFFERING|OVERLAPPED) failed gle=" + Marshal.GetLastWin32Error();
+                    return r;
+                }
+                bufBase = VirtualAlloc(IntPtr.Zero, new UIntPtr((ulong)blockBytes * (ulong)qd),
+                                       MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+                if (bufBase == IntPtr.Zero) {
+                    r.Error = "VirtualAlloc failed gle=" + Marshal.GetLastWin32Error(); return r;
+                }
+                if (alignBytes > 0 && (bufBase.ToInt64() % alignBytes) != 0) {
+                    r.Error = "read buffer is not aligned to the physical sector size"; return r;
+                }
+                ovBase = Marshal.AllocHGlobal(ovSize * qd);
+                for (int i = 0; i < ovSize * qd; i++) { Marshal.WriteByte(ovBase, i, 0); }
+                for (int i = 0; i < qd; i++) {
+                    events[i] = CreateEventW(IntPtr.Zero, true, false, null);
+                    if (events[i] == IntPtr.Zero) {
+                        r.Error = "CreateEvent failed gle=" + Marshal.GetLastWin32Error(); return r;
+                    }
+                }
+
+                string err = null;
+                int idx = 0;
+                // Fill the queue first. This ramp is NOT part of the measured window (LS 12-2).
+                for (int i = 0; i < qd; i++) {
+                    err = Issue(h, ovBase, ovSize, bufBase, blockBytes, events, pending, i,
+                                offsets[idx % offsets.Length]);
+                    idx++;
+                    if (err != null) { break; }
+                }
+
+                if (err == null) {
+                    long windowTicks = (long)((double)windowMs / 1000.0 * (double)freq);
+                    if (windowTicks < 1) { windowTicks = 1; }
+                    long t0 = 0;
+                    long tLast = 0;
+                    bool started = false;
+                    while (true) {
+                        int slot = -1;
+                        uint got = 0;
+                        err = WaitOne(h, ovBase, ovSize, events, pending, qd, out slot, out got);
+                        if (err != null) { break; }
+                        long now = 0;
+                        QueryPerformanceCounter(out now);
+                        if (!started) {
+                            // The queue is full from here on: start the clock, drop this read's bytes.
+                            started = true; t0 = now; tLast = now;
+                        } else {
+                            bytes += (long)got; reads++; tLast = now;
+                            if ((now - t0) >= windowTicks) { break; }
+                        }
+                        err = Issue(h, ovBase, ovSize, bufBase, blockBytes, events, pending, slot,
+                                    offsets[idx % offsets.Length]);
+                        idx++;
+                        if (err != null) { break; }
+                    }
+                    if (started) {
+                        ticks = (long)((double)(tLast - t0) / (double)freq * 10000000.0);
+                    }
+                }
+                r.Error = err;
+                return r;
+            } catch (Exception ex) {
+                r.Error = "sweep point threw: " + ex.Message;
+                return r;
+            } finally {
+                // Nothing may be freed while a read can still write into it. If the drain does not
+                // complete the buffers are deliberately leaked and the point is reported failed.
+                bool drained = DrainAll(events, pending, qd);
+                if (h != INVALID && h != IntPtr.Zero) { CloseHandle(h); }
+                if (drained) {
+                    if (bufBase != IntPtr.Zero) { VirtualFree(bufBase, UIntPtr.Zero, MEM_RELEASE); }
+                    if (ovBase != IntPtr.Zero) { Marshal.FreeHGlobal(ovBase); }
+                } else if (r.Error == null) {
+                    r.Error = "outstanding reads did not complete";
+                }
+                for (int i = 0; i < qd; i++) {
+                    if (events[i] != IntPtr.Zero) { CloseHandle(events[i]); }
+                }
+                r.Bytes = bytes;
+                r.Reads = reads;
+                r.ElapsedTicks = ticks;
+                r.Ok = (r.Error == null && drained && bytes > 0 && ticks > 0);
+            }
+        }
+
+        private static string Issue(IntPtr h, IntPtr ovBase, int ovSize, IntPtr bufBase, long blockBytes,
+                                    IntPtr[] events, bool[] pending, int slot, long offset) {
+            IntPtr ov = new IntPtr(ovBase.ToInt64() + (long)slot * (long)ovSize);
+            if (!ResetEvent(events[slot])) { return "ResetEvent failed gle=" + Marshal.GetLastWin32Error(); }
+            OVERLAPPED_X o = new OVERLAPPED_X();
+            o.Internal = IntPtr.Zero;
+            o.InternalHigh = IntPtr.Zero;
+            o.Offset = (uint)(offset & 0xFFFFFFFFL);
+            o.OffsetHigh = (uint)((offset >> 32) & 0xFFFFFFFFL);
+            o.hEvent = events[slot];
+            Marshal.StructureToPtr(o, ov, false);
+            IntPtr buf = new IntPtr(bufBase.ToInt64() + (long)slot * blockBytes);
+            bool ok = ReadFile(h, buf, (uint)blockBytes, IntPtr.Zero, ov);
+            if (!ok) {
+                int gle = Marshal.GetLastWin32Error();
+                if (gle != ERROR_IO_PENDING) { return "ReadFile failed gle=" + gle; }
+            }
+            pending[slot] = true;
+            return null;
+        }
+
+        private static string WaitOne(IntPtr h, IntPtr ovBase, int ovSize, IntPtr[] events, bool[] pending,
+                                      int qd, out int slot, out uint transferred) {
+            slot = -1;
+            transferred = 0;
+            int n = 0;
+            int[] map = new int[qd];
+            for (int i = 0; i < qd; i++) { if (pending[i]) { map[n] = i; n++; } }
+            if (n == 0) { return "no outstanding read to wait for"; }
+            IntPtr[] use = new IntPtr[n];
+            for (int i = 0; i < n; i++) { use[i] = events[map[i]]; }
+            uint w = WaitForMultipleObjects((uint)n, use, false, (uint)READ_WAIT_MS);
+            if (w == WAIT_TIMEOUT_CODE) { return "read did not complete within the wait limit"; }
+            if (w >= (uint)n) { return "WaitForMultipleObjects failed gle=" + Marshal.GetLastWin32Error(); }
+            slot = map[(int)w];
+            pending[slot] = false;
+            IntPtr ov = new IntPtr(ovBase.ToInt64() + (long)slot * (long)ovSize);
+            uint got = 0;
+            if (!GetOverlappedResult(h, ov, out got, false)) {
+                return "GetOverlappedResult failed gle=" + Marshal.GetLastWin32Error();
+            }
+            if (got == 0) { return "read returned zero bytes"; }
+            transferred = got;
+            return null;
+        }
+
+        private static bool DrainAll(IntPtr[] events, bool[] pending, int qd) {
+            int n = 0;
+            for (int i = 0; i < qd; i++) { if (pending[i] && events[i] != IntPtr.Zero) { n++; } }
+            if (n == 0) { return true; }
+            IntPtr[] use = new IntPtr[n];
+            int k = 0;
+            for (int i = 0; i < qd; i++) {
+                if (pending[i] && events[i] != IntPtr.Zero) { use[k] = events[i]; k++; }
+            }
+            uint w = WaitForMultipleObjects((uint)n, use, true, (uint)DRAIN_WAIT_MS);
+            if (w != 0) { return false; }
+            for (int i = 0; i < qd; i++) { pending[i] = false; }
+            return true;
+        }
+    }
+}
+'@
+}
+
+$script:JOB_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
+$script:JOBOBJECTCLASS_EXTENDED     = 9
+$script:CREATE_NEW_PROCESS_GROUP    = 0x00000200
+# LS 13-5: mandatory whenever lpEnvironment is a real pointer here - the block is UTF-16.
+$script:CREATE_UNICODE_ENVIRONMENT  = 0x00000400
+$script:STARTF_USESTDHANDLES        = 0x00000100
+$script:GENERIC_READ                = [uint32]2147483648   # 0x80000000
+$script:GENERIC_WRITE               = 0x40000000
+$script:FILE_SHARE_READ             = 0x00000001
+$script:FILE_SHARE_WRITE            = 0x00000002
+$script:FILE_SHARE_DELETE           = 0x00000004
+# Metadata-only open (WARMSTART A-4 identity probe): no data access is requested at all.
+$script:FILE_READ_ATTRIBUTES        = 0x00000080
+$script:OPEN_EXISTING               = 3
+$script:CREATE_ALWAYS               = 2
+$script:FILE_FLAG_NO_BUFFERING      = 0x20000000
+$script:FILE_FLAG_RANDOM_ACCESS     = 0x10000000
+$script:INVALID_HANDLE              = [IntPtr]::new(-1)
+$script:CTRL_BREAK_EVENT            = 1
+$script:WAIT_OBJECT_0               = 0
+$script:WAIT_TIMEOUT                = 258
+$script:STILL_ACTIVE                = [uint32]259
+$script:FILE_BEGIN                  = 0
+$script:INVALID_FILE_ATTRIBUTES     = [uint32]4294967295   # 0xFFFFFFFF
+$script:ERROR_FILE_NOT_FOUND        = 2
+$script:ERROR_PATH_NOT_FOUND        = 3
+$script:STD_INPUT_HANDLE            = -10
+
+# endregion
+
+# ============================================================================
+# region 3. OUTPUT / DIAGNOSTIC LOG / TERMINATION (LS 5, LS 8)
+# ============================================================================
+
+$script:StatusEmitted = $false
+$script:DiagPath      = $null
+$script:FailureStage  = 'fail_gate_bundle'   # classification for an unexpected internal error
+
+function Write-Line {
+    param([string] $Text = '')
+    try { [Console]::Out.WriteLine($Text) } catch { Write-Output $Text }
+}
+
+function Write-Diag {
+    param([string] $Kind, $Data)
+    $rec = [ordered]@{ ts = (Get-Date).ToUniversalTime().ToString('o'); kind = $Kind }
+    if ($null -ne $Data) { $rec['data'] = $Data }
+    if (-not $script:DiagPath) { return }
+    try {
+        $line = ($rec | ConvertTo-Json -Compress -Depth 12)
+        [System.IO.File]::AppendAllText($script:DiagPath, $line + [Environment]::NewLine,
+            (New-Object System.Text.UTF8Encoding($false)))
+    } catch { }
+}
+
+function Get-LauncherStateDir {
+    $base = $env:LOCALAPPDATA
+    if (-not $base) { $base = [System.IO.Path]::GetTempPath() }
+    return (Join-Path $base 'MoE-Direct')
+}
+
+function Initialize-DiagLog {
+    $dir = Join-Path (Get-LauncherStateDir) 'logs'
+    try {
+        if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+        $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
+        $script:DiagPath = Join-Path $dir ("launcher_{0}_{1}.jsonl" -f $stamp, $PID)
+        Write-Diag -Kind 'LAUNCH' -Data @{ pid = $PID; argv = @($MyInvocation.Line); ps = $PSVersionTable.PSVersion.ToString() }
+    } catch { $script:DiagPath = $null }
+}
+
+# The one machine-readable wire line. Written to stderr, exactly once, as the final line.
+function Write-StatusLine {
+    param([string] $Status)
+    if ($script:StatusEmitted) { return }
+    $script:StatusEmitted = $true
+    try { [Console]::Error.WriteLine($script:STATUS_LINE_PREFIX + $Status) }
+    catch { [Console]::Out.WriteLine($script:STATUS_LINE_PREFIX + $Status) }
+}
+
+# LS 11-8: the enum is for machines; this is the same verdict for the person watching the console.
+# One entry per fail_* status, each restating the meaning already fixed in LAUNCHER_SPEC 5 - no new
+# failure meaning is created here. ok / ok_smoke / cancelled_user are omitted on purpose (they are
+# self-evident and a hint there would only be noise).
+$script:STATUS_HINT = [ordered]@{
+    'fail_model_path'       = 'the model path could not be used: file missing, unsupported GGUF, or an incomplete/ambiguous shard set'
+    'fail_resource'         = 'preflight stopped the run: not enough RAM or disk space for this configuration'
+    'fail_instance_lock'    = 'another launcher instance holds the single-instance mutex or a profile/output/port lock'
+    'fail_partial_cleanup'  = 'the leftover repack outputs could not be deleted or confirmed absent'
+    'fail_repack'           = 'the repacker exited abnormally or produced no verify report'
+    'fail_custom_args'      = 'a custom value failed the type/bounds check in non-interactive mode'
+    'fail_gate_bundle'      = 'bundle integrity failed: its manifest, schema, or file set did not match the sealed bundle'
+    'fail_gate_catalog'     = 'models.json failed the catalog schema, prefetch_state or expect digest check'
+    'fail_gate_verify'      = 'the 7-item repack gate rejected the verify report or its manifest binding'
+    'fail_gate_engine_seal' = 'the engine refused to start and printed its policy gate reject line'
+    'fail_server_start'     = 'the server never reached ready: spawn, port, listener PID, health, or an early exit'
+    'fail_runtime_exit'     = 'the server exited unexpectedly after it had reached ready'
+    'fail_teardown'         = 'shutdown did not complete cleanly: signal, grace period, or a surviving child/listener'
+    'fail_smoke'            = 'a smoke assertion failed while the shutdown itself completed'
+}
+
+# LS 11-8: printed on STDOUT immediately before the wire line. stderr gains nothing - the status
+# line stays the single, final stderr line every existing consumer parses.
+function Write-StatusHint {
+    param([string] $Status)
+    if (-not $script:STATUS_HINT.Contains($Status)) { return }
+    Write-Line ('what happened : ' + [string]$script:STATUS_HINT[$Status])
+    Write-Line ('see           : README.md > Troubleshooting > ' + $Status)
+}
+
+function Get-StatusExitCode {
+    param([string] $Status)
+    if ($script:STATUS_EXIT.Contains($Status)) { return [int]$script:STATUS_EXIT[$Status] }
+    # Unreachable by construction; classify as the most conservative failure rather than
+    # emitting an out-of-enum status.
+    return 5
+}
+
+function Set-FailureStage {
+    param([string] $Status)
+    $script:FailureStage = $Status
+}
+
+# ---- R1-4 Ctrl+C / Ctrl+Break -------------------------------------------------------------
+$script:ConsoleHandlerInstalled = $false
+
+function Install-CtrlHandler {
+    try { $script:ConsoleHandlerInstalled = [MoeLauncher.CtrlHandler]::Install() }
+    catch { $script:ConsoleHandlerInstalled = $false }
+    Write-Diag -Kind 'CTRL_HANDLER' -Data @{ installed = $script:ConsoleHandlerInstalled }
+    return $script:ConsoleHandlerInstalled
+}
+
+function Test-CancelRequested {
+    try { return [bool][MoeLauncher.CtrlHandler]::Requested } catch { return $false }
+}
+
+function Clear-CancelRequest {
+    try { [MoeLauncher.CtrlHandler]::Requested = $false } catch { }
+}
+
+# Called from every pre-ready wait/prompt point: before ready, a console stop request is a plain
+# user cancellation (LS 1-8 a).
+function Assert-NotCancelledPreReady {
+    if (Test-CancelRequested) {
+        Stop-Launcher 'cancelled_user' 'console stop request received before ready'
+    }
+}
+
+# The launcher can only signal an owned process group when it actually owns a console.
+function Test-ConsoleAvailable {
+    try { return ([MoeLauncher.Native]::GetStdHandle($script:STD_INPUT_HANDLE) -ne [IntPtr]::Zero) }
+    catch { return $false }
+}
+
+# LS 11-7 a: keys pressed while the launcher was NOT reading input (identify, SSD probe, repack,
+# verify - minutes of silence) stay in the console input queue and drive the NEXT read. Measured
+# consequences: a Ctrl+C pressed during the repack is consumed by the first menu ReadKey and stops
+# the pipeline, and a stray Enter answers the three-choice menu with "start" nobody confirmed. Both
+# are removed by flushing the queue at the moment a prompt is armed.
+# Interactive consoles only: with stdin redirected (pipe, CI, the selftest harness) this is a no-op
+# and returns $false, so every non-interactive byte and every existing regression stays as it was.
+function Clear-ConsoleInputQueue {
+    try { if ([Console]::IsInputRedirected) { return $false } } catch { return $false }
+    try {
+        $h = [MoeLauncher.Native]::GetStdHandle($script:STD_INPUT_HANDLE)
+        if ($h -eq [IntPtr]::Zero -or $h -eq $script:INVALID_HANDLE) { return $false }
+        return [bool][MoeLauncher.Native]::FlushConsoleInputBuffer($h)
+    } catch { return $false }
+}
+
+# ---- V-2: the interactive serving loop's command channel ------------------------------------
+# Measured 26-08-02 (V-2, real console): [Console]::In.Peek() BLOCKS on a real console stdin until
+# the user presses Enter. The interactive serving loop polled its command channel with that Peek,
+# so between keystrokes the whole loop stood still - the autosave tick never fired (11 minutes with
+# zero autosave diagnostics), the UI-9 prefill echo printed nothing, and, worst of all, the
+# Test-ChildExited death check never ran, so a server that died was not noticed. "stop" + Enter was
+# answered instantly, which is the tell: that keystroke is what released the blocked Peek.
+# Why no test caught it: every harness child runs with stdin REDIRECTED, and on a redirected stream
+# Peek returns immediately (a byte, or -1 at EOF). The blocking form only exists on a real console.
+# The gate below therefore splits the two worlds:
+#   redirected stdin (pipe, file, CI, the selftest harness) -> 'peek', the pre-existing path, kept
+#                                                              byte for byte so no existing case moves
+#   real console -> KeyAvailable is asked FIRST, and only a key already waiting authorises a read
+#                   ('read'); with nothing waiting the answer is 'skip' and the loop keeps ticking
+# Accepted cost of 'read': the ReadLine that follows still blocks until Enter, so monitoring pauses
+# while a command is being typed. That is the deliberate trade against putting a per-key state
+# machine on the serving path; the pre-fix behaviour was that same pause with no keystroke needed.
+# Pure, so the branch table is unit-testable. $KeyAvailable is $true/$false, or $null when the
+# console could not be probed at all - which falls back to the pre-existing 'peek' path.
+function Get-ServeInputGate {
+    param([bool] $Redirected, $KeyAvailable)
+    if ($Redirected) { return 'peek' }
+    if ($KeyAvailable -isnot [bool]) { return 'peek' }
+    if ($KeyAvailable) { return 'read' }
+    return 'skip'
+}
+
+# The live probe for the two facts above. Any [Console] failure (no console handle, a host without a
+# real input buffer, ISE) is answered with the pre-existing path rather than a new throw.
+function Get-ServeInputGateLive {
+    $redirected = $true
+    try { $redirected = [bool][Console]::IsInputRedirected } catch { return 'peek' }
+    if ($redirected) { return 'peek' }
+    try { return (Get-ServeInputGate -Redirected $false -KeyAvailable ([bool][Console]::KeyAvailable)) }
+    catch { return 'peek' }
+}
+
+# One poll of the serving-loop command channel, non-blocking unless a key is already waiting.
+# Returns the trimmed lower-case command, $null when there was nothing to read, and fault=$true when
+# the read itself failed - the caller then backs off exactly as it did before this fix.
+# Known residue, deliberately not handled: a multi-line paste can leave a second line inside the
+# [Console]::In reader where KeyAvailable cannot see it. Harmless here, because the only commands
+# are stop/q/quit and the first of them already leaves the loop.
+function Read-ServeCommandLine {
+    $gate = Get-ServeInputGateLive
+    if ($gate -eq 'skip') { return @{ line = $null; fault = $false } }
+    try {
+        $raw = $null
+        if ($gate -eq 'read') { $raw = [Console]::In.ReadLine() }
+        elseif ([Console]::In.Peek() -ge 0) { $raw = [Console]::In.ReadLine() }
+        if ($null -eq $raw) { return @{ line = $null; fault = $false } }
+        return @{ line = ([string]$raw).Trim().ToLowerInvariant(); fault = $false }
+    } catch { return @{ line = $null; fault = $true } }
+}
+
+function Stop-Launcher {
+    param([string] $Status, [string] $Reason)
+    Write-Diag -Kind 'STOP' -Data @{ status = $Status; reason = $Reason }
+    throw (New-Object -TypeName 'MoeLauncher.LauncherExit' -ArgumentList $Status, $Reason)
+}
+
+# endregion
+
+# ============================================================================
+# region 4. STRICT FILE / JSON READERS (LS 3 strict parse)
+# ============================================================================
+
+function Read-FileBytesStrict {
+    param([string] $Path)
+    try {
+        $bytes = [System.IO.File]::ReadAllBytes($Path)
+        return @{ ok = $true; bytes = $bytes }
+    } catch {
+        return @{ ok = $false; reason = ("read failed: " + $_.Exception.Message) }
+    }
+}
+
+function ConvertFrom-Utf8Strict {
+    param([byte[]] $Bytes)
+    try {
+        $enc = New-Object System.Text.UTF8Encoding($false, $true)
+        $off = 0
+        if ($Bytes.Length -ge 3 -and $Bytes[0] -eq 0xEF -and $Bytes[1] -eq 0xBB -and $Bytes[2] -eq 0xBF) { $off = 3 }
+        return @{ ok = $true; text = $enc.GetString($Bytes, $off, $Bytes.Length - $off) }
+    } catch {
+        return @{ ok = $false; reason = ("utf-8 decode failed: " + $_.Exception.Message) }
+    }
+}
+
+# Never use "Get-Content -Raw | ConvertFrom-Json": encoding detection and ETS wrapping both
+# weaken the strict-parse requirement. Bytes -> explicit UTF-8 -> ConvertFrom-Json.
+function Read-JsonFileStrict {
+    param([string] $Path)
+    $b = Read-FileBytesStrict -Path $Path
+    if (-not $b.ok) { return @{ ok = $false; reason = $b.reason } }
+    $t = ConvertFrom-Utf8Strict -Bytes $b.bytes
+    if (-not $t.ok) { return @{ ok = $false; reason = $t.reason } }
+    return (ConvertFrom-JsonStrict -Text $t.text)
+}
+
+function ConvertFrom-JsonStrict {
+    param([string] $Text)
+    if ($null -eq $Text -or $Text.Trim().Length -eq 0) { return @{ ok = $false; reason = 'empty json document' } }
+    try {
+        $v = ConvertFrom-Json -InputObject $Text -ErrorAction Stop
+        if ($null -eq $v) { return @{ ok = $false; reason = 'json parsed to null' } }
+        return @{ ok = $true; value = $v }
+    } catch {
+        return @{ ok = $false; reason = ("json parse failed: " + $_.Exception.Message) }
+    }
+}
+
+function Test-JsonHas {
+    param($Obj, [string] $Name)
+    if ($null -eq $Obj) { return $false }
+    $props = $Obj.PSObject.Properties
+    if ($null -eq $props) { return $false }
+    return ($null -ne $props[$Name])
+}
+
+# Raw property read. The leading comma is required: a bare "return @()" is unrolled by PowerShell
+# into "no output" ($null), which would make an empty JSON array indistinguishable from a missing
+# key - exactly the distinction gate 5 has to make.
+function Get-JsonValue {
+    param($Obj, [string] $Name)
+    if (-not (Test-JsonHas -Obj $Obj -Name $Name)) { return $null }
+    return , ($Obj.PSObject.Properties[$Name].Value)
+}
+
+# Iteration/count accessor. Get-JsonValue deliberately returns the array as ONE pipeline object so
+# that "[] present" stays distinguishable from "key missing"; that also means @(Get-JsonValue ...)
+# would wrap it and report Count 1. Use this whenever the value is meant to be walked or counted.
+function Get-JsonArray {
+    param($Obj, [string] $Name)
+    $v = Get-JsonValue -Obj $Obj -Name $Name
+    if ($null -eq $v) { return @() }
+    if ($v -is [System.Array]) { return $v }
+    return @($v)
+}
+
+function Get-JsonKeys {
+    param($Obj)
+    if ($null -eq $Obj) { return , @() }
+    return , @($Obj.PSObject.Properties | ForEach-Object { $_.Name })
+}
+
+function Test-JsonBooleanTrue {
+    param($Value)
+    if ($Value -is [bool]) { return [bool]$Value }
+    return $false
+}
+
+function Test-JsonBoolean {
+    param($Value)
+    return ($Value -is [bool])
+}
+
+function Test-JsonNonNegativeInteger {
+    param($Value)
+    if ($Value -is [bool]) { return $false }
+    if ($Value -is [int] -or $Value -is [long] -or $Value -is [int16] -or $Value -is [byte] -or $Value -is [uint32] -or $Value -is [uint64]) {
+        return ([long]$Value -ge 0)
+    }
+    return $false
+}
+
+function Test-JsonEmptyArray {
+    param($Value)
+    if ($Value -is [System.Array]) { return (@($Value).Count -eq 0) }
+    return $false
+}
+
+function Test-JsonArray {
+    param($Value)
+    return ($Value -is [System.Array])
+}
+
+function Test-JsonNonEmptyString {
+    param($Value)
+    if ($Value -is [string]) { return ($Value.Length -gt 0) }
+    return $false
+}
+
+function Test-Sha256Hex {
+    param($Value)
+    if (-not ($Value -is [string])) { return $false }
+    if ($Value.Length -ne 64) { return $false }
+    return ($Value -match '^[0-9a-fA-F]{64}$')
+}
+
+# Atomic publish of a temp file over its final name (creates or replaces).
+function Move-FileAtomic {
+    param([string] $TempPath, [string] $FinalPath)
+    $flags = [uint32](0x1 -bor 0x8)   # MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH
+    if (-not [MoeLauncher.Native]::MoveFileExW($TempPath, $FinalPath, $flags)) {
+        throw ('atomic replace failed (GetLastError=' + [System.Runtime.InteropServices.Marshal]::GetLastWin32Error() + ')')
+    }
+}
+
+function Get-FileSha256Lower {
+    param([string] $Path)
+    try {
+        $h = Get-FileHash -LiteralPath $Path -Algorithm SHA256 -ErrorAction Stop
+        return @{ ok = $true; sha = $h.Hash.ToLowerInvariant() }
+    } catch {
+        return @{ ok = $false; reason = ("hash failed: " + $_.Exception.Message) }
+    }
+}
+
+# WARMSTART A-4 cache identity. A (path, length, mtime) triple is NOT an identity: swapping a
+# different GGUF into the same path while preserving its length and timestamp would reuse the stored
+# hash and let a foreign model's stored state pass the binding check.
+# LS 13-7 (9): the identity is the 64 bit volume serial + the 128 bit FILE_ID_INFO id, taken on ONE
+# handle together with the size and mtime. The 64 bit index of BY_HANDLE_FILE_INFORMATION is not
+# used at all: Microsoft documents it as not guaranteed unique on ReFS, which is a real shipping
+# filesystem here (a Windows 11 Dev Drive is ReFS), so it cannot decide a restore. A filesystem or
+# an OS that cannot answer gets NO cache participation - neither a hit nor a stored entry - and the
+# file is simply re-hashed on every start.
+function Get-FileIdentity {
+    param([string] $Path)
+    $h = $script:INVALID_HANDLE
+    try {
+        # FILE_READ_ATTRIBUTES only, sharing everything including delete: this probe must never
+        # disturb a file another process is reading or replacing.
+        $h = [MoeLauncher.Native]::CreateFileNoSaW($Path, [uint32]$script:FILE_READ_ATTRIBUTES,
+                 [uint32]($script:FILE_SHARE_READ -bor $script:FILE_SHARE_WRITE -bor $script:FILE_SHARE_DELETE),
+                 [IntPtr]::Zero, [uint32]$script:OPEN_EXISTING, [uint32]0, [IntPtr]::Zero)
+        if ($h -eq $script:INVALID_HANDLE -or $h -eq [IntPtr]::Zero) {
+            return @{ ok = $false; reason = ('open for identity failed (GetLastError=' +
+                          [System.Runtime.InteropServices.Marshal]::GetLastWin32Error() + ')') }
+        }
+        $ident = [MoeLauncher.Native]::QueryFileId128($h)
+        if ([string]::IsNullOrEmpty($ident)) {
+            return @{ ok = $false; reason = ('FILE_ID_INFO unavailable (GetLastError=' +
+                          [System.Runtime.InteropServices.Marshal]::GetLastWin32Error() +
+                          '); this filesystem supplies no 128 bit file id') }
+        }
+        $info = New-Object 'MoeLauncher.Native+BY_HANDLE_FILE_INFORMATION'
+        if (-not [MoeLauncher.Native]::GetFileInformationByHandle($h, [ref]$info)) {
+            return @{ ok = $false; reason = ('GetFileInformationByHandle failed (GetLastError=' +
+                          [System.Runtime.InteropServices.Marshal]::GetLastWin32Error() + ')') }
+        }
+        $size  = ([long]([uint32]$info.nFileSizeHigh)  -shl 32) -bor [long]([uint32]$info.nFileSizeLow)
+        $mtime = ([long]([uint32]$info.ftLastWriteTimeHigh) -shl 32) -bor [long]([uint32]$info.ftLastWriteTimeLow)
+        $parts = ([string]$ident).Split(':')
+        return @{ ok = $true; identity = [string]$ident; volume = [string]$parts[0]; file_id = [string]$parts[1]
+                  size = $size; mtime = $mtime }
+    } catch {
+        return @{ ok = $false; reason = ('file identity query failed: ' + $_.Exception.Message) }
+    } finally {
+        if ($h -ne $script:INVALID_HANDLE -and $h -ne [IntPtr]::Zero) { [void][MoeLauncher.Native]::CloseHandle($h) }
+    }
+}
+
+# endregion
+
+# ============================================================================
+# region 5. BUNDLE INTEGRITY (LS 2 first action, RS 6-2 item 2)
+# ============================================================================
+
+function Resolve-BundleRoot {
+    if ($BundleRoot) {
+        if (-not (Test-Path -LiteralPath $BundleRoot -PathType Container)) {
+            Stop-Launcher 'fail_gate_bundle' ("bundle root not found: " + $BundleRoot)
+        }
+        return (Resolve-Path -LiteralPath $BundleRoot).ProviderPath
+    }
+    return (Split-Path -Parent $PSCommandPath)
+}
+
+function Assert-BundleIntegrity {
+    param([string] $Root)
+    $manifestPath = Join-Path $Root $script:BUNDLE_MANIFEST_NAME
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+        Stop-Launcher 'fail_gate_bundle' ("bundle SHA manifest missing: " + $manifestPath)
+    }
+    $r = Read-JsonFileStrict -Path $manifestPath
+    if (-not $r.ok) { Stop-Launcher 'fail_gate_bundle' ("bundle manifest unreadable - " + $r.reason) }
+    $m = $r.value
+
+    $ver = Get-JsonValue -Obj $m -Name 'bundle_manifest_version'
+    if (-not (Test-JsonNonNegativeInteger $ver) -or ([long]$ver -ne $script:BUNDLE_MANIFEST_VERSION)) {
+        Stop-Launcher 'fail_gate_bundle' 'bundle_manifest_version missing or not an exact match'
+    }
+    $files = Get-JsonValue -Obj $m -Name 'files'
+    if (-not (Test-JsonArray $files) -or (@($files).Count -eq 0)) {
+        Stop-Launcher 'fail_gate_bundle' 'bundle manifest files[] missing or empty'
+    }
+
+    $listed = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    foreach ($e in @($files)) {
+        $rel = Get-JsonValue -Obj $e -Name 'path'
+        $sha = Get-JsonValue -Obj $e -Name 'sha256'
+        if (-not (Test-JsonNonEmptyString $rel)) { Stop-Launcher 'fail_gate_bundle' 'bundle manifest entry without path' }
+        if (-not (Test-Sha256Hex $sha))          { Stop-Launcher 'fail_gate_bundle' ("bundle manifest entry sha256 invalid: " + $rel) }
+        if ($rel.Contains('..'))                 { Stop-Launcher 'fail_gate_bundle' ("bundle manifest path escapes root: " + $rel) }
+        $abs = Join-Path $Root $rel
+        if (-not (Test-Path -LiteralPath $abs -PathType Leaf)) {
+            Stop-Launcher 'fail_gate_bundle' ("bundle file listed but missing: " + $rel)
+        }
+        $h = Get-FileSha256Lower -Path $abs
+        if (-not $h.ok) { Stop-Launcher 'fail_gate_bundle' ("bundle file hash failed: " + $rel + " - " + $h.reason) }
+        if ($h.sha -ne $sha.ToLowerInvariant()) {
+            Stop-Launcher 'fail_gate_bundle' ("bundle hash mismatch: " + $rel)
+        }
+        [void]$listed.Add(($rel -replace '/', '\'))
+    }
+
+    # Both directions: an unlisted payload file inside the bundle is also a manifest mismatch.
+    $ignore = @($script:BUNDLE_MANIFEST_NAME)
+    $extra = @()
+    foreach ($f in @(Get-ChildItem -LiteralPath $Root -Recurse -File -ErrorAction SilentlyContinue)) {
+        $rel = $f.FullName.Substring($Root.Length).TrimStart('\')
+        if ($ignore -contains $rel) { continue }
+        if (-not $listed.Contains($rel)) { $extra += $rel }
+    }
+    if ($extra.Count -gt 0) {
+        Stop-Launcher 'fail_gate_bundle' ("unlisted files inside bundle: " + ($extra -join ', '))
+    }
+
+    Write-Diag -Kind 'BUNDLE_OK' -Data @{ root = $Root; files = @($files).Count }
+    Write-Line ("[bundle] SHA manifest verified: {0} file(s)" -f @($files).Count)
+}
+
+# endregion
+
+# ============================================================================
+# region 6. CATALOG (models.json) - strict parse, deny-by-default (LS 1-2, RS 4)
+# ============================================================================
+
+$script:CATALOG_TOP_KEYS = @('catalog_schema_version', 'source_tag', 'runtime', 'profiles')
+$script:CATALOG_RUNTIME_KEYS = @('server_exe', 'repacker_exe', 'repacker_argv', 'expects_dir', 'webui')
+$script:CATALOG_PROFILE_KEYS = @(
+    'profile_id', 'display_name', 'hf_repo', 'hf_revision', 'routed_scope',
+    'expect_file', 'expect_sha256', 'identify', 'min_budget_mb', 'prefetch_state',
+    'prefetch', 'gates', 'reference_measurements', 'allowlist_bounds', 'defaults')
+# LS OA-1 (M1). Part of the profile schema - deny-by-default still rejects any key outside the two
+# lists - but ABSENT is a legal state that means exactly the same thing as an empty array: no source
+# pin was recorded for this profile. It is optional rather than mandatory for one reason: the shipped
+# catalog does not carry the digests yet (collecting them means hashing the reference models, a
+# separate task), and a mandatory key would have made every shipped profile fail its own catalog
+# gate. Unpinned is never silently upgraded - it is surfaced as model-pin(unpinned) / unvalidated and
+# it self-heals the moment the digests land.
+$script:CATALOG_PROFILE_OPTIONAL_KEYS = @('source_shards_sha256')
+$script:CATALOG_IDENTIFY_KEYS = @('arch', 'n_layer', 'n_expert', 'n_expert_used')
+$script:CATALOG_BOUND_KEYS = @('port', 'ctx', 'threads', 'budget_mb', 'qd')
+# LS 1-9: every condition column must be present, otherwise the number is hidden as [unmeasured].
+$script:MEASUREMENT_COLUMNS = @('model', 'tier', 'machine_storage', 'budget_qd_prefetch', 'workload_window', 'observed_tok_s')
+
+function Deny-UnknownKeys {
+    param($Obj, [string[]] $Allowed, [string] $Where, [string[]] $Optional = @())
+    foreach ($k in (Get-JsonKeys -Obj $Obj)) {
+        if ($Allowed -notcontains $k -and $Optional -notcontains $k) {
+            Stop-Launcher 'fail_gate_catalog' ("unknown key '" + $k + "' in " + $Where + " (deny-by-default)")
+        }
+    }
+    foreach ($k in $Allowed) {
+        if (-not (Test-JsonHas -Obj $Obj -Name $k)) {
+            Stop-Launcher 'fail_gate_catalog' ("required key '" + $k + "' missing in " + $Where)
+        }
+    }
+}
+
+function Read-Catalog {
+    param([string] $Root)
+    $path = Join-Path $Root $script:CATALOG_FILE_NAME
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        Stop-Launcher 'fail_gate_catalog' ("catalog missing: " + $path)
+    }
+    $r = Read-JsonFileStrict -Path $path
+    if (-not $r.ok) { Stop-Launcher 'fail_gate_catalog' ("catalog unreadable - " + $r.reason) }
+    $c = $r.value
+
+    Deny-UnknownKeys -Obj $c -Allowed $script:CATALOG_TOP_KEYS -Where 'models.json'
+    $sv = Get-JsonValue -Obj $c -Name 'catalog_schema_version'
+    if (-not (Test-JsonNonNegativeInteger $sv) -or ([long]$sv -ne $script:CATALOG_SCHEMA_VERSION)) {
+        Stop-Launcher 'fail_gate_catalog' 'catalog_schema_version is not an exact match'
+    }
+    if (-not (Test-JsonNonEmptyString (Get-JsonValue -Obj $c -Name 'source_tag'))) {
+        Stop-Launcher 'fail_gate_catalog' 'source_tag missing'
+    }
+
+    $rt = Get-JsonValue -Obj $c -Name 'runtime'
+    Deny-UnknownKeys -Obj $rt -Allowed $script:CATALOG_RUNTIME_KEYS -Where 'runtime'
+    foreach ($k in @('server_exe', 'repacker_exe', 'expects_dir')) {
+        if (-not (Test-JsonNonEmptyString (Get-JsonValue -Obj $rt -Name $k))) {
+            Stop-Launcher 'fail_gate_catalog' ("runtime." + $k + " must be a non-empty string")
+        }
+    }
+    if (-not (Test-JsonArray (Get-JsonValue -Obj $rt -Name 'repacker_argv'))) {
+        Stop-Launcher 'fail_gate_catalog' 'runtime.repacker_argv must be an array'
+    }
+    if (-not (Test-JsonBoolean (Get-JsonValue -Obj $rt -Name 'webui'))) {
+        Stop-Launcher 'fail_gate_catalog' 'runtime.webui must be a JSON boolean'
+    }
+
+    $profiles = Get-JsonValue -Obj $c -Name 'profiles'
+    if (-not (Test-JsonArray $profiles) -or (@($profiles).Count -eq 0)) {
+        Stop-Launcher 'fail_gate_catalog' 'profiles[] missing or empty'
+    }
+    $seen = @{}
+    # LS OA-1 (M1) - Codex r1 F1: the ordered digest vector is a whole-catalog identity, so its
+    # uniqueness has to be decided over ALL profiles, once, here. The check inside
+    # Resolve-ProfileSelection only ever sees the profiles that survived the structural prefilter,
+    # so two profiles pinned to the same bytes but differing in a header field would slip past it and
+    # only collide on some future model. Two profiles claiming the same source bytes is a catalog
+    # defect either way: exactly one of them can be right, and nothing here can say which.
+    $pinSeen = @{}
+    foreach ($p in @($profiles)) {
+        Test-CatalogProfile -Profile $p -Root $Root -Runtime $rt
+        $pid0 = [string](Get-JsonValue -Obj $p -Name 'profile_id')
+        if ($seen.ContainsKey($pid0)) { Stop-Launcher 'fail_gate_catalog' ("duplicate profile_id: " + $pid0) }
+        $seen[$pid0] = $true
+        $pin = Get-ProfilePinShas -Profile $p
+        if (@($pin).Count -gt 0) {
+            $vec = (@($pin) -join '|')
+            if ($pinSeen.ContainsKey($vec)) {
+                Stop-Launcher 'fail_gate_catalog' ("profiles '" + $pinSeen[$vec] + "' and '" + $pid0 +
+                    "' are pinned to the same source digests")
+            }
+            $pinSeen[$vec] = $pid0
+        }
+    }
+
+    Write-Diag -Kind 'CATALOG_OK' -Data @{ source_tag = [string](Get-JsonValue -Obj $c -Name 'source_tag'); profiles = @($profiles).Count }
+    return $c
+}
+
+function Test-CatalogProfile {
+    param($Profile, [string] $Root, $Runtime)
+    Deny-UnknownKeys -Obj $Profile -Allowed $script:CATALOG_PROFILE_KEYS -Where 'profiles[]' `
+        -Optional $script:CATALOG_PROFILE_OPTIONAL_KEYS
+    $pid0 = Get-JsonValue -Obj $Profile -Name 'profile_id'
+    if (-not (Test-JsonNonEmptyString $pid0)) { Stop-Launcher 'fail_gate_catalog' 'profile_id must be a non-empty string' }
+    foreach ($k in @('display_name', 'hf_repo', 'hf_revision', 'expect_file')) {
+        if (-not (Test-JsonNonEmptyString (Get-JsonValue -Obj $Profile -Name $k))) {
+            Stop-Launcher 'fail_gate_catalog' ($pid0 + ": " + $k + " must be a non-empty string")
+        }
+    }
+    $scope = Get-JsonValue -Obj $Profile -Name 'routed_scope'
+    if (@('all', 'execution') -notcontains $scope) {
+        Stop-Launcher 'fail_gate_catalog' ($pid0 + ": routed_scope must be 'all' or 'execution'")
+    }
+    if (-not (Test-Sha256Hex (Get-JsonValue -Obj $Profile -Name 'expect_sha256'))) {
+        Stop-Launcher 'fail_gate_catalog' ($pid0 + ": expect_sha256 missing or not 64 hex (expect digest absent)")
+    }
+
+    $id = Get-JsonValue -Obj $Profile -Name 'identify'
+    Deny-UnknownKeys -Obj $id -Allowed $script:CATALOG_IDENTIFY_KEYS -Where ($pid0 + '.identify')
+    if (-not (Test-JsonNonEmptyString (Get-JsonValue -Obj $id -Name 'arch'))) {
+        Stop-Launcher 'fail_gate_catalog' ($pid0 + ": identify.arch must be a non-empty string")
+    }
+    foreach ($k in @('n_layer', 'n_expert', 'n_expert_used')) {
+        if (-not (Test-JsonNonNegativeInteger (Get-JsonValue -Obj $id -Name $k))) {
+            Stop-Launcher 'fail_gate_catalog' ($pid0 + ": identify." + $k + " must be a non-negative integer")
+        }
+    }
+    if (-not (Test-JsonNonNegativeInteger (Get-JsonValue -Obj $Profile -Name 'min_budget_mb'))) {
+        Stop-Launcher 'fail_gate_catalog' ($pid0 + ": min_budget_mb must be a non-negative integer")
+    }
+
+    # LS OA-1 (M1). When the key is present it must be a well formed array of lowercase-comparable
+    # 64 hex digests - one per source shard, in shard order. A malformed pin is a catalog defect, not
+    # an "unpinned" profile: silently reading a broken pin as "no pin" would turn a typo into a
+    # silent downgrade of exactly the check M1 exists to add. The ARITY check lives further down,
+    # where the expect file has been hashed and can be parsed for its source count.
+    if (Test-JsonHas -Obj $Profile -Name 'source_shards_sha256') {
+        $ss = Get-JsonValue -Obj $Profile -Name 'source_shards_sha256'
+        if (-not (Test-JsonArray $ss)) {
+            Stop-Launcher 'fail_gate_catalog' ($pid0 + ": source_shards_sha256 must be a JSON array (absent or [] = unpinned)")
+        }
+        foreach ($h in @($ss)) {
+            if (-not (Test-Sha256Hex $h)) {
+                Stop-Launcher 'fail_gate_catalog' ($pid0 + ": source_shards_sha256 entries must all be 64 hex digests")
+            }
+        }
+    }
+
+    # LS 1-2 last row: missing / unknown / wrong-typed prefetch_state = catalog gate failure.
+    $ps = Get-JsonValue -Obj $Profile -Name 'prefetch_state'
+    if (-not ($ps -is [string]) -or ($script:PREFETCH_STATES -cnotcontains $ps)) {
+        Stop-Launcher 'fail_gate_catalog' ($pid0 + ": prefetch_state must be exactly one of validated|reference-only|disabled")
+    }
+    $pf = Get-JsonValue -Obj $Profile -Name 'prefetch'
+    if ($ps -ceq 'validated') {
+        Deny-UnknownKeys -Obj $pf -Allowed @('k', 'n') -Where ($pid0 + '.prefetch')
+        foreach ($k in @('k', 'n')) {
+            if (-not (Test-JsonNonNegativeInteger (Get-JsonValue -Obj $pf -Name $k))) {
+                Stop-Launcher 'fail_gate_catalog' ($pid0 + ": prefetch." + $k + " must be a non-negative integer for validated profiles")
+            }
+        }
+    }
+
+    $g = Get-JsonValue -Obj $Profile -Name 'gates'
+    Deny-UnknownKeys -Obj $g -Allowed @('format_validated', 'performance_validated') -Where ($pid0 + '.gates')
+    foreach ($k in @('format_validated', 'performance_validated')) {
+        if (-not (Test-JsonBoolean (Get-JsonValue -Obj $g -Name $k))) {
+            Stop-Launcher 'fail_gate_catalog' ($pid0 + ": gates." + $k + " must be a JSON boolean")
+        }
+    }
+    if (-not (Test-JsonArray (Get-JsonValue -Obj $Profile -Name 'reference_measurements'))) {
+        Stop-Launcher 'fail_gate_catalog' ($pid0 + ": reference_measurements must be an array")
+    }
+
+    $ab = Get-JsonValue -Obj $Profile -Name 'allowlist_bounds'
+    Deny-UnknownKeys -Obj $ab -Allowed $script:CATALOG_BOUND_KEYS -Where ($pid0 + '.allowlist_bounds')
+    foreach ($k in $script:CATALOG_BOUND_KEYS) {
+        $b = Get-JsonValue -Obj $ab -Name $k
+        Deny-UnknownKeys -Obj $b -Allowed @('min', 'max') -Where ($pid0 + '.allowlist_bounds.' + $k)
+        foreach ($mk in @('min', 'max')) {
+            if (-not (Test-JsonNonNegativeInteger (Get-JsonValue -Obj $b -Name $mk))) {
+                Stop-Launcher 'fail_gate_catalog' ($pid0 + ": allowlist_bounds." + $k + "." + $mk + " must be a non-negative integer")
+            }
+        }
+        if ([long](Get-JsonValue -Obj $b -Name 'min') -gt [long](Get-JsonValue -Obj $b -Name 'max')) {
+            Stop-Launcher 'fail_gate_catalog' ($pid0 + ": allowlist_bounds." + $k + " min > max")
+        }
+    }
+    $qmin = [long](Get-JsonValue -Obj (Get-JsonValue -Obj $ab -Name 'qd') -Name 'min')
+    $qmax = [long](Get-JsonValue -Obj (Get-JsonValue -Obj $ab -Name 'qd') -Name 'max')
+    if ($qmin -lt $script:ENGINE_QD_MIN -or $qmax -gt $script:ENGINE_QD_MAX) {
+        Stop-Launcher 'fail_gate_catalog' ($pid0 + ": allowlist_bounds.qd outside engine range 1..63")
+    }
+    $bmin = [long](Get-JsonValue -Obj (Get-JsonValue -Obj $ab -Name 'budget_mb') -Name 'min')
+    if ($bmin -lt [long](Get-JsonValue -Obj $Profile -Name 'min_budget_mb')) {
+        Stop-Launcher 'fail_gate_catalog' ($pid0 + ": allowlist_bounds.budget_mb.min below min_budget_mb")
+    }
+
+    $d = Get-JsonValue -Obj $Profile -Name 'defaults'
+    Deny-UnknownKeys -Obj $d -Allowed @('argv', 'env') -Where ($pid0 + '.defaults')
+    $argv = Get-JsonValue -Obj $d -Name 'argv'
+    if (-not (Test-JsonArray $argv)) { Stop-Launcher 'fail_gate_catalog' ($pid0 + ": defaults.argv must be an array") }
+    foreach ($a in @($argv)) {
+        if (-not ($a -is [string])) { Stop-Launcher 'fail_gate_catalog' ($pid0 + ": defaults.argv entries must be strings") }
+    }
+
+    # Expect digest is re-hashed here so identification cannot run on an unverified expect file.
+    $expectPath = Join-Path (Join-Path $Root ([string](Get-JsonValue -Obj $Runtime -Name 'expects_dir'))) ([string](Get-JsonValue -Obj $Profile -Name 'expect_file'))
+    if (-not (Test-Path -LiteralPath $expectPath -PathType Leaf)) {
+        Stop-Launcher 'fail_gate_catalog' ($pid0 + ": expect file missing: " + $expectPath)
+    }
+    $h = Get-FileSha256Lower -Path $expectPath
+    if (-not $h.ok) { Stop-Launcher 'fail_gate_catalog' ($pid0 + ": expect hash failed - " + $h.reason) }
+    if ($h.sha -ne ([string](Get-JsonValue -Obj $Profile -Name 'expect_sha256')).ToLowerInvariant()) {
+        Stop-Launcher 'fail_gate_catalog' ($pid0 + ": expect file re-hash != catalog expect_sha256")
+    }
+
+    # LS OA-1 (M1) - Codex r1 F1: a pin's ARITY is part of its meaning, and the catalog already knows
+    # the answer. expect.sources[] is the shard count this profile describes, so a pin with a
+    # different length can never match ANY file set. Left unchecked it looks like a formatting
+    # success and then fails at comparison time, which sends a model the catalog does actually
+    # describe down the arch-template row - laundering a catalog typo into an "experimental"
+    # downgrade, the exact substitution M1's hard-fail rule exists to forbid. Checked here, where the
+    # expect has just been proven to be the approved bytes. The expect is parsed only when a pin is
+    # present, so an unpinned catalog reaches no new failure mode.
+    # Assign, then wrap: Get-JsonValue returns its value through the unary-comma idiom, so
+    # "@(Get-JsonValue ...)" would count the wrapper and report 1 for every array.
+    $pinArr = @()
+    if (Test-JsonHas -Obj $Profile -Name 'source_shards_sha256') {
+        $pinRaw = Get-JsonValue -Obj $Profile -Name 'source_shards_sha256'
+        $pinArr = @($pinRaw)
+    }
+    if ($pinArr.Count -gt 0) {
+        $er = Read-JsonFileStrict -Path $expectPath
+        if (-not $er.ok) { Stop-Launcher 'fail_gate_catalog' ($pid0 + ": expect unreadable while checking the source pin - " + $er.reason) }
+        $srcs = Get-JsonValue -Obj $er.value -Name 'sources'
+        if (-not (Test-JsonArray $srcs)) { Stop-Launcher 'fail_gate_catalog' ($pid0 + ": expect sources[] missing while checking the source pin") }
+        if (@($srcs).Count -ne $pinArr.Count) {
+            Stop-Launcher 'fail_gate_catalog' ($pid0 + ": source_shards_sha256 has " + $pinArr.Count +
+                " digest(s) but the expect describes " + @($srcs).Count + " source shard(s)")
+        }
+    }
+}
+
+function Get-CatalogProfileById {
+    param($Catalog, [string] $ProfileId)
+    foreach ($p in (Get-JsonArray -Obj $Catalog -Name 'profiles')) {
+        if ([string](Get-JsonValue -Obj $p -Name 'profile_id') -ceq $ProfileId) { return $p }
+    }
+    return $null
+}
+
+function Get-ExpectPath {
+    param([string] $Root, $Catalog, $Profile)
+    $rt = Get-JsonValue -Obj $Catalog -Name 'runtime'
+    return (Join-Path (Join-Path $Root ([string](Get-JsonValue -Obj $rt -Name 'expects_dir'))) ([string](Get-JsonValue -Obj $Profile -Name 'expect_file')))
+}
+
+# LS 1-9: catalog is the single source of truth for published numbers; any measurement whose
+# condition columns are incomplete is hidden and rendered as [unmeasured].
+function Format-ReferenceMeasurements {
+    param($Profile)
+    $rows = @()
+    foreach ($m in (Get-JsonArray -Obj $Profile -Name 'reference_measurements')) {
+        $complete = $true
+        foreach ($c in $script:MEASUREMENT_COLUMNS) {
+            if (-not (Test-JsonHas -Obj $m -Name $c)) { $complete = $false; break }
+            if ($null -eq (Get-JsonValue -Obj $m -Name $c)) { $complete = $false; break }
+        }
+        if (-not $complete) { $rows += '  [unmeasured] (condition columns incomplete - hidden by LS 1-9)'; continue }
+        $rows += ('  {0} | {1} | {2} | {3} | {4} | {5} tok/s' -f
+            [string](Get-JsonValue -Obj $m -Name 'model'),
+            [string](Get-JsonValue -Obj $m -Name 'tier'),
+            [string](Get-JsonValue -Obj $m -Name 'machine_storage'),
+            [string](Get-JsonValue -Obj $m -Name 'budget_qd_prefetch'),
+            [string](Get-JsonValue -Obj $m -Name 'workload_window'),
+            [string](Get-JsonValue -Obj $m -Name 'observed_tok_s'))
+    }
+    if ($rows.Count -eq 0) { $rows = @('  (no reference measurement rows in catalog)') }
+    return , $rows
+}
+
+# endregion
+
+# ============================================================================
+# region 7. GGUF HEADER + MULTI-SHARD IDENTIFICATION (LS 1-5)
+#   Rules ported 1:1 from bench/repack/repack_experts.py:252-322 (discover_shard_paths /
+#   load_model_shards). No new heuristic is introduced here.
+# ============================================================================
+
+$script:SPLIT_REGEX = '^(?<base>.+)-(?<idx>\d{5})-of-(?<cnt>\d{5})\.gguf$'
+
+function Get-ShardPaths {
+    param([string] $ModelPath)
+    $base = [System.IO.Path]::GetFileName($ModelPath)
+    $m = [regex]::Match($base, $script:SPLIT_REGEX)
+    if (-not $m.Success) { return @{ ok = $true; paths = @($ModelPath); split = $false; count = 1 } }
+    $dir = [System.IO.Path]::GetDirectoryName($ModelPath)
+    $prefix = $m.Groups['base'].Value
+    $cnt = [int]$m.Groups['cnt'].Value
+    if ($cnt -lt 1) { return @{ ok = $false; reason = ("split count 0: " + $base) } }
+    $paths = @()
+    for ($i = 1; $i -le $cnt; $i++) {
+        $sib = Join-Path $dir ('{0}-{1:d5}-of-{2:d5}.gguf' -f $prefix, $i, $cnt)
+        if (-not (Test-Path -LiteralPath $sib -PathType Leaf)) {
+            return @{ ok = $false; reason = ("incomplete shard set: missing sibling " + $sib + " (expected " + $cnt + " shards)") }
+        }
+        $paths += $sib
+    }
+    if ($paths.Count -ne $cnt) {
+        return @{ ok = $false; reason = ("incomplete shard set: found " + $paths.Count + " != split count " + $cnt) }
+    }
+    return @{ ok = $true; paths = $paths; split = $true; count = $cnt }
+}
+
+# GGUF value type ids (gguf.h). Arrays recurse; strings are length-prefixed.
+function Read-GgufString {
+    param($Reader)
+    $len = $Reader.ReadUInt64()
+    if ($len -gt 16777216) { throw "gguf string length out of range" }
+    $bytes = $Reader.ReadBytes([int]$len)
+    return [System.Text.Encoding]::UTF8.GetString($bytes)
+}
+
+function Skip-GgufString {
+    param($Reader)
+    $len = $Reader.ReadUInt64()
+    [void]$Reader.BaseStream.Seek([long]$len, [System.IO.SeekOrigin]::Current)
+}
+
+function Read-GgufValue {
+    param($Reader, [uint32] $Type, [bool] $Want)
+    switch ($Type) {
+        0  { $v = $Reader.ReadByte();    if ($Want) { return [long]$v } ; return $null }
+        1  { $v = $Reader.ReadSByte();   if ($Want) { return [long]$v } ; return $null }
+        2  { $v = $Reader.ReadUInt16();  if ($Want) { return [long]$v } ; return $null }
+        3  { $v = $Reader.ReadInt16();   if ($Want) { return [long]$v } ; return $null }
+        4  { $v = $Reader.ReadUInt32();  if ($Want) { return [long]$v } ; return $null }
+        5  { $v = $Reader.ReadInt32();   if ($Want) { return [long]$v } ; return $null }
+        6  { $v = $Reader.ReadSingle();  if ($Want) { return [double]$v } ; return $null }
+        7  { $v = $Reader.ReadByte();    if ($Want) { return ($v -ne 0) } ; return $null }
+        8  { if ($Want) { return (Read-GgufString -Reader $Reader) } ; Skip-GgufString -Reader $Reader; return $null }
+        9  {
+            $et = $Reader.ReadUInt32()
+            $n  = $Reader.ReadUInt64()
+            for ($i = [uint64]0; $i -lt $n; $i++) { [void](Read-GgufValue -Reader $Reader -Type $et -Want $false) }
+            return $null   # array values are not used for identification
+        }
+        10 { $v = $Reader.ReadUInt64();  if ($Want) { return [long]$v } ; return $null }
+        11 { $v = $Reader.ReadInt64();   if ($Want) { return [long]$v } ; return $null }
+        12 { $v = $Reader.ReadDouble();  if ($Want) { return [double]$v } ; return $null }
+        default { throw ("unknown gguf value type " + $Type) }
+    }
+}
+
+function Read-GgufHeader {
+    param([string] $Path, [bool] $ExpectSplitKeys = $false)
+    $fs = $null; $br = $null
+    try {
+        $fs = New-Object System.IO.FileStream($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read,
+                  [System.IO.FileShare]::ReadWrite, 1048576, [System.IO.FileOptions]::SequentialScan)
+        $br = New-Object System.IO.BinaryReader($fs)
+        $magic = $br.ReadBytes(4)
+        if ($magic.Length -ne 4 -or $magic[0] -ne 0x47 -or $magic[1] -ne 0x47 -or $magic[2] -ne 0x55 -or $magic[3] -ne 0x46) {
+            return @{ ok = $false; reason = ("GGUF magic mismatch: " + $Path) }
+        }
+        $ver = $br.ReadUInt32()
+        $nTensors = $br.ReadUInt64()
+        $nKv = $br.ReadUInt64()
+        $meta = @{}
+        # Keys that identification needs. Parsing stops as soon as all of them are seen so a
+        # 150k-entry tokenizer array is normally never walked.
+        $needSuffix = @('.block_count', '.expert_count', '.expert_used_count')
+        $needExact  = @('general.architecture', 'split.count', 'split.no', 'split.tensors.count')
+        $wantCount = 4
+        if ($ExpectSplitKeys) { $wantCount = 7 }
+        $got = 0
+        for ($i = [uint64]0; $i -lt $nKv; $i++) {
+            $key = Read-GgufString -Reader $br
+            $t = $br.ReadUInt32()
+            $want = $false
+            if ($needExact -contains $key) { $want = $true }
+            else { foreach ($s in $needSuffix) { if ($key.EndsWith($s)) { $want = $true; break } } }
+            $val = Read-GgufValue -Reader $br -Type $t -Want $want
+            if ($want) {
+                if (-not $meta.ContainsKey($key)) { $got++ }
+                $meta[$key] = $val
+            }
+            if ($got -ge $wantCount) { break }
+        }
+        return @{ ok = $true; path = $Path; gguf_version = [long]$ver; n_tensors = [long]$nTensors;
+                  meta = $meta; file_bytes = (New-Object System.IO.FileInfo($Path)).Length }
+    } catch {
+        return @{ ok = $false; reason = ("GGUF header parse failed (" + $Path + "): " + $_.Exception.Message) }
+    } finally {
+        if ($br) { $br.Dispose() }
+        if ($fs) { $fs.Dispose() }
+    }
+}
+
+function Get-ModelShardSet {
+    param([string] $ModelPath)
+    $disc = Get-ShardPaths -ModelPath $ModelPath
+    if (-not $disc.ok) { Stop-Launcher 'fail_model_path' $disc.reason }
+
+    # LS 11-6-b (UI-4): measured on the real sets this stage is the long silent one -
+    # 26.0 s for the 397B 6-shard set and 19.7 s for the 4-shard MiniMax set on this machine.
+    # Announce the stage, and for a split set report each shard as it is parsed, so a half-minute
+    # of header reading cannot read as a frozen launcher.
+    $shardCount = @($disc.paths).Count
+    Write-Line ('[identify] reading GGUF headers ({0} shard(s)); large split sets take a moment...' -f $shardCount)
+
+    $shards = @()
+    $idx = 0
+    foreach ($p in @($disc.paths)) {
+        if ($shardCount -gt 1) {
+            Write-Line ('           shard {0}/{1}: {2}' -f ($idx + 1), $shardCount, [System.IO.Path]::GetFileName($p))
+        }
+        $h = Read-GgufHeader -Path $p -ExpectSplitKeys ([bool]$disc.split)
+        if (-not $h.ok) { Stop-Launcher 'fail_model_path' ("unsupported GGUF: " + $h.reason) }
+        $h['source_index'] = $idx
+        $shards += $h
+        $idx++
+    }
+
+    # arch consistency across shards that carry the key (repack_experts.py:283-292)
+    $arch = $null
+    foreach ($h in $shards) {
+        if ($h.meta.ContainsKey('general.architecture')) {
+            $a = [string]$h.meta['general.architecture']
+            if ($null -eq $arch) { $arch = $a }
+            elseif ($a -cne $arch) {
+                Stop-Launcher 'fail_model_path' ("architecture metadata conflicts between shards: " + $arch + " vs " + $a)
+            }
+        }
+    }
+    if ($null -eq $arch) { Stop-Launcher 'fail_model_path' 'unsupported GGUF: general.architecture absent in every shard' }
+
+    # split KV cross-check, present-only (repack_experts.py:294-317)
+    $totalTensors = 0
+    foreach ($h in $shards) { $totalTensors += [long]$h.n_tensors }
+    foreach ($h in $shards) {
+        if ($h.meta.ContainsKey('split.count')) {
+            $sc = [long]$h.meta['split.count']
+            if ($sc -ne $shards.Count) {
+                Stop-Launcher 'fail_model_path' ("incomplete shard set: split.count(" + $sc + ") != discovered shards(" + $shards.Count + ")")
+            }
+        }
+        if ($h.meta.ContainsKey('split.no')) {
+            $sn = [long]$h.meta['split.no']
+            if ($sn -ne [long]$h.source_index) {
+                Stop-Launcher 'fail_model_path' ("incomplete shard set: split.no(" + $sn + ") != source_index(" + $h.source_index + ")")
+            }
+        }
+        if ($h.meta.ContainsKey('split.tensors.count')) {
+            $stc = [long]$h.meta['split.tensors.count']
+            if ($stc -ne $totalTensors) {
+                Stop-Launcher 'fail_model_path' ("incomplete shard set: split.tensors.count(" + $stc + ") != summed tensors(" + $totalTensors + ")")
+            }
+        }
+    }
+
+    $merged = @{}
+    foreach ($h in $shards) {
+        foreach ($k in $h.meta.Keys) { if (-not $merged.ContainsKey($k)) { $merged[$k] = $h.meta[$k] } }
+    }
+    $totalBytes = 0
+    foreach ($h in $shards) { $totalBytes += [long]$h.file_bytes }
+
+    Write-Diag -Kind 'SHARDS' -Data @{ count = $shards.Count; split = $disc.split; arch = $arch;
+                                       total_bytes = $totalBytes; tensors = $totalTensors }
+    return @{ shards = $shards; arch = $arch; meta = $merged; total_bytes = $totalBytes;
+              total_tensors = $totalTensors; is_split = $disc.split }
+}
+
+function Get-ArchMetaLong {
+    param($ModelSet, [string] $Suffix)
+    $key = $ModelSet.arch + $Suffix
+    if ($ModelSet.meta.ContainsKey($key)) { return [long]$ModelSet.meta[$key] }
+    return $null
+}
+
+# ---------------------------------------------------------------------------------------------
+# Source shard hashing - ONE implementation, two readers (LS OA-1 M1 + WARMSTART A-4).
+# The digests are computed once per FILE IDENTITY (volume serial + 128 bit file id + size + mtime)
+# and cached under the launcher state directory, because LS 1-5 forbids re-hashing a 400 GB model at
+# every start. The path is deliberately not part of the key and never sufficient on its own: a
+# replacement file at the same path with the same length and timestamp has a different file id and
+# is re-hashed. A file whose identity cannot be obtained takes no part in the cache at all - neither
+# a hit nor a stored entry - and is hashed on every pass instead, which costs time and can never
+# mis-bind. The caller owns its own process-level cache and its own diagnostic kinds, so the two
+# readers cannot borrow each other's latches or pollute each other's diagnostic counts.
+# ---------------------------------------------------------------------------------------------
+function Get-ShardShaCachePath { return (Join-Path (Get-LauncherStateDir) $script:KV_SHARD_CACHE_FILE) }
+
+function Get-ModelShardSha256Set {
+    param($ModelSet, [string] $NoticeTag = 'kv',
+          [string] $IdentityDiagKind = 'WARMSTART_SHARD_IDENTITY_UNAVAILABLE',
+          [string] $HashFailDiagKind = 'WARMSTART_SHARD_HASH_FAILED',
+          [string] $CacheFailDiagKind = 'WARMSTART_SHARD_CACHE_FAILED')
+    if ($null -eq $ModelSet) { return @{ ok = $false; reason = 'no identified shard set' } }
+    $cache = @{}
+    $cachePath = Get-ShardShaCachePath
+    $r = $null
+    if (Test-Path -LiteralPath $cachePath -PathType Leaf) { $r = Read-JsonFileStrict -Path $cachePath }
+    if ($null -ne $r -and $r.ok) {
+        $ver = Get-JsonValue -Obj $r.value -Name 'cache_version'
+        if ((Test-JsonNonNegativeInteger $ver) -and ([long]$ver -eq [long]$script:KV_SHARD_CACHE_VERSION)) {
+            foreach ($e in (Get-JsonArray -Obj $r.value -Name 'entries')) {
+                $k = [string](Get-JsonValue -Obj $e -Name 'key')
+                $v = [string](Get-JsonValue -Obj $e -Name 'sha256')
+                if ($k -and (Test-Sha256Hex $v)) { $cache[$k] = $v.ToLowerInvariant() }
+            }
+        }
+    }
+    $out = @()
+    $dirty = $false
+    foreach ($s in @($ModelSet.shards)) {
+        $path = [string]$s.path
+        $id = Get-FileIdentity -Path $path
+        $key = $null
+        $len = [long]0
+        if ($id.ok) {
+            # <volume serial>:<128 bit file id> | <size> | <mtime> - LS 13-7 (9).
+            $key = ('v2|' + $id.identity + '|' + $id.size + '|' + $id.mtime)
+            $len = [long]$id.size
+        } else {
+            Write-Diag -Kind $IdentityDiagKind -Data @{ path = $path; reason = $id.reason }
+            try { $len = [long](New-Object System.IO.FileInfo($path)).Length }
+            catch {
+                Write-Diag -Kind $HashFailDiagKind -Data @{ path = $path; reason = $_.Exception.Message }
+                return @{ ok = $false; reason = [string]$_.Exception.Message }
+            }
+        }
+        if ($null -ne $key -and $cache.ContainsKey($key)) { $out += $cache[$key]; continue }
+        Write-KvHashNotice -What ('hashing model shard ' + [System.IO.Path]::GetFileName($path)) -Bytes $len -Tag $NoticeTag
+        $h = Get-FileSha256Lower -Path $path
+        if (-not $h.ok) {
+            Write-Diag -Kind $HashFailDiagKind -Data @{ path = $path; reason = $h.reason }
+            return @{ ok = $false; reason = [string]$h.reason }
+        }
+        if ($null -ne $key) { $cache[$key] = $h.sha; $dirty = $true }
+        $out += $h.sha
+    }
+    if ($dirty) {
+        # Best effort: a cache that cannot be stored only costs time on the next run.
+        try {
+            $entries = @()
+            foreach ($k in $cache.Keys) { $entries += [ordered]@{ key = [string]$k; sha256 = [string]$cache[$k] } }
+            $obj = [ordered]@{ cache_version = [int]$script:KV_SHARD_CACHE_VERSION; entries = $entries }
+            $dir = Split-Path -Parent $cachePath
+            if (-not (Test-Path -LiteralPath $dir -PathType Container)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+            $tmp = $cachePath + '.tmp'
+            [System.IO.File]::WriteAllText($tmp, ($obj | ConvertTo-Json -Depth 6), (New-Object System.Text.UTF8Encoding($false)))
+            Move-FileAtomic -TempPath $tmp -FinalPath $cachePath
+        } catch {
+            Write-Diag -Kind $CacheFailDiagKind -Data @{ path = $cachePath; reason = $_.Exception.Message }
+        }
+    }
+    return @{ ok = $true; shas = @($out) }
+}
+
+# LS OA-1: the profile id becomes a directory name and a lock token, and the arch it embeds is read
+# out of a GGUF the user downloaded. That is untrusted input on a real, reachable path, so the token
+# shape is enforced before anything joins it onto a path.
+function Test-PathSafeToken {
+    param([string] $Value, [string] $Pattern)
+    if ($null -eq $Value) { return $false }
+    if ($Value -cne $Value.ToLowerInvariant()) { return $false }
+    return ($Value -cmatch $Pattern)
+}
+
+# LS OA-1 (M1): the structural fingerprint is now a PREFILTER that narrows the SHA candidates, not
+# an authority of its own. This is the loop that used to be the whole of Select-Profile; it is
+# extracted verbatim so both the pinned path and the legacy unpinned path run the exact same
+# comparison (arch + layer/expert counts + per-shard file_bytes from the profile's expect + total).
+function Get-StructuralProfileCandidates {
+    param($Catalog, $ModelSet, [string] $Root)
+    $nLayer = Get-ArchMetaLong -ModelSet $ModelSet -Suffix '.block_count'
+    $nExp   = Get-ArchMetaLong -ModelSet $ModelSet -Suffix '.expert_count'
+    $nExpU  = Get-ArchMetaLong -ModelSet $ModelSet -Suffix '.expert_used_count'
+
+    $matches = @()
+    foreach ($p in (Get-JsonArray -Obj $Catalog -Name 'profiles')) {
+        $id = Get-JsonValue -Obj $p -Name 'identify'
+        if ([string](Get-JsonValue -Obj $id -Name 'arch') -cne $ModelSet.arch) { continue }
+        if ($null -eq $nLayer -or [long](Get-JsonValue -Obj $id -Name 'n_layer') -ne $nLayer) { continue }
+        if ($null -eq $nExp   -or [long](Get-JsonValue -Obj $id -Name 'n_expert') -ne $nExp) { continue }
+        if ($null -eq $nExpU  -or [long](Get-JsonValue -Obj $id -Name 'n_expert_used') -ne $nExpU) { continue }
+
+        $expectPath = Get-ExpectPath -Root $Root -Catalog $Catalog -Profile $p
+        $er = Read-JsonFileStrict -Path $expectPath
+        if (-not $er.ok) { Stop-Launcher 'fail_gate_catalog' ("expect unreadable: " + $expectPath + " - " + $er.reason) }
+        $sources = Get-JsonValue -Obj $er.value -Name 'sources'
+        if (-not (Test-JsonArray $sources)) { Stop-Launcher 'fail_gate_catalog' ("expect sources[] missing: " + $expectPath) }
+        if (@($sources).Count -ne $ModelSet.shards.Count) { continue }
+        $ok = $true
+        $sum = 0
+        for ($i = 0; $i -lt @($sources).Count; $i++) {
+            $fb = Get-JsonValue -Obj (@($sources)[$i]) -Name 'file_bytes'
+            if (-not (Test-JsonNonNegativeInteger $fb)) { $ok = $false; break }
+            if ([long]$fb -ne [long]$ModelSet.shards[$i].file_bytes) { $ok = $false; break }
+            $sum += [long]$fb
+        }
+        if (-not $ok) { continue }
+        if ($sum -ne [long]$ModelSet.total_bytes) { continue }
+        $matches += $p
+    }
+    return , @($matches)
+}
+
+# Absent key and empty array are the SAME state: no pin recorded (LS OA-1, catalog optional key).
+function Get-ProfilePinShas {
+    param($Profile)
+    if (-not (Test-JsonHas -Obj $Profile -Name 'source_shards_sha256')) { return , @() }
+    $v = Get-JsonValue -Obj $Profile -Name 'source_shards_sha256'
+    if (-not (Test-JsonArray $v)) { return , @() }
+    $out = @()
+    foreach ($h in @($v)) { $out += ([string]$h).ToLowerInvariant() }
+    return , @($out)
+}
+
+# Ordered, exact, whole-set equality. Order matters because the pin is written per shard index and
+# the shard set is discovered in split order, so a permutation is a different file set.
+function Test-ProfilePinMatch {
+    param([string[]] $Pin, [string[]] $Actual)
+    if (@($Pin).Count -eq 0) { return $false }
+    if (@($Pin).Count -ne @($Actual).Count) { return $false }
+    for ($i = 0; $i -lt @($Pin).Count; $i++) {
+        if (([string]@($Pin)[$i]).ToLowerInvariant() -cne ([string]@($Actual)[$i]).ToLowerInvariant()) { return $false }
+    }
+    return $true
+}
+
+# LS 1-5: size comparison is over the summed shard set; the single selected file is never used.
+# 397B shard 1 is metadata-only, so per-shard size comes from expect.sources[] and never from a
+# size heuristic.
+function Select-Profile {
+    param($Catalog, $ModelSet, [string] $Root, $Candidates = $null)
+    $nLayer = Get-ArchMetaLong -ModelSet $ModelSet -Suffix '.block_count'
+    $nExp   = Get-ArchMetaLong -ModelSet $ModelSet -Suffix '.expert_count'
+    $nExpU  = Get-ArchMetaLong -ModelSet $ModelSet -Suffix '.expert_used_count'
+
+    # The prefilter moved into its own function (LS OA-1) so the pinned path can reuse it; passing a
+    # pre-computed candidate list in avoids running it twice. Behaviour with no list supplied is the
+    # v0.4 behaviour, unchanged, including the "unsupported GGUF" stop and the ambiguity prompt.
+    # The candidate list is ASSIGNED before it is wrapped. Get-StructuralProfileCandidates returns
+    # its array through the unary-comma idiom so an empty result survives as an empty array, and
+    # "@(f)" around such a call collects the wrapper itself - one element, always. Assigning first
+    # unwraps it exactly once, which is what every other reader of this idiom in the file does.
+    $matches = @()
+    if ($null -eq $Candidates) {
+        $found = Get-StructuralProfileCandidates -Catalog $Catalog -ModelSet $ModelSet -Root $Root
+        $matches = @($found)
+    } else { $matches = @($Candidates) }
+
+    if ($matches.Count -eq 0) {
+        Write-Line ''
+        Write-Line '[identify] Unsupported GGUF - stopping before any write.'
+        Write-Line ('           arch={0} n_layer={1} n_expert={2} n_expert_used={3} shards={4} bytes={5}' -f
+            $ModelSet.arch, $nLayer, $nExp, $nExpU, $ModelSet.shards.Count, $ModelSet.total_bytes)
+        Write-Line '           Please report this model at the project issue tracker (see README).'
+        Stop-Launcher 'fail_model_path' 'unsupported GGUF: no catalog profile matches the header fingerprint'
+    }
+    if ($matches.Count -gt 1) {
+        if ($NonInteractive) {
+            Stop-Launcher 'fail_model_path' 'ambiguous shard set: multiple catalog profiles match (non-interactive)'
+        }
+        Write-Line ''
+        Write-Line '[identify] Multiple catalog profiles match this model. Select one:'
+        for ($i = 0; $i -lt $matches.Count; $i++) {
+            Write-Line ('  {0}) {1}' -f ($i + 1), [string](Get-JsonValue -Obj $matches[$i] -Name 'profile_id'))
+        }
+        $ans = Read-UserLine -Prompt 'select> '
+        $n = 0
+        if (-not [int]::TryParse(([string]$ans).Trim(), [ref]$n) -or $n -lt 1 -or $n -gt $matches.Count) {
+            Stop-Launcher 'fail_model_path' 'ambiguous shard set: no valid profile selected'
+        }
+        return $matches[$n - 1]
+    }
+    return $matches[0]
+}
+
+# ---------------------------------------------------------------------------------------------
+# LS OA-1 (M1) - the identification verdict.
+#
+# Before M1 a header fingerprint alone granted a catalog profile, which meant an identically shaped
+# fine-tune (same arch, same counts, same per-shard byte sizes - a normal outcome of re-quantising
+# the same architecture) was served as the reference-validated model. The fingerprint is now a
+# prefilter over SHA candidates and the answer is one of three:
+#   pinned    the profile records source digests AND they match this file set  -> catalog path
+#   unpinned  the profile records no digests at all                            -> catalog path,
+#             surfaced as model-pin(unpinned) / unvalidated (never silently "validated")
+#   template  nothing structural matched, or every structural match had a pin that DISAGREED
+#             -> the arch-template path, which is the normal home of a file the catalog never saw
+# A pin that MATCHED is a latch: from that point the template path is closed for this run, so a
+# later catalog / expect / seal failure is a hard stop and can never be laundered into an
+# "experimental" downgrade (OPEN_ARCH_DESIGN section 0).
+# ---------------------------------------------------------------------------------------------
+$script:PinMatchedLatch = $false
+
+function Resolve-ProfileSelection {
+    param($Catalog, $ModelSet, [string] $Root, [bool] $TemplateAllowed)
+    # Assign, then wrap - see the note in Select-Profile. The same applies to every Get-ProfilePinShas
+    # result below.
+    $candsRaw = Get-StructuralProfileCandidates -Catalog $Catalog -ModelSet $ModelSet -Root $Root
+    $cands = @($candsRaw)
+    $pinned = @()
+    $unpinned = @()
+    foreach ($p in $cands) {
+        $pinOf = Get-ProfilePinShas -Profile $p
+        if (@($pinOf).Count -gt 0) { $pinned += $p } else { $unpinned += $p }
+    }
+
+    # Hashing a multi-hundred-GB model is only worth doing when the answer can change the outcome:
+    # a pin has to be checked, and the template path records the source attestation. With today's
+    # entirely unpinned catalog neither applies, so the ordinary run pays nothing.
+    $needShas = ($pinned.Count -gt 0) -or ($TemplateAllowed -and $unpinned.Count -eq 0)
+    $shas = @()
+    if ($needShas) {
+        Write-Line '[identify] hashing the source shards (once per file; the result is cached)...'
+        $r = Get-ModelShardSha256Set -ModelSet $ModelSet -NoticeTag 'identify' `
+                 -IdentityDiagKind 'IDENTIFY_SHARD_IDENTITY_UNAVAILABLE' `
+                 -HashFailDiagKind 'IDENTIFY_SHARD_HASH_FAILED' `
+                 -CacheFailDiagKind 'IDENTIFY_SHARD_CACHE_FAILED'
+        if (-not $r.ok) {
+            # Attempted only where the answer decides something, so an unanswerable hash is a
+            # refusal, not a downgrade: the alternative would be to pick a profile whose byte claim
+            # could not be checked.
+            Stop-Launcher 'fail_model_path' ('source shard hashing failed, the profile pin cannot be decided: ' + [string]$r.reason)
+        }
+        $shas = @($r.shas)
+    }
+
+    $hits = @()
+    foreach ($p in $pinned) {
+        $pinOf = Get-ProfilePinShas -Profile $p
+        if (Test-ProfilePinMatch -Pin $pinOf -Actual $shas) { $hits += $p }
+    }
+    if ($hits.Count -gt 1) {
+        Stop-Launcher 'fail_gate_catalog' ('two catalog profiles are pinned to the same source bytes: ' +
+            (($hits | ForEach-Object { [string](Get-JsonValue -Obj $_ -Name 'profile_id') }) -join ', '))
+    }
+    if ($hits.Count -eq 1) {
+        $script:PinMatchedLatch = $true
+        Write-Diag -Kind 'PROFILE_PIN' -Data @{ verdict = 'pinned'; shards = @($shas).Count
+                                                 profile = [string](Get-JsonValue -Obj $hits[0] -Name 'profile_id') }
+        return @{ kind = 'pinned'; profile = $hits[0]; shas = @($shas); candidates = @($cands) }
+    }
+
+    if ($unpinned.Count -gt 0) {
+        $prof = Select-Profile -Catalog $Catalog -ModelSet $ModelSet -Root $Root -Candidates $unpinned
+        Write-Diag -Kind 'PROFILE_PIN' -Data @{ verdict = 'unpinned'; shards = @($shas).Count
+                                                 pinned_candidates_rejected = $pinned.Count
+                                                 profile = [string](Get-JsonValue -Obj $prof -Name 'profile_id') }
+        return @{ kind = 'unpinned'; profile = $prof; shas = @($shas); candidates = @($cands) }
+    }
+
+    if (-not $TemplateAllowed) {
+        # No template entry: reproduce the v0.4 refusal exactly, including its message block. An
+        # empty candidate list is what Select-Profile turns into the "unsupported GGUF" stop.
+        [void](Select-Profile -Catalog $Catalog -ModelSet $ModelSet -Root $Root -Candidates @())
+    }
+    Write-Diag -Kind 'PROFILE_PIN' -Data @{ verdict = 'template'; shards = @($shas).Count
+                                             structural_candidates = $cands.Count
+                                             pinned_candidates_rejected = $pinned.Count }
+    return @{ kind = 'template'; profile = $null; shas = @($shas); candidates = @($cands) }
+}
+
+# endregion
+
+# ============================================================================
+# region 7b. DERIVED PROFILE / derive-plan (LS OA-1, OPEN_ARCH_DESIGN section 3)
+#
+# A model the catalog never saw has no profile, and the launcher needs one before it can size
+# anything: the budget floor is n_expert * slot_stride_max, and neither number exists until an
+# alignment query has been made against the OUTPUT volume. So the unregistered path runs a
+# WRITE-NOTHING derive-plan first, in six steps:
+#   1 parse every shard header and decide the source pin        (region 7, already done by caller)
+#   2 close the routed inventory from the frozen arch template
+#   3 query the output volume alignment -> slot_stride_max
+#   4 min_budget = ceil(n_expert * slot_stride_max / MiB)
+#   5 complete the derived profile in memory and validate it
+#   6 resource gate + user confirmation, THEN the real repack writes the derived expect
+# Steps 2 and 3 are one repacker "--plan --experimental-arch-template" call: that mode already
+# closes the inventory (repack_experts.py:840 derive_arch_template), already resolves the output
+# alignment (:1449 resolve_alignment) and already prints both plus the derived expect body, while
+# writing zero bytes (cmd_plan calls neither _append_repack_log nor write_derived_expect). Writing
+# a second GGUF/template parser here would be a second source of truth for the same question - the
+# independent cross-check belongs to the ENGINE (B axis), which regenerates the expected tensor set
+# from the live arch instead of reusing the repacker's regexes.
+# ============================================================================
+
+function Get-DerivedExpectPath {
+    param([string] $OutputDir)
+    return (Join-Path $OutputDir $script:DERIVED_EXPECT_FILE_NAME)
+}
+
+function Get-DerivedLockId {
+    param([string] $DerivedFrom)
+    return ($script:DERIVED_LOCK_ID_PREFIX + $DerivedFrom)
+}
+
+# ---------------------------------------------------------------------------------------------
+# The plan is consumed as text, so this parser is the whole contract surface between the two
+# programs and it is deliberately strict: every keyed line must appear EXACTLY once (a duplicate
+# means the capture is not a single clean plan), every number must be a number, and the derived
+# expect body is re-parsed and cross-checked field by field against the summary lines. That last
+# step is what makes a partially garbled capture fail instead of half-parsing.
+# Line formats are 1st source repack_experts.py:1376-1406 (_print_plan_summary) and :2122-2126
+# (cmd_plan). The only real drift risk is that the producer's wording changes under us; the selftest
+# case that runs the REAL repacker (E5-j) is the only thing that can detect that, which is why it
+# exists and why it may not be replaced by the mock alone.
+# ---------------------------------------------------------------------------------------------
+function ConvertFrom-TemplatePlanText {
+    param([string] $Text)
+    if ([string]::IsNullOrEmpty($Text)) { return @{ ok = $false; reason = 'the plan produced no output' } }
+
+    $reDerive = '^\[EXPERIMENTAL arch-template\] derived_from=(\S+) routed_scope=(\S+) \(template default=(\S+)\) inventory_sha256=([0-9a-f]{64})$'
+    $reTpl    = '^\[EXPERIMENTAL arch-template\] template layers=(\d+)\.\.(\d+) \((\d+)\) routed_tensors=(\d+) '
+    $reArch   = '^arch=(\S+) n_layer=(\d+) n_expert=(\d+) n_expert_used=(\d+) schema=(\S+) bias=(\S+)$'
+    $reMoe    = '^moe_layers: (\d+) entries \[(\d+)\.\.(\d+)\]'
+    $reStride = '^output alignment A=(\d+), stride\[l\] .* \(min=(\d+) max=(\d+)\), slot_stride_max=(\d+)$'
+    $reBytes  = '^expert_payload_total\(=expert_bytes\)=(\d+)$'
+    $expectHead = '--- derived expect (' + $script:DERIVED_EXPECT_FILE_NAME + ', not written in --plan) ---'
+    $planDone   = '--plan done (0 bytes written, no GPU used)'
+
+    $found = @{}
+    $lines = $Text -split "`n"
+    $expectLines = @()
+    $inExpect = $false
+    $sawDone = $false
+    foreach ($raw in $lines) {
+        $ln = ([string]$raw).TrimEnd("`r")
+        if ($ln -ceq $planDone) { $sawDone = $true; $inExpect = $false; continue }
+        if ($ln -ceq $expectHead) {
+            if ($found.ContainsKey('expect_head')) { return @{ ok = $false; reason = 'the derived expect header appears more than once' } }
+            $found['expect_head'] = $true
+            $inExpect = $true
+            continue
+        }
+        if ($inExpect) { $expectLines += $ln; continue }
+        foreach ($pair in @(@('derive', $reDerive), @('tpl', $reTpl), @('arch', $reArch),
+                            @('moe', $reMoe), @('stride', $reStride), @('bytes', $reBytes))) {
+            $m = [regex]::Match($ln, $pair[1])
+            if ($m.Success) {
+                if ($found.ContainsKey($pair[0])) {
+                    return @{ ok = $false; reason = ('the plan carries more than one "' + $pair[0] + '" line') }
+                }
+                $found[$pair[0]] = $m
+            }
+        }
+    }
+    foreach ($k in @('derive', 'tpl', 'arch', 'moe', 'stride', 'bytes')) {
+        if (-not $found.ContainsKey($k)) { return @{ ok = $false; reason = ('the plan has no "' + $k + '" line') } }
+    }
+    if (-not $found.ContainsKey('expect_head')) { return @{ ok = $false; reason = 'the plan printed no derived expect body' } }
+    if (-not $sawDone) { return @{ ok = $false; reason = 'the plan output is not terminated by its completion line (truncated capture)' } }
+
+    $derivedFrom = [string]$found['derive'].Groups[1].Value
+    $parts = $derivedFrom -split '@'
+    if ($parts.Count -ne 2) { return @{ ok = $false; reason = ('derived_from is not <template_id>@<version>: ' + $derivedFrom) } }
+    $templateId = [string]$parts[0]
+    $templateVersion = [string]$parts[1]
+    if (-not (Test-PathSafeToken -Value $templateId -Pattern $script:ARCH_TOKEN_REGEX)) {
+        return @{ ok = $false; reason = ('template id is not a safe token: ' + $templateId) }
+    }
+    if ($templateVersion -cnotmatch '^\d{1,8}$') {
+        return @{ ok = $false; reason = ('template version is not a number: ' + $templateVersion) }
+    }
+    $scope = [string]$found['derive'].Groups[2].Value
+    if (@('all', 'execution') -notcontains $scope) { return @{ ok = $false; reason = ('unknown routed scope: ' + $scope) } }
+    $arch = [string]$found['arch'].Groups[1].Value
+    if (-not (Test-PathSafeToken -Value $arch -Pattern $script:ARCH_TOKEN_REGEX)) {
+        return @{ ok = $false; reason = ('arch is not a safe token: ' + $arch) }
+    }
+    if ($arch -cne $templateId) {
+        return @{ ok = $false; reason = ('arch (' + $arch + ') and template id (' + $templateId + ') disagree') }
+    }
+
+    $out = @{
+        ok                 = $true
+        derived_from       = $derivedFrom
+        template_id        = $templateId
+        template_version   = $templateVersion
+        routed_scope       = $scope
+        inventory_sha256   = ([string]$found['derive'].Groups[4].Value).ToLowerInvariant()
+        arch               = $arch
+        n_layer            = [long]$found['arch'].Groups[2].Value
+        n_expert           = [long]$found['arch'].Groups[3].Value
+        n_expert_used      = [long]$found['arch'].Groups[4].Value
+        moe_layers         = [long]$found['moe'].Groups[1].Value
+        template_layers    = [long]$found['tpl'].Groups[3].Value
+        routed_tensors     = [long]$found['tpl'].Groups[4].Value
+        slot_stride_max    = [long]$found['stride'].Groups[4].Value
+        expert_bytes_total = [long]$found['bytes'].Groups[1].Value
+        expect_text        = ($expectLines -join "`n")
+    }
+    if ($out.n_expert -le 0)        { return @{ ok = $false; reason = 'n_expert is not positive' } }
+    if ($out.slot_stride_max -le 0) { return @{ ok = $false; reason = 'slot_stride_max is not positive' } }
+    if ($out.moe_layers -le 0)      { return @{ ok = $false; reason = 'the plan reports no MoE layers' } }
+    if ($out.moe_layers -ne $out.template_layers) {
+        return @{ ok = $false; reason = ('the template layer count (' + $out.template_layers +
+                                         ') and the layout layer count (' + $out.moe_layers + ') disagree') }
+    }
+
+    # Second read of the same facts, from the expect body the repacker is about to write. The two
+    # have to agree or the plan is not describing one consistent derivation.
+    $er = ConvertFrom-JsonStrict -Text $out.expect_text
+    if (-not $er.ok) { return @{ ok = $false; reason = ('the derived expect body is not strict JSON - ' + $er.reason) } }
+    $ex = $er.value
+    foreach ($chk in @(@('derived_from', $out.derived_from), @('template_id', $out.template_id),
+                       @('template_version', $out.template_version), @('routed_scope', $out.routed_scope),
+                       @('arch', $out.arch), @('inventory_sha256', $out.inventory_sha256))) {
+        $v = Get-JsonValue -Obj $ex -Name $chk[0]
+        if (([string]$v) -cne ([string]$chk[1])) {
+            return @{ ok = $false; reason = ('derived expect ' + $chk[0] + '=' + [string]$v +
+                                             ' disagrees with the plan summary (' + [string]$chk[1] + ')') }
+        }
+    }
+    foreach ($chk in @(@('n_layer', $out.n_layer), @('n_expert', $out.n_expert),
+                       @('n_expert_used', $out.n_expert_used), @('routed_tensors', $out.routed_tensors),
+                       @('expert_bytes_total', $out.expert_bytes_total))) {
+        $v = Get-JsonValue -Obj $ex -Name $chk[0]
+        if (-not (Test-JsonNonNegativeInteger $v) -or [long]$v -ne [long]$chk[1]) {
+            return @{ ok = $false; reason = ('derived expect ' + $chk[0] + '=' + [string]$v +
+                                             ' disagrees with the plan summary (' + [string]$chk[1] + ')') }
+        }
+    }
+    return $out
+}
+
+# ---------------------------------------------------------------------------------------------
+# The derived profile is its own schema. It does NOT borrow the catalog's, because the catalog
+# schema requires an upstream repository and revision and there is no honest value for either: a
+# derived profile describes a file on this machine that no published measurement covers.
+# ---------------------------------------------------------------------------------------------
+function New-DerivedProfile {
+    param($Parsed, [string] $OutputDir, [string[]] $Shas)
+    $digest = ([string]$Parsed.inventory_sha256).Substring(0, $script:DERIVED_DIGEST_CHARS)
+    $profileId = 'derived-' + [string]$Parsed.arch + '-' + $digest
+    $minBudget = Get-CeilMib -Bytes ([long]$Parsed.n_expert * [long]$Parsed.slot_stride_max)
+    $argv = @()
+    foreach ($a in $script:DERIVED_ARGV_SKELETON) {
+        if ([string]$a -ceq $script:DERIVED_ARGV_NCPUMOE_SLOT) { $argv += [string]$Parsed.n_layer }
+        else { $argv += [string]$a }
+    }
+    $obj = [ordered]@{
+        derived_profile_schema_version = [int]$script:DERIVED_PROFILE_SCHEMA_VERSION
+        profile_id   = $profileId
+        display_name = ([string]$Parsed.arch + ' via arch-template ' + [string]$Parsed.derived_from + ' (experimental)')
+        routed_scope = [string]$Parsed.routed_scope
+        identify     = [ordered]@{ arch = [string]$Parsed.arch; n_layer = [long]$Parsed.n_layer
+                                   n_expert = [long]$Parsed.n_expert; n_expert_used = [long]$Parsed.n_expert_used }
+        # step 4. Identical arithmetic to BUDGET_AUTOTUNE_SPEC v0.2 structural_min - the same
+        # ceil(n_expert * slot_stride_max / MiB) the autotune computes in Get-BudgetAutoCandidate -
+        # because it answers the same question: below it the engine cannot start (n_slots >= n_expert).
+        min_budget_mb  = [long]$minBudget
+        prefetch_state = 'disabled'
+        prefetch       = $null
+        # format_validated is true and it is not a courtesy: the derived path runs the SAME repack
+        # verify and the same seven-item gate. performance_validated is false and stays false - no
+        # published measurement covers a model derived on the spot.
+        gates          = [ordered]@{ format_validated = $true; performance_validated = $false }
+        reference_measurements = @()
+        allowlist_bounds = [ordered]@{
+            port      = [ordered]@{ min = [int]$script:DERIVED_BOUNDS_PORT.min;    max = [int]$script:DERIVED_BOUNDS_PORT.max }
+            ctx       = [ordered]@{ min = [int]$script:DERIVED_BOUNDS_CTX.min;     max = [int]$script:DERIVED_BOUNDS_CTX.max }
+            threads   = [ordered]@{ min = [int]$script:DERIVED_BOUNDS_THREADS.min; max = [int]$script:DERIVED_BOUNDS_THREADS.max }
+            budget_mb = [ordered]@{ min = [long]$minBudget;                        max = [long]$script:DERIVED_BOUNDS_BUDGET_MAX }
+            qd        = [ordered]@{ min = [int]$script:DERIVED_BOUNDS_QD.min;      max = [int]$script:DERIVED_BOUNDS_QD.max }
+        }
+        defaults = [ordered]@{ argv = @($argv); env = [ordered]@{} }
+        derivation = [ordered]@{
+            abi                = [string]$script:OPEN_ARCH_TEMPLATE_ABI
+            template_id        = [string]$Parsed.template_id
+            template_version   = [string]$Parsed.template_version
+            derived_from       = [string]$Parsed.derived_from
+            inventory_sha256   = [string]$Parsed.inventory_sha256
+            derivation_digest  = [string]$digest
+            slot_stride_max    = [long]$Parsed.slot_stride_max
+            moe_layers         = [long]$Parsed.moe_layers
+            routed_tensors     = [long]$Parsed.routed_tensors
+            expert_bytes_total = [long]$Parsed.expert_bytes_total
+            source_shards_sha256 = @($Shas)
+            expect_path        = (Get-DerivedExpectPath -OutputDir $OutputDir)
+            lock_id            = (Get-DerivedLockId -DerivedFrom ([string]$Parsed.derived_from))
+        }
+    }
+    # Round-tripped through JSON so the object the rest of the launcher sees is shaped exactly like a
+    # catalog profile at the ACCESSOR level (PSObject properties, JSON number and boolean types).
+    # A hashtable would not be: Get-JsonValue reads PSObject.Properties, which on a Hashtable are the
+    # hashtable's own members, not its entries.
+    $json = $obj | ConvertTo-Json -Depth 12
+    $r = ConvertFrom-JsonStrict -Text $json
+    if (-not $r.ok) { Stop-Launcher 'fail_model_path' ('the derived profile could not be materialised - ' + $r.reason) }
+    return $r.value
+}
+
+$script:DERIVED_PROFILE_KEYS = @(
+    'derived_profile_schema_version', 'profile_id', 'display_name', 'routed_scope', 'identify',
+    'min_budget_mb', 'prefetch_state', 'prefetch', 'gates', 'reference_measurements',
+    'allowlist_bounds', 'defaults', 'derivation')
+# Catalog-only keys. Their presence is not a harmless extra: hf_repo / hf_revision would assert an
+# upstream identity nobody established, and expect_file / expect_sha256 would point the seven-item
+# gate at the bundle expects directory instead of the derived expect in the output directory.
+$script:DERIVED_PROFILE_FORBIDDEN_KEYS = @('hf_repo', 'hf_revision', 'expect_file', 'expect_sha256',
+                                           'source_shards_sha256')
+
+function Test-DerivedProfile {
+    param($Profile)
+    if ($null -eq $Profile) { return @{ ok = $false; reason = 'no derived profile' } }
+    foreach ($k in $script:DERIVED_PROFILE_FORBIDDEN_KEYS) {
+        if (Test-JsonHas -Obj $Profile -Name $k) {
+            return @{ ok = $false; reason = ("a derived profile must not carry the catalog key '" + $k + "'") }
+        }
+    }
+    foreach ($k in (Get-JsonKeys -Obj $Profile)) {
+        if ($script:DERIVED_PROFILE_KEYS -notcontains $k) {
+            return @{ ok = $false; reason = ("unknown key '" + $k + "' in the derived profile (deny-by-default)") }
+        }
+    }
+    foreach ($k in $script:DERIVED_PROFILE_KEYS) {
+        if (-not (Test-JsonHas -Obj $Profile -Name $k)) {
+            return @{ ok = $false; reason = ("required key '" + $k + "' missing in the derived profile") }
+        }
+    }
+    $sv = Get-JsonValue -Obj $Profile -Name 'derived_profile_schema_version'
+    if (-not (Test-JsonNonNegativeInteger $sv) -or [long]$sv -ne [long]$script:DERIVED_PROFILE_SCHEMA_VERSION) {
+        return @{ ok = $false; reason = 'derived_profile_schema_version is not an exact match' }
+    }
+    $d = Get-JsonValue -Obj $Profile -Name 'derivation'
+    $arch = [string](Get-JsonValue -Obj (Get-JsonValue -Obj $Profile -Name 'identify') -Name 'arch')
+    if (-not (Test-PathSafeToken -Value $arch -Pattern $script:ARCH_TOKEN_REGEX)) {
+        return @{ ok = $false; reason = ('identify.arch is not a path-safe token: ' + $arch) }
+    }
+    $inv = [string](Get-JsonValue -Obj $d -Name 'inventory_sha256')
+    if (-not (Test-Sha256Hex $inv) -or $inv -cne $inv.ToLowerInvariant()) {
+        return @{ ok = $false; reason = 'derivation.inventory_sha256 is not a lowercase 64 hex digest' }
+    }
+    $pid0 = [string](Get-JsonValue -Obj $Profile -Name 'profile_id')
+    if (-not (Test-PathSafeToken -Value $pid0 -Pattern $script:DERIVED_PROFILE_ID_REGEX)) {
+        return @{ ok = $false; reason = ('profile_id is not a path-safe derived id: ' + $pid0) }
+    }
+    $expectId = 'derived-' + $arch + '-' + $inv.Substring(0, $script:DERIVED_DIGEST_CHARS)
+    if ($pid0 -cne $expectId) {
+        return @{ ok = $false; reason = ('profile_id is not the deterministic id for this derivation (expected ' + $expectId + ')') }
+    }
+    if (([string](Get-JsonValue -Obj $d -Name 'abi')) -cne [string]$script:OPEN_ARCH_TEMPLATE_ABI) {
+        return @{ ok = $false; reason = 'derivation.abi does not match this launcher OPEN_ARCH_TEMPLATE_ABI' }
+    }
+    if (([string](Get-JsonValue -Obj $d -Name 'derived_from')) -cne
+        ([string](Get-JsonValue -Obj $d -Name 'template_id') + '@' + [string](Get-JsonValue -Obj $d -Name 'template_version'))) {
+        return @{ ok = $false; reason = 'derivation.derived_from is not template_id@template_version' }
+    }
+    if (([string](Get-JsonValue -Obj $Profile -Name 'prefetch_state')) -cne 'disabled') {
+        return @{ ok = $false; reason = 'a derived profile is prefetch_state=disabled by contract' }
+    }
+    if (Test-JsonBooleanTrue (Get-JsonValue -Obj (Get-JsonValue -Obj $Profile -Name 'gates') -Name 'performance_validated')) {
+        return @{ ok = $false; reason = 'a derived profile can never claim performance_validated' }
+    }
+    $nExp   = [long](Get-JsonValue -Obj (Get-JsonValue -Obj $Profile -Name 'identify') -Name 'n_expert')
+    $nLayer = [long](Get-JsonValue -Obj (Get-JsonValue -Obj $Profile -Name 'identify') -Name 'n_layer')
+    $stride = [long](Get-JsonValue -Obj $d -Name 'slot_stride_max')
+    $layers = [long](Get-JsonValue -Obj $d -Name 'moe_layers')
+    $minB   = [long](Get-JsonValue -Obj $Profile -Name 'min_budget_mb')
+    if ($nExp -le 0 -or $stride -le 0 -or $layers -le 0) {
+        return @{ ok = $false; reason = 'the slot geometry is not positive' }
+    }
+    if ($minB -ne (Get-CeilMib -Bytes ($nExp * $stride))) {
+        return @{ ok = $false; reason = 'min_budget_mb is not ceil(n_expert * slot_stride_max / MiB)' }
+    }
+    # BUDGET_AUTOTUNE_SPEC v0.2 section 4-1 item 6: a minimum above full slot residency would make
+    # the autotune structurally impossible. For a derived profile this holds by construction
+    # (model_cap = structural_min * layers, layers >= 1) - asserted rather than assumed.
+    if ($minB -gt (Get-CeilMib -Bytes ($nExp * $layers * $stride))) {
+        return @{ ok = $false; reason = 'min_budget_mb exceeds the full slot residency (model_cap)' }
+    }
+    $bb = Get-JsonValue -Obj (Get-JsonValue -Obj $Profile -Name 'allowlist_bounds') -Name 'budget_mb'
+    if ([long](Get-JsonValue -Obj $bb -Name 'min') -ne $minB) {
+        return @{ ok = $false; reason = 'allowlist_bounds.budget_mb.min is not the derived minimum' }
+    }
+    $argv = @(Get-JsonArray -Obj (Get-JsonValue -Obj $Profile -Name 'defaults') -Name 'argv')
+    $ncm = Get-ArgvValue -Argv $argv -Flag '--n-cpu-moe'
+    if ([string]$ncm -cne [string]$nLayer) {
+        return @{ ok = $false; reason = 'defaults.argv --n-cpu-moe is not the derived layer count' }
+    }
+    if (-not (Test-LoopbackAddress -Address ([string](Get-ArgvValue -Argv $argv -Flag '--host')))) {
+        return @{ ok = $false; reason = 'defaults.argv binds a non-loopback host' }
+    }
+    return @{ ok = $true }
+}
+
+# ---------------------------------------------------------------------------------------------
+# Steps 2..5. Step 6 (the resource gate and the confirmation) stays in the main flow, where the
+# ordinary catalog path performs it too - one confirmation point, not two.
+# ---------------------------------------------------------------------------------------------
+function Invoke-DerivePlan {
+    param($Catalog, [string] $Root, [string] $ModelPath, [string] $OutputDir, $ModelSet, [string[]] $Shas)
+    if ($script:PinMatchedLatch) {
+        # A matched pin closed this door (OPEN_ARCH_DESIGN section 0: a pinned model that then fails
+        # a catalog / expect / seal check is a hard failure, never an experimental downgrade).
+        Stop-Launcher 'fail_model_path' 'internal: the arch-template path is closed after a source pin matched'
+    }
+    Write-Line ''
+    Write-Line '=== derive-plan (EXPERIMENTAL arch-template) ==='
+    Write-Line 'This model is not in the catalog. Deriving its routed inventory from the frozen'
+    Write-Line 'architecture template. Nothing is written until you confirm the repack.'
+    Write-Line '[derive] steps 2-3/6: closing the inventory and querying the output volume alignment...'
+    $plan = Invoke-Repacker -Catalog $Catalog -Root $Root -Profile $null -ModelPath $ModelPath `
+                -OutputDir $OutputDir -PlanOnly $true -ArchTemplate $true -FailStatus 'fail_model_path'
+    $parsed = ConvertFrom-TemplatePlanText -Text $plan.text
+    if (-not $parsed.ok) {
+        Stop-Launcher 'fail_model_path' ('the arch-template plan could not be read - ' + [string]$parsed.reason)
+    }
+    Write-Line ('[derive] step 4/6: min budget = ceil({0} experts x {1} B / MiB)' -f $parsed.n_expert, $parsed.slot_stride_max)
+    Write-Line '[derive] step 5/6: completing and validating the derived profile...'
+    $profile = New-DerivedProfile -Parsed $parsed -OutputDir $OutputDir -Shas $Shas
+    $v = Test-DerivedProfile -Profile $profile
+    if (-not $v.ok) { Stop-Launcher 'fail_model_path' ('the derived profile failed its own validator - ' + [string]$v.reason) }
+
+    $profileId = [string](Get-JsonValue -Obj $profile -Name 'profile_id')
+    Write-Diag -Kind 'DERIVE_PLAN' -Data @{
+        profile_id = $profileId; derived_from = $parsed.derived_from
+        inventory_sha256 = $parsed.inventory_sha256; routed_scope = $parsed.routed_scope
+        arch = $parsed.arch; n_layer = $parsed.n_layer; n_expert = $parsed.n_expert
+        moe_layers = $parsed.moe_layers; routed_tensors = $parsed.routed_tensors
+        slot_stride_max = $parsed.slot_stride_max; expert_bytes_total = $parsed.expert_bytes_total
+        min_budget_mb = [long](Get-JsonValue -Obj $profile -Name 'min_budget_mb')
+        source_shards = @($Shas).Count; abi = $script:OPEN_ARCH_TEMPLATE_ABI }
+    Write-Line ('[derive] profile {0} ({1}, routed scope {2}, {3} routed tensors)' -f
+        $profileId, $parsed.derived_from, $parsed.routed_scope, $parsed.routed_tensors)
+    return @{ profile = $profile; parsed = $parsed; plan_text = [string]$plan.text
+              min_budget_mb = [long](Get-JsonValue -Obj $profile -Name 'min_budget_mb')
+              expected_bytes = [long]$parsed.expert_bytes_total
+              lock_id = (Get-DerivedLockId -DerivedFrom ([string]$parsed.derived_from)) }
+}
+
+# ---------------------------------------------------------------------------------------------
+# LS OA-1 surface axes. Three questions that a single badge would blur:
+#   copy integrity      is about BYTES and is answered by the repack verify + the seven-item gate;
+#   inventory authority is about WHICH tensors were selected, and by whom;
+#   serving validation  is a property of the PROFILE (is this configuration a published, measured
+#                       one?), not of this run's config - the performance gate line above it already
+#                       carries the run-level answer, and the two are deliberately separate.
+# ---------------------------------------------------------------------------------------------
+function Get-SurfaceAxes {
+    param([string] $Kind, $Profile, [bool] $CopyVerified)
+    $copy = $script:AXIS_COPY_PENDING
+    if ($CopyVerified) { $copy = $script:AXIS_COPY_PASS }
+    $note = $null
+    if ($Kind -ceq 'template') {
+        $inventory = $script:AXIS_INVENTORY_TEMPLATE
+        $serving   = $script:AXIS_SERVING_UNVALIDATED
+        $note      = $script:TEMPLATE_COPY_SENTENCE
+    } elseif ($Kind -ceq 'unpinned') {
+        $inventory = $script:AXIS_INVENTORY_UNPINNED
+        $serving   = $script:AXIS_SERVING_UNVALIDATED
+        $note      = $script:UNPINNED_NOTE
+    } else {
+        $inventory = $script:AXIS_INVENTORY_PIN
+        $serving   = $script:AXIS_SERVING_UNVALIDATED
+        if (Test-JsonBooleanTrue (Get-JsonValue -Obj (Get-JsonValue -Obj $Profile -Name 'gates') -Name 'performance_validated')) {
+            $serving = $script:AXIS_SERVING_VALIDATED
+        }
+    }
+    return @{ kind = $Kind; copy_integrity = $copy; inventory_authority = $inventory
+              serving_validation = $serving; note = $note }
+}
+
+# endregion
+
+# ============================================================================
+# region 8. PREFLIGHT (LS 4, RS 3/5)
+# ============================================================================
+
+function Get-MemStatus {
+    $m = New-Object 'MoeLauncher.Native+MEMORYSTATUSEX'
+    $m.dwLength = [System.Runtime.InteropServices.Marshal]::SizeOf($m)
+    if (-not [MoeLauncher.Native]::GlobalMemoryStatusEx([ref]$m)) { return @{ ok = $false } }
+    return @{ ok = $true
+              total_phys_mb = [long]($m.ullTotalPhys / 1MB)
+              avail_phys_mb = [long]($m.ullAvailPhys / 1MB) }
+}
+
+function Get-VolumeFreeMb {
+    param([string] $Path)
+    try {
+        $root = [System.IO.Path]::GetPathRoot([System.IO.Path]::GetFullPath($Path))
+        $di = New-Object System.IO.DriveInfo($root)
+        return @{ ok = $true; free_mb = [long]($di.AvailableFreeSpace / 1MB); total_mb = [long]($di.TotalSize / 1MB); root = $root }
+    } catch {
+        return @{ ok = $false; reason = $_.Exception.Message }
+    }
+}
+
+function Get-VramInfo {
+    # LS 4: best-effort display + diagnostic log only. Never a hard-stop gate.
+    try {
+        $smi = Get-Command 'nvidia-smi' -ErrorAction SilentlyContinue
+        if ($smi) {
+            $out = & $smi.Source '--query-gpu=memory.total,memory.free' '--format=csv,noheader,nounits' 2>$null
+            if ($LASTEXITCODE -eq 0 -and $out) {
+                $parts = ([string](@($out)[0])).Split(',')
+                if ($parts.Count -ge 2) {
+                    return @{ ok = $true; source = 'nvidia-smi'; total_mb = [long]$parts[0].Trim(); free_mb = [long]$parts[1].Trim() }
+                }
+            }
+        }
+    } catch { }
+    try {
+        $c = @(Get-CimInstance Win32_VideoController -ErrorAction Stop)[0]
+        if ($c -and $c.AdapterRAM) {
+            return @{ ok = $true; source = 'Win32_VideoController'; total_mb = [long]([uint32]$c.AdapterRAM / 1MB); free_mb = $null }
+        }
+    } catch { }
+    return @{ ok = $false }
+}
+
+function Get-ExpectedRepackBytes {
+    param([string] $ExpectPath)
+    $r = Read-JsonFileStrict -Path $ExpectPath
+    if (-not $r.ok) { return $null }
+    $v = Get-JsonValue -Obj $r.value -Name 'expert_bytes_total'
+    if (-not (Test-JsonNonNegativeInteger $v)) { return $null }
+    return [long]$v
+}
+
+# LS 1-9 structure: required = budget + non-cache fixed term + safety headroom.
+# The fixed terms are [UNMEASURED-TODO], and inventing a number for them is forbidden - but the
+# contract still has one half that does not depend on them at all (see the budget-only branch
+# below), so an unset term degrades the verdict to 'unmeasured' only where it actually decides
+# anything. 'unmeasured' is non-terminal and shown honestly; it is never an approval.
+function Test-RamVerdict {
+    param([long] $BudgetMb, [long] $CtxTokens = 0)
+    $mem = Get-MemStatus
+    if (-not $mem.ok) { return @{ verdict = 'unmeasured'; reason = 'GlobalMemoryStatusEx failed' } }
+    if ($null -eq $script:RAM_DENSE_RESIDENT_MB -or $null -eq $script:RAM_KV_MB_PER_1K_CTX -or
+        $null -eq $script:RAM_SERVER_OVERHEAD_MB -or $null -eq $script:RAM_HEADROOM_MB) {
+        # Codex r1 F1. Every missing term is a NON-NEGATIVE addend, so required >= budget holds
+        # whatever they turn out to be: a budget that already exceeds available RAM is a CONFIRMED
+        # shortfall, not an unknown one, and admission decides it here instead of waving the run
+        # through with an [unmeasured] line (measured: auto 12,288 MB proceeded at 316 MB available).
+        # This is NOT "raw budget alone decides": the opposite direction is never approved from here
+        # - a budget under available still falls through to 'unmeasured'.
+        if ($BudgetMb -gt $mem.avail_phys_mb) {
+            return @{ verdict = 'insufficient'; basis = 'budget_only'
+                      reason = 'selected budget alone exceeds available RAM (the unmeasured fixed terms can only add to it)'
+                      required_mb = $BudgetMb; kv_mb = $null; avail_mb = $mem.avail_phys_mb
+                      total_mb = $mem.total_phys_mb; budget_mb = $BudgetMb; ctx = $CtxTokens }
+        }
+        return @{ verdict = 'unmeasured'; reason = 'dense/KV/server/headroom terms not yet measured (LS 9 item 1)';
+                  avail_mb = $mem.avail_phys_mb; total_mb = $mem.total_phys_mb; budget_mb = $BudgetMb; ctx = $CtxTokens }
+    }
+    # LS 1-9 structure: budget + non-cache fixed term (dense resident + KV(ctx) + server) + headroom.
+    $kv = [long]([math]::Ceiling($CtxTokens / 1024.0) * [double]$script:RAM_KV_MB_PER_1K_CTX)
+    $required = $BudgetMb + [long]$script:RAM_DENSE_RESIDENT_MB + $kv +
+                [long]$script:RAM_SERVER_OVERHEAD_MB + [long]$script:RAM_HEADROOM_MB
+    if ($required -gt $mem.avail_phys_mb) {
+        return @{ verdict = 'insufficient'; basis = 'full_formula'
+                  reason = 'budget + dense + KV(ctx) + server + headroom exceeds available RAM'
+                  required_mb = $required; kv_mb = $kv; avail_mb = $mem.avail_phys_mb }
+    }
+    return @{ verdict = 'ok'; basis = 'full_formula'; required_mb = $required; kv_mb = $kv; avail_mb = $mem.avail_phys_mb }
+}
+
+function Invoke-Preflight {
+    param([string] $OutputDir, [string] $ExpectPath, [long] $BudgetMb, [bool] $NeedsRepack,
+          [long] $CtxTokens = 0, [long] $ExpectedBytes = -1)
+
+    $vol = Get-VolumeFreeMb -Path $OutputDir
+    if (-not $vol.ok) { Stop-Launcher 'fail_resource' ("output volume query failed: " + $vol.reason) }
+    # LS OA-1: on the derived path the expect file does not exist yet on a first run - the repacker
+    # writes it only after the confirmation this preflight gates. The size therefore comes from the
+    # plan that has already been read, and it is the SAME number (expert_bytes_total) the expect
+    # carries; the file is still read on every later run, where it does exist.
+    $needBytes = $null
+    if ($ExpectedBytes -ge 0) { $needBytes = [long]$ExpectedBytes }
+    else { $needBytes = Get-ExpectedRepackBytes -ExpectPath $ExpectPath }
+    $needMb = 0
+    if ($null -ne $needBytes) { $needMb = [long]($needBytes / 1MB) }
+
+    Write-Line ''
+    Write-Line '=== preflight ==='
+    Write-Line ('  disk   : volume {0} free {1} MB' -f $vol.root, $vol.free_mb)
+    if ($NeedsRepack) {
+        Write-Line ('           repack artifact ~{0} MB' -f $needMb)
+        $residual = $vol.free_mb - $needMb
+        Write-Line ('           residual after repack ~{0} MB' -f $residual)
+        if ($null -eq $script:DISK_POST_RESERVE_MB) {
+            Write-Line '           reserve policy: [unmeasured] (LS 9 item 1) - displayed, not gated'
+        }
+        if ($needMb -gt $vol.free_mb) {
+            Stop-Launcher 'fail_resource' ("disk preflight hard stop: need " + $needMb + " MB, free " + $vol.free_mb + " MB")
+        }
+    }
+
+    $ram = Test-RamVerdict -BudgetMb $BudgetMb -CtxTokens $CtxTokens
+    if ($ram.verdict -eq 'insufficient') {
+        Write-Line ('  ram    : required {0} MB > available {1} MB (ctx {2}, basis {3})' -f $ram.required_mb, $ram.avail_mb, $CtxTokens, $ram.basis)
+        Stop-Launcher 'fail_resource' ('RAM preflight hard stop: ' + $ram.reason)
+    } elseif ($ram.verdict -eq 'unmeasured') {
+        $mem = Get-MemStatus
+        $availTxt = 'n/a'
+        if ($mem.ok) { $availTxt = [string]$mem.avail_phys_mb }
+        Write-Line ('  ram    : budget {0} MB, ctx {1} | verdict [unmeasured] ({2}) | available {3} MB' -f $BudgetMb, $CtxTokens, $ram.reason, $availTxt)
+    } else {
+        Write-Line ('  ram    : required {0} MB (incl. KV {1} MB @ ctx {2}) <= available {3} MB' -f $ram.required_mb, $ram.kv_mb, $CtxTokens, $ram.avail_mb)
+    }
+
+    $vram = Get-VramInfo
+    if ($vram.ok) {
+        $freeTxt = 'n/a'
+        if ($null -ne $vram.free_mb) { $freeTxt = [string]$vram.free_mb }
+        Write-Line ('  vram   : total {0} MB free {1} MB (source {2}) - display only, not a gate (LS 4)' -f $vram.total_mb, $freeTxt, $vram.source)
+    } else {
+        Write-Line '  vram   : not detected - display only, not a gate (LS 4)'
+    }
+
+    Write-Diag -Kind 'PREFLIGHT' -Data @{ disk = $vol; need_mb = $needMb; ram = $ram; vram = $vram; budget_mb = $BudgetMb }
+    return @{ ram = $ram; disk = $vol; vram = $vram }
+}
+
+# endregion
+
+# ============================================================================
+# region 8b. RAM BUDGET AUTOTUNE (BUDGET_AUTOTUNE_SPEC.md v0.2)
+#   With no explicit value the expert-cache budget is no longer one catalog number for every
+#   machine (a 16 GB laptop and a 64 GB desktop both got 8192): it is sized per boot from the
+#   INSTALLED RAM and the repack slot geometry. Three properties hold the rest together:
+#     - explicit wins. CLI, stored preset and interactive custom all arrive in the same override
+#       map, and any of them outranks the autotune (v0.2 section 2).
+#     - this is a DEFAULT SELECTOR, not a safety gate. Admission stays with the LS 1-9 RAM contract
+#       in Test-RamVerdict, which receives the selected value and hard-stops on its own - today for
+#       the half of the contract that is decided (budget > available), with the unmeasured fixed
+#       terms still only displayed (v0.2 section 1, "enforced scope of this build"). Available RAM
+#       is therefore never an input to the arithmetic below, and nothing here ever lowers a value
+#       dynamically to make it fit (v0.2 section 1).
+#     - nothing is silent. Every rebuild writes a BUDGET_AUTOTUNE record before the caller's
+#       EFFECTIVE record, and the decision is echoed on one banner line (v0.2 section 3).
+# ============================================================================
+
+# v0.2 section 1. RESERVE is a static selector constant calibrated on INSTALLED RAM
+# (32768 - 20480 = 12288, the (a)-axis verdict in reviews/codex_budget_final_r2.md). It is not an
+# availability guarantee and must not be re-read as one. FLOOR and LADDER_MAX bound the ladder to
+# rungs that have actually been measured: a larger machine may override explicitly, but auto never
+# walks past the last measured rung on its own.
+$script:BUDGET_RESERVE_MIB    = 20480
+$script:BUDGET_FLOOR_MIB      = 4096
+$script:BUDGET_LADDER_MAX_MIB = 12288
+
+# Banner de-duplication. Build-EffectiveConfig runs on every rebuild (preset bind, custom edit,
+# pre-spawn re-check) and the answer is normally identical, so the line is printed when the decision
+# text CHANGES rather than once per rebuild - a custom edit that changes the answer re-announces it.
+$script:BudgetBannerLast = $null
+
+# INSTALLED RAM, deliberately not the OS-visible total. GlobalMemoryStatusEx reports what the OS can
+# address (31,900 MiB on the 32 GiB reference box, firmware reservations already removed), which
+# would put the reserve arithmetic 868 MiB under the calibration point and make that same box pick
+# 11,420 instead of 12,288. GetPhysicallyInstalledSystemMemory reads the SMBIOS total instead. It is
+# allowed to fail (malformed SMBIOS tables); that is a probe failure with a reason, never a licence
+# to substitute the visible number.
+function Get-InstalledMemoryMib {
+    $kb = [uint64]0
+    try {
+        if (-not [MoeLauncher.Native]::GetPhysicallyInstalledSystemMemory([ref]$kb)) {
+            return @{ ok = $false; method = 'GetPhysicallyInstalledSystemMemory'
+                      reason = ('GetPhysicallyInstalledSystemMemory failed (GetLastError=' +
+                                [System.Runtime.InteropServices.Marshal]::GetLastWin32Error() + ')') }
+        }
+    } catch {
+        return @{ ok = $false; method = 'GetPhysicallyInstalledSystemMemory'
+                  reason = ('GetPhysicallyInstalledSystemMemory threw: ' + $_.Exception.Message) }
+    }
+    if ([uint64]$kb -eq [uint64]0) {
+        return @{ ok = $false; method = 'GetPhysicallyInstalledSystemMemory'
+                  reason = 'GetPhysicallyInstalledSystemMemory reported 0 KB' }
+    }
+    return @{ ok = $true; method = 'GetPhysicallyInstalledSystemMemory'
+              installed_mib = [long][math]::Floor([double][uint64]$kb / 1024.0) }
+}
+
+# v0.2 section 1: the model axis is SLOT geometry, not the size of experts.bin. Slots are a uniform
+# budget / slot_stride_max division, so full residency costs n_expert * (MoE layers) * stride, which
+# for qwen122 is LARGER than experts.bin itself (70.03 GiB of slots vs 65.39 GiB of payload). All
+# three numbers come from the repack manifest the verify gate has already bound to the cache key,
+# read through the strict reader region 9 already uses for the same file. Anything missing or
+# malformed leaves the geometry unavailable and the caller falls back - it never guesses a shape.
+function Get-BudgetSlotGeometry {
+    param([string] $OutputDir)
+    $path = Join-Path $OutputDir 'manifest.json'
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        return @{ ok = $false; reason = 'manifest.json not present' }
+    }
+    $r = Read-JsonFileStrict -Path $path
+    if (-not $r.ok) { return @{ ok = $false; reason = ('manifest.json unreadable - ' + $r.reason) } }
+    $layout = Get-JsonValue -Obj $r.value -Name 'layout'
+    if ($null -eq $layout) { return @{ ok = $false; reason = 'manifest.json has no layout object' } }
+    $ne = Get-JsonValue -Obj (Get-JsonValue -Obj $r.value -Name 'model') -Name 'n_expert'
+    if ((-not (Test-JsonNonNegativeInteger $ne)) -or [long]$ne -le 0) {
+        return @{ ok = $false; reason = 'manifest model.n_expert is missing or not a positive integer' }
+    }
+    $stride = Get-JsonValue -Obj $layout -Name 'slot_stride_max'
+    if ((-not (Test-JsonNonNegativeInteger $stride)) -or [long]$stride -le 0) {
+        return @{ ok = $false; reason = 'manifest layout.slot_stride_max is missing or not a positive integer' }
+    }
+    # layout.layers holds one entry per MoE layer (the repacker writes exactly the routed layers),
+    # so its length is the layer factor of full slot residency.
+    $layers = [long](@(Get-JsonArray -Obj $layout -Name 'layers').Count)
+    if ($layers -le 0) { return @{ ok = $false; reason = 'manifest layout.layers is absent or empty' } }
+    return @{ ok = $true; n_expert = [long]$ne; slot_stride_max = [long]$stride; layers = $layers }
+}
+
+# Integer ceiling in MiB. PowerShell's "/" on two longs yields a double and a [long] cast rounds it,
+# so the conversion is spelled out rather than left to the cast.
+function Get-CeilMib {
+    param([long] $Bytes)
+    return [long][math]::Ceiling([double]$Bytes / 1048576.0)
+}
+
+# v0.2 section 1, pure arithmetic - no I/O, no clock, nothing global but the three constants - so
+# the selftest drives every boundary with synthetic machines and model geometries:
+#   machine_cap    = clamp(installed - RESERVE, FLOOR, LADDER_MAX)
+#   structural_min = ceil(n_expert * stride / MiB)            engine start condition n_slots >= n_expert
+#   supported_min  = max(structural_min, profile.min_budget_mb)
+#   model_cap      = ceil(n_expert * layers * stride / MiB)   full slot residency
+#   candidate      = min(machine_cap, model_cap)              below supported_min: auto is impossible
+# A tie gives the limiting axis to machine_cap: at equal values the machine is the constraint that
+# survives a change of model.
+function Get-BudgetAutoCandidate {
+    param([long] $InstalledMib, [long] $NExpert, [long] $Layers, [long] $SlotStrideMax,
+          [long] $ProfileMinBudgetMb)
+    $machineCap = $InstalledMib - [long]$script:BUDGET_RESERVE_MIB
+    if ($machineCap -lt [long]$script:BUDGET_FLOOR_MIB)      { $machineCap = [long]$script:BUDGET_FLOOR_MIB }
+    if ($machineCap -gt [long]$script:BUDGET_LADDER_MAX_MIB) { $machineCap = [long]$script:BUDGET_LADDER_MAX_MIB }
+    $structuralMin = Get-CeilMib -Bytes ($NExpert * $SlotStrideMax)
+    $supportedMin = $structuralMin
+    if ($ProfileMinBudgetMb -gt $supportedMin) { $supportedMin = $ProfileMinBudgetMb }
+    $modelCap = Get-CeilMib -Bytes ($NExpert * $Layers * $SlotStrideMax)
+    $candidate = $machineCap
+    $axis = 'machine_cap'
+    if ($modelCap -lt $machineCap) { $candidate = $modelCap; $axis = 'model_cap' }
+    return @{ machine_cap = $machineCap; model_cap = $modelCap
+              structural_min = $structuralMin; supported_min = $supportedMin
+              candidate = $candidate; limiting_axis = $axis; ok = ($candidate -ge $supportedMin) }
+}
+
+# v0.2 sections 2-3. One decision point for the whole launcher: the priority ladder, the three
+# fallbacks, the impossible-auto branch, the diagnostic record and the banner all live here. The
+# caller passes the probe results in rather than having them read behind its back - the same shape
+# as Resolve-EffectivePrefetch taking -ProbeOk - which is what lets the selftest drive every row.
+function Resolve-BudgetAutotune {
+    param($Profile, $Overrides, $Installed, $Geometry, $Mem, [bool] $ReproMode, [bool] $PerfCustom)
+
+    $profileMin = [long](Get-JsonValue -Obj $Profile -Name 'min_budget_mb')
+    $calc = $null
+    if ($Installed.ok -and $Geometry.ok) {
+        $calc = Get-BudgetAutoCandidate -InstalledMib ([long]$Installed.installed_mib) `
+                    -NExpert ([long]$Geometry.n_expert) -Layers ([long]$Geometry.layers) `
+                    -SlotStrideMax ([long]$Geometry.slot_stride_max) -ProfileMinBudgetMb $profileMin
+    }
+
+    # The priority ladder (v0.2 section 2). MOE_DIRECT_BUDGET_MB is NOT an input channel - it is the
+    # launcher's own output wire to the child (:3539) - so an ambient value cannot reach this
+    # decision. Every fallback lands on the PROFILE minimum, never on a global 8192.
+    $budget = $profileMin
+    if ($null -ne $Overrides -and $Overrides.ContainsKey('budget_mb')) {
+        $source = 'explicit'
+        $budget = [long]$Overrides['budget_mb']
+        $reason = 'explicit budget (CLI / stored preset / interactive custom) outranks the autotune'
+    } elseif ($ReproMode) {
+        $source = 'repro_fallback'
+        $reason = '-Repro forbids the autotune; profile min_budget_mb is the reproducible fallback'
+    } elseif (-not $Installed.ok) {
+        $source = 'probe_failed_fallback'
+        $reason = ('autotune off, installed-RAM probe failed: ' + [string]$Installed.reason)
+    } elseif (-not $Geometry.ok) {
+        $source = 'geometry_unavailable_fallback'
+        $reason = ('autotune off, slot geometry unavailable: ' + [string]$Geometry.reason)
+    } elseif (-not $calc.ok) {
+        # Not a degraded path: below the supported minimum the engine cannot start at all
+        # (n_slots >= n_expert), so silently serving a smaller number would be a lie.
+        $source = 'fail_resource'
+        $budget = 0
+        $reason = ('candidate ' + $calc.candidate + ' MB is below the supported minimum ' +
+                   $calc.supported_min + ' MB (structural_min ' + $calc.structural_min +
+                   ' MB, profile min_budget_mb ' + $profileMin + ' MB; machine_cap ' + $calc.machine_cap +
+                   ' MB from installed ' + $Installed.installed_mib + ' MiB, model_cap ' + $calc.model_cap + ' MB)')
+    } else {
+        $source = 'auto'
+        $budget = [long]$calc.candidate
+        $reason = ('installed ' + $Installed.installed_mib + ' MiB - reserve ' + $script:BUDGET_RESERVE_MIB +
+                   ' -> machine_cap ' + $calc.machine_cap + ' MB, model_cap ' + $calc.model_cap +
+                   ' MB, supported_min ' + $calc.supported_min + ' MB; limiting axis ' + $calc.limiting_axis)
+    }
+
+    # v0.2 section 2 provenance: an auto value that is not the catalog's measured budget is not the
+    # measured configuration any more, so it demotes the performance axis exactly like a custom edit
+    # does. An explicit value already demotes through the existing custom-provenance rule.
+    $unmeasured = (($source -ceq 'auto') -and ($budget -ne $profileMin))
+    # Codex r1 F2 + r2 F2-b. performance_identity is this record's claim that the run is STILL on
+    # the catalog's measured operating point, so it has to answer the same question the EFFECTIVE
+    # record answers with performance_gate. That gate demotes on the WHOLE performance provenance -
+    # Test-CustomProvenance over the same overrides map, where every key except the PERF_NEUTRAL
+    # list ('warmstart') counts: port, ctx, threads, qd, warmup, autosave all make the run custom,
+    # not just the budget key. A source-only formula answered 'true' for a valid '-Repro -Port <n>'
+    # run while EFFECTIVE said custom/[unmeasured] (r2 F2-b). So the caller passes that one
+    # provenance answer in as -PerfCustom (Build-EffectiveConfig computes it from the same
+    # overrides map the EFFECTIVE writer uses), a fail_resource row still never claims the
+    # identity (it serves no budget at all), and 'explicit' no longer needs a clause of its own -
+    # a budget_mb override is never performance-neutral, so it already arrives as PerfCustom.
+    $identity = ((-not $PerfCustom) -and ($source -cne 'fail_resource') -and ($budget -eq $profileMin))
+
+    $rec = [ordered]@{
+        source                = $source
+        reason                = $reason
+        budget_mb             = $(if ($source -ceq 'fail_resource') { $null } else { [long]$budget })
+        profile_min_budget_mb = $profileMin
+        repro                 = [bool]$ReproMode
+        explicit_override     = ($null -ne $Overrides -and $Overrides.ContainsKey('budget_mb'))
+        probe_method          = [string]$Installed.method
+        probe_ok              = [bool]$Installed.ok
+        probe_error           = $(if ($Installed.ok) { $null } else { [string]$Installed.reason })
+        installed_mib         = $(if ($Installed.ok) { [long]$Installed.installed_mib } else { $null })
+        visible_mib           = $(if ($Mem -and $Mem.ok) { [long]$Mem.total_phys_mb } else { $null })
+        available_mib         = $(if ($Mem -and $Mem.ok) { [long]$Mem.avail_phys_mb } else { $null })
+        reserve_mib           = [long]$script:BUDGET_RESERVE_MIB
+        floor_mib             = [long]$script:BUDGET_FLOOR_MIB
+        ladder_max_mib        = [long]$script:BUDGET_LADDER_MAX_MIB
+        geometry_ok           = [bool]$Geometry.ok
+        geometry_error        = $(if ($Geometry.ok) { $null } else { [string]$Geometry.reason })
+        n_expert              = $(if ($Geometry.ok) { [long]$Geometry.n_expert } else { $null })
+        layers                = $(if ($Geometry.ok) { [long]$Geometry.layers } else { $null })
+        slot_stride_max       = $(if ($Geometry.ok) { [long]$Geometry.slot_stride_max } else { $null })
+        machine_cap_mb        = $(if ($null -ne $calc) { [long]$calc.machine_cap } else { $null })
+        model_cap_mb          = $(if ($null -ne $calc) { [long]$calc.model_cap } else { $null })
+        structural_min_mb     = $(if ($null -ne $calc) { [long]$calc.structural_min } else { $null })
+        supported_min_mb      = $(if ($null -ne $calc) { [long]$calc.supported_min } else { $null })
+        candidate_mb          = $(if ($null -ne $calc) { [long]$calc.candidate } else { $null })
+        limiting_axis         = $(if ($null -ne $calc) { [string]$calc.limiting_axis } else { $null })
+        performance_identity  = $identity
+        admission             = 'LS 1-9 preflight RAM contract gates the selected value: budget > available is a hard stop; the dense/KV/server/headroom terms stay [unmeasured] until they are measured. No dynamic lowering either way.'
+    }
+    # Written BEFORE the banner and before any termination, so the record exists even for the run
+    # that stops - and always ahead of the caller's EFFECTIVE record (v0.2 section 3).
+    Write-Diag -Kind 'BUDGET_AUTOTUNE' -Data $rec
+
+    if ($source -ceq 'fail_resource') {
+        $banner = ('[budget] autotune cannot serve this model on this machine - ' + $reason)
+    } else {
+        $banner = ('[budget] ' + $budget + ' MB [' + $source + '] - ' + $reason)
+    }
+    if ($banner -cne [string]$script:BudgetBannerLast) {
+        Write-Line $banner
+        $script:BudgetBannerLast = $banner
+    }
+
+    if ($source -ceq 'fail_resource') {
+        Stop-Launcher 'fail_resource' ('budget autotune: ' + $reason)
+    }
+    return @{ budget_mb = [long]$budget; source = $source; unmeasured = $unmeasured; reason = $reason }
+}
+
+# endregion
+
+# ============================================================================
+# region 9. SSD PROBE (LS 1-4) - in-script unbuffered large-block random read
+# ============================================================================
+
+function Measure-SsdRandomRead {
+    param([string] $Path, [long] $BlockBytes, [int] $Samples)
+    # FILE_FLAG_NO_BUFFERING requires sector-aligned offsets, sizes and buffer addresses, so the
+    # buffer is hand-aligned from unmanaged memory rather than a managed byte[].
+    $align = [long]$script:PROBE_SECTOR_ALIGN
+    $block = [long]([math]::Floor($BlockBytes / $align) * $align)
+    if ($block -lt $align) { $block = $align }
+
+    $h = [IntPtr]::Zero
+    $raw = [IntPtr]::Zero
+    try {
+        $fi = New-Object System.IO.FileInfo($Path)
+        if (-not $fi.Exists) { return @{ ok = $false; reason = 'probe target missing' } }
+        $size = [long]$fi.Length
+        if ($size -lt ($block * 4)) { return @{ ok = $false; reason = 'probe target smaller than 4 blocks' } }
+
+        $flags = $script:FILE_FLAG_NO_BUFFERING -bor $script:FILE_FLAG_RANDOM_ACCESS
+        $h = [MoeLauncher.Native]::CreateFileNoSaW($Path, $script:GENERIC_READ,
+                ($script:FILE_SHARE_READ -bor $script:FILE_SHARE_WRITE), [IntPtr]::Zero,
+                $script:OPEN_EXISTING, [uint32]$flags, [IntPtr]::Zero)
+        if ($h -eq $script:INVALID_HANDLE) {
+            return @{ ok = $false; reason = ("CreateFile(NO_BUFFERING) failed gle=" + [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()) }
+        }
+        $raw = [System.Runtime.InteropServices.Marshal]::AllocHGlobal([int]($block + $align))
+        $addr = [long]$raw
+        $alignedAddr = [long](([math]::Floor(($addr + $align - 1) / $align)) * $align)
+        $buf = [IntPtr]::new($alignedAddr)
+
+        $maxBlocks = [long][math]::Floor($size / $block) - 1
+        if ($maxBlocks -lt 1) { return @{ ok = $false; reason = 'probe target has no full block' } }
+        $rng = New-Object System.Random(20260730)
+        $sw = New-Object System.Diagnostics.Stopwatch
+        $totalBytes = [long]0
+        $sw.Start()
+        for ($i = 0; $i -lt $Samples; $i++) {
+            $blk = [long]$rng.Next(0, [int][math]::Min($maxBlocks, [long][int]::MaxValue))
+            $off = $blk * $block
+            $newPos = [long]0
+            if (-not [MoeLauncher.Native]::SetFilePointerEx($h, $off, [ref]$newPos, $script:FILE_BEGIN)) {
+                return @{ ok = $false; reason = 'SetFilePointerEx failed' }
+            }
+            $read = [uint32]0
+            if (-not [MoeLauncher.Native]::ReadFile($h, $buf, [uint32]$block, [ref]$read, [IntPtr]::Zero)) {
+                return @{ ok = $false; reason = ("ReadFile failed gle=" + [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()) }
+            }
+            if ($read -eq 0) { return @{ ok = $false; reason = 'ReadFile returned 0 bytes' } }
+            $totalBytes += [long]$read
+        }
+        $sw.Stop()
+        $secs = $sw.Elapsed.TotalSeconds
+        if ($secs -le 0) { return @{ ok = $false; reason = 'probe elapsed time not measurable' } }
+        $mibps = ($totalBytes / 1MB) / $secs
+        return @{ ok = $true; mibps = [math]::Round($mibps, 2); block_bytes = $block; samples = $Samples; bytes = $totalBytes }
+    } catch {
+        return @{ ok = $false; reason = ("probe exception: " + $_.Exception.Message) }
+    } finally {
+        if ($raw -ne [IntPtr]::Zero) { [System.Runtime.InteropServices.Marshal]::FreeHGlobal($raw) }
+        if ($h -ne [IntPtr]::Zero -and $h -ne $script:INVALID_HANDLE) { [void][MoeLauncher.Native]::CloseHandle($h) }
+    }
+}
+
+function Get-ProbeBlockBytes {
+    param([string] $OutputDir)
+    $mf = Join-Path $OutputDir 'manifest.json'
+    if (Test-Path -LiteralPath $mf -PathType Leaf) {
+        $r = Read-JsonFileStrict -Path $mf
+        if ($r.ok) {
+            $layout = Get-JsonValue -Obj $r.value -Name 'layout'
+            $stride = Get-JsonValue -Obj $layout -Name 'slot_stride_max'
+            if (Test-JsonNonNegativeInteger $stride -and [long]$stride -gt 0) { return [long]$stride }
+        }
+    }
+    return [long]$script:PROBE_BLOCK_BYTES_FALLBACK
+}
+
+# R1-2: the probe must measure the volume the expert cache will be READ FROM (the repack output),
+# not the source model's volume - they are frequently different SSDs. Prefer the real artifact;
+# before the first repack, use a scratch file on the same volume and delete it afterwards.
+function Get-ProbeTarget {
+    param([string] $OutputDir)
+    $bin = Join-Path $OutputDir 'experts.bin'
+    $st = Get-FileAbsenceState -Path $bin
+    if ($st.state -eq 'present') {
+        try {
+            if ((New-Object System.IO.FileInfo($bin)).Length -ge ($script:PROBE_BLOCK_BYTES_FALLBACK * 4)) {
+                return @{ ok = $true; path = $bin; scratch = $false }
+            }
+        } catch { }
+    }
+    $scratch = Join-Path $OutputDir $script:PROBE_SCRATCH_NAME
+    try {
+        $fs = [System.IO.File]::Open($scratch, 'Create', 'Write', 'None')
+        try {
+            $blk = New-Object byte[] 1048576
+            $rng = New-Object System.Random(20260730)
+            $rng.NextBytes($blk)
+            $written = [long]0
+            while ($written -lt $script:PROBE_SCRATCH_BYTES) { $fs.Write($blk, 0, $blk.Length); $written += $blk.Length }
+            $fs.Flush($true)
+        } finally { $fs.Dispose() }
+        return @{ ok = $true; path = $scratch; scratch = $true }
+    } catch {
+        try { if (Test-Path -LiteralPath $scratch) { Remove-Item -LiteralPath $scratch -Force -ErrorAction SilentlyContinue } } catch { }
+        return @{ ok = $false; reason = ('probe scratch file could not be written on the output volume: ' + $_.Exception.Message) }
+    }
+}
+
+# R1-2: a probe result is only reusable when it is bound to the same source_tag / profile /
+# expect digest / OUTPUT VOLUME. Without a bound success record the launcher stays conservative
+# (probe_failed), so a first-run probe failure can never be laundered into an enabled prefetch on
+# the next run.
+function Get-ProbeStatePath { return (Join-Path (Get-LauncherStateDir) $script:PROBE_STATE_FILE) }
+
+# R2-3: resolves a path to the GUID name of the volume that actually backs it. A failure to
+# resolve is reported as such; callers must then refuse to reuse a stored probe record
+# (fail-closed) rather than fall back to a weaker key.
+function Get-VolumeIdentity {
+    param([string] $Path)
+    try {
+        $full = [System.IO.Path]::GetFullPath($Path)
+        $mount = New-Object System.Text.StringBuilder 260
+        if (-not [MoeLauncher.Native]::GetVolumePathNameW($full, $mount, 260)) {
+            return @{ ok = $false; reason = ('GetVolumePathNameW failed (GetLastError=' + [System.Runtime.InteropServices.Marshal]::GetLastWin32Error() + ')') }
+        }
+        $guid = New-Object System.Text.StringBuilder 260
+        if (-not [MoeLauncher.Native]::GetVolumeNameForVolumeMountPointW($mount.ToString(), $guid, 260)) {
+            return @{ ok = $false; reason = ('GetVolumeNameForVolumeMountPointW failed (GetLastError=' + [System.Runtime.InteropServices.Marshal]::GetLastWin32Error() + ')') }
+        }
+        return @{ ok = $true; id = $guid.ToString().ToLowerInvariant(); mount = $mount.ToString() }
+    } catch {
+        return @{ ok = $false; reason = ('volume identity query threw: ' + $_.Exception.Message) }
+    }
+}
+
+# Display helper only - never used as an identity key.
+function Get-VolumeKey {
+    param([string] $Path)
+    try { return ([System.IO.Path]::GetPathRoot([System.IO.Path]::GetFullPath($Path))).ToLowerInvariant() }
+    catch { return '?' }
+}
+
+function Read-ProbeBinding {
+    param([string] $SourceTag, [string] $ProfileId, [string] $ExpectDigest, [string] $OutputDir)
+    $path = Get-ProbeStatePath
+    $st = Get-FileAbsenceState -Path $path
+    if ($st.state -ne 'present') { return @{ ok = $false; reason = 'no stored probe record' } }
+    $r = Read-JsonFileStrict -Path $path
+    if (-not $r.ok) { return @{ ok = $false; reason = ('probe record unreadable - ' + $r.reason) } }
+    $o = $r.value
+    if ([long](Get-JsonValue -Obj $o -Name 'state_version') -ne [long]$script:PROBE_STATE_VERSION) {
+        return @{ ok = $false; reason = 'probe record schema version mismatch' }
+    }
+    if ([string](Get-JsonValue -Obj $o -Name 'source_tag')  -cne $SourceTag) { return @{ ok = $false; reason = 'probe record source_tag mismatch' } }
+    if ([string](Get-JsonValue -Obj $o -Name 'profile_id')  -cne $ProfileId) { return @{ ok = $false; reason = 'probe record profile_id mismatch' } }
+    if (([string](Get-JsonValue -Obj $o -Name 'expect_digest')).ToLowerInvariant() -ne $ExpectDigest.ToLowerInvariant()) {
+        return @{ ok = $false; reason = 'probe record expect_digest mismatch' }
+    }
+    # R2-3: the binding is to the volume GUID. If the identity cannot be resolved now, or the
+    # stored record has no identity, the record is NOT reusable (fail-closed).
+    $vol = Get-VolumeIdentity -Path $OutputDir
+    if (-not $vol.ok) { return @{ ok = $false; reason = ('output volume identity unavailable - ' + $vol.reason) } }
+    $storedId = Get-JsonValue -Obj $o -Name 'output_volume_id'
+    if (-not (Test-JsonNonEmptyString $storedId)) { return @{ ok = $false; reason = 'probe record carries no volume identity' } }
+    if ([string]$storedId -ne $vol.id) {
+        return @{ ok = $false; reason = 'probe record was taken on a different output volume' }
+    }
+    if (-not (Test-JsonBooleanTrue (Get-JsonValue -Obj $o -Name 'probe_ok'))) {
+        return @{ ok = $false; reason = 'stored probe record is a failure record' }
+    }
+    return @{ ok = $true; qd = [int](Get-JsonValue -Obj $o -Name 'qd'); mibps = (Get-JsonValue -Obj $o -Name 'mibps')
+              qd_source = 'stored-binding' }
+}
+
+function Write-ProbeBinding {
+    param([string] $SourceTag, [string] $ProfileId, [string] $ExpectDigest, [string] $OutputDir, $Result)
+    try {
+        $dir = Get-LauncherStateDir
+        if (-not (Test-Path -LiteralPath $dir -PathType Container)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+        # R2-3: without a resolvable volume identity a SUCCESS record must not be written at all -
+        # an unbound success would be reusable on the wrong volume next time.
+        $vol = Get-VolumeIdentity -Path $OutputDir
+        if ((-not $vol.ok) -and [bool]$Result.ok) {
+            Write-Diag -Kind 'probe_binding_not_stored' -Data @{ reason = ('volume identity unavailable - ' + $vol.reason) }
+            Write-Line ('[probe] NOTE: probe result not stored (output volume identity unavailable: ' + $vol.reason + '); the next run will re-probe.')
+            return
+        }
+        $volId = ''
+        if ($vol.ok) { $volId = $vol.id }
+        $o = [ordered]@{
+            state_version    = [int]$script:PROBE_STATE_VERSION
+            source_tag       = $SourceTag
+            profile_id       = $ProfileId
+            expect_digest    = $ExpectDigest
+            output_volume_id = $volId
+            output_volume_mount = [string]$vol.mount
+            probe_ok         = [bool]$Result.ok
+            qd               = [int]$Result.qd
+            mibps            = $Result.mibps
+            ts               = (Get-Date).ToUniversalTime().ToString('o')
+        }
+        $path = Get-ProbeStatePath
+        $tmp = $path + '.tmp'
+        [System.IO.File]::WriteAllText($tmp, ($o | ConvertTo-Json -Depth 5), (New-Object System.Text.UTF8Encoding($false)))
+        Move-FileAtomic -TempPath $tmp -FinalPath $path
+        Write-Diag -Kind 'PROBE_BINDING_SAVED' -Data $o
+    } catch {
+        Write-Diag -Kind 'probe_binding_save_failed' -Data @{ reason = $_.Exception.Message }
+    }
+}
+
+# LS 1-4 / RS 5: probe failure is a degraded branch, never a terminal error.
+function Invoke-StartupProbe {
+    param([string] $OutputDir)
+    $block = Get-ProbeBlockBytes -OutputDir $OutputDir
+    $target = Get-ProbeTarget -OutputDir $OutputDir
+    if (-not $target.ok) {
+        # LS 12-1: this tier is a PROVISIONAL pre-repack I/O sanity check. It does not set QD and it
+        # does not decide prefetch - the LS 12 sweep after the verify gate is the measurement
+        # authority, and a failed scratch tier plus a successful sweep recovers.
+        Write-Line ('[probe] scratch sanity measurement could not start ({0}); provisional only - the QD sweep after the verify gate decides QD (RS 5)' -f $target.reason)
+        Write-Diag -Kind 'PROBE_FAILED' -Data @{ reason = $target.reason }
+        return @{ ok = $false; qd = [int]$script:QD_DEGRADED; reason = $target.reason }
+    }
+    $ProbeTarget = $target.path
+    try {
+    # LS 11-6-b (UI-4): stage start line. Measured at 0.06 s on this machine, but it sits inside the
+    # same silent window and a cold or slow volume is exactly when it would be worth announcing.
+    Write-Line ('[probe] measuring SSD random read ({0} samples x {1} B unbuffered)...' -f $script:PROBE_SAMPLES, $block)
+    $res = Measure-SsdRandomRead -Path $ProbeTarget -BlockBytes $block -Samples $script:PROBE_SAMPLES
+    if (-not $res.ok) {
+        Write-Line ('[probe] scratch sanity read failed ({0}); provisional only - the QD sweep after the verify gate decides QD (RS 5)' -f $res.reason)
+        Write-Diag -Kind 'PROBE_FAILED' -Data $res
+        return @{ ok = $false; qd = [int]$script:QD_DEGRADED; reason = $res.reason }
+    }
+    $qd = [int]$script:QD_DEGRADED
+    $qdSource = 'conservative-default'
+    if ($null -ne $script:PROBE_QD_MAP) {
+        foreach ($row in @($script:PROBE_QD_MAP)) {
+            if ($res.mibps -ge [double]$row.min_mibps) { $qd = [int]$row.qd; $qdSource = 'probe-map'; break }
+        }
+    }
+    # Same LS 12-1 rule on the success path: this number is a provisional sanity reading, so it is
+    # reported WITHOUT a QD verdict (the sweep below owns that).
+    Write-Line ('[probe] scratch sanity read {0} MiB/s @ {1} B block x{2} on {3} (provisional)' -f $res.mibps, $res.block_bytes, $res.samples, (Get-VolumeKey -Path $ProbeTarget))
+    if ($null -eq $script:PROBE_QD_MAP) {
+        Write-Line '        the scratch probe->QD threshold table is [unmeasured] (LS 9 item 1); QD comes from the LS 12 sweep.'
+    }
+    Write-Diag -Kind 'PROBE_OK' -Data @{ mibps = $res.mibps; block_bytes = $res.block_bytes; qd = $qd
+                                         qd_source = $qdSource; target = $ProbeTarget; scratch = $target.scratch }
+    return @{ ok = $true; qd = $qd; mibps = $res.mibps; qd_source = $qdSource }
+    } finally {
+        if ($target.scratch) {
+            try { if (Test-Path -LiteralPath $ProbeTarget -PathType Leaf) { Remove-Item -LiteralPath $ProbeTarget -Force -ErrorAction SilentlyContinue } } catch { }
+        }
+    }
+}
+
+# endregion
+
+# ============================================================================
+# region 9-B. STARTUP QD SWEEP (LS 12 / QD-1)
+#   The scratch probe above is a pre-repack I/O sanity check and stays PROVISIONAL. This sweep -
+#   or a valid v2 binding produced by an earlier one - is the single measurement authority for the
+#   AUTOMATIC QD default (LS 12-1, R10-2 wording); the QD priority chain
+#   (session/CLI override > stored preset > measured-sweep > conservative-default) then decides the
+#   final effective QD.
+# ============================================================================
+
+# LS 12-2 block population: manifest.layout.layers[*].stride_bytes.
+function Get-ManifestStrides {
+    param([string] $ManifestPath)
+    $r = Read-JsonFileStrict -Path $ManifestPath
+    if (-not $r.ok) { return @{ ok = $false; reason = ('manifest.json unreadable - ' + $r.reason) } }
+    $layout = Get-JsonValue -Obj $r.value -Name 'layout'
+    if ($null -eq $layout) { return @{ ok = $false; reason = 'manifest.json has no layout object' } }
+    $vals = @()
+    foreach ($L in (Get-JsonArray -Obj $layout -Name 'layers')) {
+        $s = Get-JsonValue -Obj $L -Name 'stride_bytes'
+        if (-not (Test-JsonNonNegativeInteger $s) -or [long]$s -le 0) {
+            return @{ ok = $false; reason = 'layout.layers[*].stride_bytes is missing or not a positive integer' }
+        }
+        $vals += [long]$s
+    }
+    if ($vals.Count -eq 0) { return @{ ok = $false; reason = 'manifest.json carries no layout.layers[*].stride_bytes population' } }
+    # LS 12-2 "length and offset follow the logical sector AND the manifest alignment": the repack
+    # output's own alignment is part of that constraint, so it is read here and folded into the
+    # applied alignment by Get-SweepAlignment. Absent/invalid = no additional constraint.
+    $ab = Get-JsonValue -Obj $layout -Name 'align_bytes'
+    $align = [long]0
+    if ((Test-JsonNonNegativeInteger $ab) -and [long]$ab -gt 0) { $align = [long]$ab }
+    return @{ ok = $true; strides = $vals; align_bytes = $align }
+}
+
+# LS 12-2 representative block (pure function): lower median of the stride population, then the
+# nearest size inside [1 MiB, 16 MiB] that satisfies the runtime alignment; ties take the smaller
+# size; no candidate inside the range = the sweep fails.
+function Get-SweepBlockBytes {
+    param($Strides, [long] $AlignBytes)
+    $vals = @()
+    foreach ($s in @($Strides)) { $vals += [long]$s }
+    if ($vals.Count -eq 0) { return @{ ok = $false; reason = 'empty stride population' } }
+    if ($AlignBytes -le 0) { return @{ ok = $false; reason = 'alignment is not a positive number' } }
+    $sorted = @($vals | Sort-Object)
+    $median = [long]$sorted[[int][math]::Floor(($sorted.Count - 1) / 2)]
+    $lo = [long]$script:SWEEP_BLOCK_MIN_BYTES
+    $hi = [long]$script:SWEEP_BLOCK_MAX_BYTES
+    $target = $median
+    if ($target -lt $lo) { $target = $lo }
+    if ($target -gt $hi) { $target = $hi }
+    $cands = @()
+    foreach ($c in @([long]([math]::Floor($target / $AlignBytes) * $AlignBytes),
+                     [long]([math]::Ceiling($target / $AlignBytes) * $AlignBytes))) {
+        if ($c -ge $lo -and $c -le $hi) { $cands += [long]$c }
+    }
+    if ($cands.Count -eq 0) {
+        return @{ ok = $false; median = $median
+                  reason = ('no block size in [1 MiB, 16 MiB] satisfies the ' + $AlignBytes + ' B alignment') }
+    }
+    $best = $null
+    $bestDist = $null
+    foreach ($c in @($cands | Sort-Object)) {
+        $d = [math]::Abs($c - $target)
+        if ($null -eq $bestDist -or $d -lt $bestDist) { $best = [long]$c; $bestDist = $d }
+    }
+    return @{ ok = $true; block_bytes = [long]$best; median = $median; align_bytes = [long]$AlignBytes }
+}
+
+# LS 12-2 alignment, all three constraints at once: length and offset follow the logical sector AND
+# the manifest alignment, the buffer address follows the PHYSICAL sector size. One value satisfying
+# the maximum of the three satisfies all three. The page-size floor keeps this valid when the
+# physical query fails (it returns 0), and taking the manifest value into the maximum means a failed
+# device query can never land BELOW the alignment the repack output was written with.
+function Get-SweepAlignment {
+    param([string] $Path, [long] $ManifestAlignBytes = 0)
+    $phys = 0
+    try { $phys = [long][MoeLauncher.Sweep]::QueryPhysicalSectorBytes($Path) } catch { $phys = 0 }
+    $align = [long]$script:SWEEP_FALLBACK_ALIGN
+    if ($phys -gt $align) { $align = [long]$phys }
+    if ($ManifestAlignBytes -gt $align) { $align = [long]$ManifestAlignBytes }
+    return @{ align_bytes = [long]$align; physical_bytes = [long]$phys; manifest_bytes = [long]$ManifestAlignBytes }
+}
+
+# LS 12-2 determinism: every QD point walks the SAME offset sequence, derived from manifest_sha256
+# (no wall clock, no per-point RNG drift).
+function New-SweepOffsetSequence {
+    param([string] $ManifestSha256, [long] $BlockCount, [long] $BlockBytes, [int] $Count)
+    if ($BlockCount -lt 1) { return @{ ok = $false; reason = 'target holds no full block' } }
+    if (-not (Test-Sha256Hex $ManifestSha256)) { return @{ ok = $false; reason = 'manifest_sha256 is not a 64 hex string' } }
+    $seed = New-Object byte[] 32
+    for ($i = 0; $i -lt 32; $i++) {
+        $seed[$i] = [byte][convert]::ToInt32($ManifestSha256.Substring($i * 2, 2), 16)
+    }
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $out = New-Object 'System.Collections.Generic.List[long]'
+        $buf = New-Object byte[] 36
+        [System.Array]::Copy($seed, 0, $buf, 0, 32)
+        for ($i = 0; $i -lt $Count; $i++) {
+            $ib = [System.BitConverter]::GetBytes([int]$i)
+            [System.Array]::Copy($ib, 0, $buf, 32, 4)
+            $d = $sha.ComputeHash($buf)
+            $v = [System.BitConverter]::ToUInt64($d, 0)
+            $out.Add([long](([long]($v % [uint64]$BlockCount)) * $BlockBytes))
+        }
+        return @{ ok = $true; offsets = $out.ToArray() }
+    } catch {
+        return @{ ok = $false; reason = ('offset sequence derivation failed: ' + $_.Exception.Message) }
+    } finally { $sha.Dispose() }
+}
+
+# LS 12-2 point record. mibps is a DISPLAY value; the comparison value used by the selection
+# function is the raw bytes/elapsed pair, before any rounding.
+function ConvertTo-SweepPointRecord {
+    param($Raw)
+    $rec = [ordered]@{ qd = [int]$Raw.Qd; status = 'failed'; bytes = [long]$Raw.Bytes
+                       elapsed_ticks = [long]$Raw.ElapsedTicks; reads = [int]$Raw.Reads
+                       mibps = $null; error = $null }
+    if ($Raw.Error) { $rec['error'] = [string]$Raw.Error }
+    if ([bool]$Raw.Ok -and [long]$Raw.Bytes -gt 0 -and [long]$Raw.ElapsedTicks -gt 0) {
+        $m = ([double]$Raw.Bytes / 1MB) / ([double]$Raw.ElapsedTicks / 10000000.0)
+        if ([double]::IsNaN($m) -or [double]::IsInfinity($m) -or $m -le 0) {
+            if (-not $rec['error']) { $rec['error'] = 'throughput is not a finite positive number' }
+        } else {
+            $rec['status'] = 'ok'
+            $rec['mibps'] = [math]::Round($m, 2)
+        }
+    } elseif (-not $rec['error']) {
+        $rec['error'] = 'no measurable window'
+    }
+    return $rec
+}
+
+function Invoke-SweepRound {
+    param([string] $TargetPath, [long] $BlockBytes, $Offsets, [int] $WindowMs, $QdOrder, [long] $AlignBytes)
+    $pts = @()
+    foreach ($qd in @($QdOrder)) {
+        $raw = [MoeLauncher.Sweep]::RunPoint($TargetPath, [int]$qd, [long]$BlockBytes, $Offsets,
+                                            [int]$WindowMs, [long]$AlignBytes)
+        $rec = ConvertTo-SweepPointRecord -Raw $raw
+        Write-Diag -Kind 'SWEEP_POINT' -Data $rec
+        $pts += $rec
+    }
+    return , $pts
+}
+
+# The two crossed windows (and the confirmation round, when it runs) are one measurement per QD:
+# the point's bytes and elapsed time are summed. A window that failed marks the whole point failed -
+# a point mixing a failure with a success is not a clean measurement.
+function Merge-SweepRounds {
+    param($Rounds)
+    $acc = @{}
+    foreach ($qd in $script:SWEEP_QD_POINTS) {
+        $acc[[string]$qd] = @{ qd = [int]$qd; bytes = [long]0; elapsed_ticks = [long]0; reads = 0
+                               windows = 0; failed = $false; error = $null }
+    }
+    foreach ($round in @($Rounds)) {
+        foreach ($p in @($round)) {
+            $k = [string]$p.qd
+            if (-not $acc.ContainsKey($k)) { continue }
+            $slot = $acc[$k]
+            $slot.windows = [int]$slot.windows + 1
+            if ([string]$p.status -cne 'ok') {
+                $slot.failed = $true
+                if (-not $slot.error) { $slot.error = [string]$p.error }
+                continue
+            }
+            $slot.bytes = [long]$slot.bytes + [long]$p.bytes
+            $slot.elapsed_ticks = [long]$slot.elapsed_ticks + [long]$p.elapsed_ticks
+            $slot.reads = [int]$slot.reads + [int]$p.reads
+        }
+    }
+    $out = @()
+    foreach ($qd in $script:SWEEP_QD_POINTS) {
+        $slot = $acc[[string]$qd]
+        $rec = [ordered]@{ qd = [int]$qd; status = 'failed'; bytes = [long]$slot.bytes
+                           elapsed_ticks = [long]$slot.elapsed_ticks; reads = [int]$slot.reads
+                           windows = [int]$slot.windows; mibps = $null; error = $slot.error }
+        if ((-not $slot.failed) -and $slot.windows -gt 0 -and $slot.bytes -gt 0 -and $slot.elapsed_ticks -gt 0) {
+            $m = ([double]$slot.bytes / 1MB) / ([double]$slot.elapsed_ticks / 10000000.0)
+            if ([double]::IsNaN($m) -or [double]::IsInfinity($m) -or $m -le 0) {
+                if (-not $rec['error']) { $rec['error'] = 'throughput is not a finite positive number' }
+            } else {
+                $rec['status'] = 'ok'
+                $rec['mibps'] = [math]::Round($m, 2)
+            }
+        } elseif (-not $rec['error']) {
+            $rec['error'] = 'no measured window for this queue depth'
+        }
+        $out += $rec
+    }
+    return , $out
+}
+
+# LS 12-3 selection (MUST - single-solution formula). PURE: it reads only the point records it is
+# handed, which is what makes it directly regression-testable.
+#   V = {(q,bq) | status(q)=ok, bq finite positive}, bq = bytes/elapsed BEFORE display rounding
+#   M = max(bq) ; S90 = {q | 10*bq >= 9*M} ; q_base = min(S90)
+#   prefetch_state=validated only: E = {q in S90 | q >= N+1}; min(E) when E is non-empty
+# 'prefetch-preferred' is a bounded preference applied from a validated prior - it is NOT new
+# evidence that this device gains end to end (LS 12-3 wording rule).
+function Select-SweepQd {
+    param($Points, [string] $PrefetchState, $CatalogN)
+    $valid = @()
+    foreach ($p in @($Points)) {
+        if ([string]$p.status -cne 'ok') { continue }
+        $b = [double]$p.bytes
+        $t = [double]$p.elapsed_ticks
+        if ($b -le 0 -or $t -le 0) { continue }
+        $bq = $b / $t
+        if ([double]::IsNaN($bq) -or [double]::IsInfinity($bq) -or $bq -le 0) { continue }
+        $valid += @{ qd = [int]$p.qd; bq = [double]$bq }
+    }
+    if ($valid.Count -eq 0) {
+        return @{ ok = $false; qd = [int]$script:QD_DEGRADED; reason = $null; degraded = $true
+                  qd_source = 'conservative-default'; s90 = @(); q_base = $null }
+    }
+    $m = [double]0
+    foreach ($v in $valid) { if ($v.bq -gt $m) { $m = [double]$v.bq } }
+    $s90 = @()
+    foreach ($v in $valid) { if ((10.0 * $v.bq) -ge (9.0 * $m)) { $s90 += [int]$v.qd } }
+    $s90 = @($s90 | Sort-Object)
+    $qBase = [int]$s90[0]
+    $qd = $qBase
+    $reason = 'io-knee'
+    if ($PrefetchState -ceq 'validated' -and $null -ne $CatalogN) {
+        $need = [long]$CatalogN + 1
+        $e = @()
+        foreach ($q in $s90) { if ([long]$q -ge $need) { $e += [int]$q } }
+        if ($e.Count -gt 0) {
+            $pick = [int](@($e | Sort-Object)[0])
+            if ($pick -ne $qBase) { $qd = $pick; $reason = 'prefetch-preferred' }
+        }
+    }
+    return @{ ok = $true; qd = [int]$qd; reason = $reason; degraded = $false
+              qd_source = 'measured-sweep'; s90 = $s90; q_base = $qBase; max_bq = $m }
+}
+
+# LS 12-5: the expectation calculator may consume ONLY the sweep point that matches the final QD.
+# A different point (or the QD1 number) must never stand in for it.
+function Get-SweepPointForQd {
+    param($Points, [int] $Qd)
+    foreach ($p in @($Points)) {
+        if ([int]$p.qd -eq $Qd -and [string]$p.status -ceq 'ok' -and $null -ne $p.mibps) { return $p }
+    }
+    return $null
+}
+
+# ---- LS 12-4 binding v2 (target-key map) ----------------------------------------------------
+function Get-SweepStatePath { return (Join-Path (Get-LauncherStateDir) $script:SWEEP_STATE_FILE) }
+
+# One cache lookup, one sweep and one save attempt per target key per launcher process (LS 12-4).
+$script:SweepLookups = @{}
+$script:SweepRuns    = @{}
+$script:SweepSaves   = @{}
+
+function Get-SweepTargetKey {
+    param([string] $SourceTag, [string] $ProfileId, [string] $ExpectDigest,
+          [string] $ManifestSha256, [string] $VolumeGuid)
+    $canon = ($script:SWEEP_PROBE_ALGORITHM + '|' + $script:SWEEP_MEASUREMENT_METHOD + '|' +
+              [string]$SourceTag + '|' + [string]$ProfileId + '|' +
+              ([string]$ExpectDigest).ToLowerInvariant() + '|' +
+              ([string]$ManifestSha256).ToLowerInvariant() + '|' +
+              ([string]$VolumeGuid).ToLowerInvariant())
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $h = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($canon))
+        return @{ canonical = $canon
+                  key = ([System.BitConverter]::ToString($h).Replace('-', '').ToLowerInvariant()) }
+    } finally { $sha.Dispose() }
+}
+
+# LS 12-4 freshness needs real instants, not just non-empty strings. Both the launcher ('o' round
+# trip) and repack_experts.py (datetime.isoformat with a +00:00 offset) are accepted; a value with
+# no offset is read as UTC.
+function ConvertTo-UtcInstant {
+    param($Value)
+    if (-not (Test-JsonNonEmptyString $Value)) { return @{ ok = $false; reason = 'missing or not a string' } }
+    $dt = [datetime]::MinValue
+    $styles = ([System.Globalization.DateTimeStyles]::AdjustToUniversal -bor
+               [System.Globalization.DateTimeStyles]::AssumeUniversal -bor
+               [System.Globalization.DateTimeStyles]::AllowWhiteSpaces)
+    if ([datetime]::TryParse([string]$Value, [System.Globalization.CultureInfo]::InvariantCulture, $styles, [ref]$dt)) {
+        return @{ ok = $true; utc = $dt }
+    }
+    return @{ ok = $false; reason = 'not a parsable UTC timestamp' }
+}
+
+# R11-1 / LS 12-4: freshness gate for a cache HIT. The repack completion time is the verify report's
+# checked_at, and the target key cannot see it: `repack_experts.py --verify-only` (a supported path,
+# repack_experts.py:1574-1578) appends a NEW verify record while experts.bin and manifest.json stay
+# byte-identical, so profile / expect digest / manifest_sha256 / volume GUID all stay the same. A
+# stored sweep is therefore only reusable while it is bound to the CURRENT checked_at, and it must
+# not predate it. Unusable/absent timestamps fail closed to a cache miss (one extra sweep), never to
+# a hit.
+function Test-SweepFreshness {
+    param($Entry, [string] $CheckedAt)
+    $cur = ConvertTo-UtcInstant -Value $CheckedAt
+    if (-not $cur.ok) {
+        return @{ ok = $false; reason = ('current verify_report.checked_at unusable - ' + $cur.reason) }
+    }
+    if ($null -eq $Entry.repack_checked_at_utc -or $null -eq $Entry.swept_at_utc) {
+        return @{ ok = $false; reason = 'stored entry carries no usable timestamps' }
+    }
+    if ([datetime]$Entry.repack_checked_at_utc -ne [datetime]$cur.utc) {
+        return @{ ok = $false; reason = 'stored sweep is bound to a different verify_report.checked_at' }
+    }
+    if ([datetime]$Entry.swept_at_utc -lt [datetime]$cur.utc) {
+        return @{ ok = $false; reason = 'stored sweep predates the current verify_report.checked_at' }
+    }
+    return @{ ok = $true }
+}
+
+function Test-SweepEntry {
+    param($Entry)
+    if ($null -eq $Entry) { return @{ ok = $false; reason = 'entry is null' } }
+    if ([string](Get-JsonValue -Obj $Entry -Name 'probe_algorithm') -cne $script:SWEEP_PROBE_ALGORITHM) {
+        return @{ ok = $false; reason = 'probe_algorithm mismatch' }
+    }
+    if ([string](Get-JsonValue -Obj $Entry -Name 'measurement_method') -cne $script:SWEEP_MEASUREMENT_METHOD) {
+        return @{ ok = $false; reason = 'measurement_method mismatch' }
+    }
+    foreach ($k in @('profile_id', 'expectation_digest', 'manifest_sha256', 'output_volume_guid',
+                     'selected_reason', 'swept_at', 'repack_checked_at')) {
+        if (-not (Test-JsonNonEmptyString (Get-JsonValue -Obj $Entry -Name $k))) {
+            return @{ ok = $false; reason = ($k + ' missing or not a non-empty string') }
+        }
+    }
+    # R11-1: both times are part of the schema, so an unparsable one is schema-invalid (= miss).
+    $sweptAt = ConvertTo-UtcInstant -Value (Get-JsonValue -Obj $Entry -Name 'swept_at')
+    if (-not $sweptAt.ok) { return @{ ok = $false; reason = ('swept_at is ' + $sweptAt.reason) } }
+    $repackAt = ConvertTo-UtcInstant -Value (Get-JsonValue -Obj $Entry -Name 'repack_checked_at')
+    if (-not $repackAt.ok) { return @{ ok = $false; reason = ('repack_checked_at is ' + $repackAt.reason) } }
+    foreach ($k in @('selected_qd', 'block_bytes', 'window_duration_ms')) {
+        $v = Get-JsonValue -Obj $Entry -Name $k
+        if (-not (Test-JsonNonNegativeInteger $v) -or [long]$v -le 0) {
+            return @{ ok = $false; reason = ($k + ' missing or not a positive integer') }
+        }
+    }
+    $pts = @(Get-JsonArray -Obj $Entry -Name 'points')
+    if ($pts.Count -ne @($script:SWEEP_QD_POINTS).Count) {
+        return @{ ok = $false; reason = 'points array does not carry every swept queue depth' }
+    }
+    $recs = @()
+    foreach ($p in $pts) {
+        $q = Get-JsonValue -Obj $p -Name 'qd'
+        if (-not (Test-JsonNonNegativeInteger $q) -or [long]$q -le 0) {
+            return @{ ok = $false; reason = 'point qd is not a positive integer' }
+        }
+        $st = [string](Get-JsonValue -Obj $p -Name 'status')
+        if ($st -cne 'ok' -and $st -cne 'failed') { return @{ ok = $false; reason = 'point status is not ok/failed' } }
+        $rec = [ordered]@{ qd = [int]$q; status = $st; bytes = [long]0; elapsed_ticks = [long]0
+                           mibps = $null; error = [string](Get-JsonValue -Obj $p -Name 'error') }
+        if ($st -ceq 'ok') {
+            $b = Get-JsonValue -Obj $p -Name 'bytes'
+            $t = Get-JsonValue -Obj $p -Name 'elapsed_ticks'
+            if (-not (Test-JsonNonNegativeInteger $b) -or [long]$b -le 0 -or
+                -not (Test-JsonNonNegativeInteger $t) -or [long]$t -le 0) {
+                return @{ ok = $false; reason = 'ok point without a positive bytes/elapsed pair' }
+            }
+            $rec['bytes'] = [long]$b
+            $rec['elapsed_ticks'] = [long]$t
+            $mv = Get-JsonValue -Obj $p -Name 'mibps'
+            if ($null -ne $mv) { $rec['mibps'] = [double]$mv }
+        }
+        $recs += $rec
+    }
+    $selQd = [int](Get-JsonValue -Obj $Entry -Name 'selected_qd')
+    return @{ ok = $true; qd = $selQd; selected_reason = [string](Get-JsonValue -Obj $Entry -Name 'selected_reason')
+              points = $recs; block_bytes = [long](Get-JsonValue -Obj $Entry -Name 'block_bytes')
+              window_duration_ms = [long](Get-JsonValue -Obj $Entry -Name 'window_duration_ms')
+              swept_at = [string](Get-JsonValue -Obj $Entry -Name 'swept_at')
+              repack_checked_at = [string](Get-JsonValue -Obj $Entry -Name 'repack_checked_at')
+              swept_at_utc = $sweptAt.utc; repack_checked_at_utc = $repackAt.utc }
+}
+
+# LS 12-4 miss conditions - v1 / schema-invalid / parse failure / key mismatch - plus the R11-1
+# freshness condition, which is the one thing the target key cannot express (see Test-SweepFreshness).
+# The lookup happens at most once per key per process.
+function Read-SweepBinding {
+    param([string] $Key, [string] $CheckedAt)
+    if ($script:SweepLookups.ContainsKey($Key)) { return $script:SweepLookups[$Key] }
+    $res = @{ ok = $false; reason = 'no stored sweep binding' }
+    $path = Get-SweepStatePath
+    $st = Get-FileAbsenceState -Path $path
+    if ($st.state -eq 'unknown') {
+        $res = @{ ok = $false; reason = ('sweep binding state not observable - ' + $st.reason) }
+    } elseif ($st.state -eq 'present') {
+        $r = Read-JsonFileStrict -Path $path
+        if (-not $r.ok) {
+            $res = @{ ok = $false; reason = ('sweep binding parse failure - ' + $r.reason) }
+        } else {
+            $ver = Get-JsonValue -Obj $r.value -Name 'state_version'
+            if (-not (Test-JsonNonNegativeInteger $ver) -or [long]$ver -ne [long]$script:SWEEP_STATE_VERSION) {
+                $res = @{ ok = $false; reason = 'sweep binding is not state_version 2 (v1 or unknown schema)' }
+            } else {
+                $entries = Get-JsonValue -Obj $r.value -Name 'entries'
+                $e = $null
+                if ($null -ne $entries) { $e = Get-JsonValue -Obj $entries -Name $Key }
+                if ($null -eq $e) {
+                    $res = @{ ok = $false; reason = 'no entry for this target key' }
+                } else {
+                    $chk = Test-SweepEntry -Entry $e
+                    if (-not $chk.ok) { $res = @{ ok = $false; reason = ('stored entry is schema-invalid - ' + $chk.reason) } }
+                    else {
+                        $fresh = Test-SweepFreshness -Entry $chk -CheckedAt $CheckedAt
+                        if (-not $fresh.ok) {
+                            $res = @{ ok = $false; reason = ('stale sweep binding - ' + $fresh.reason) }
+                        } else {
+                            $res = @{ ok = $true; qd = [int]$chk.qd; reason = [string]$chk.selected_reason
+                                      points = $chk.points; block_bytes = $chk.block_bytes
+                                      window_duration_ms = $chk.window_duration_ms; swept_at = $chk.swept_at
+                                      repack_checked_at = $chk.repack_checked_at }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    $script:SweepLookups[$Key] = $res
+    Write-Diag -Kind 'SWEEP_BINDING_READ' -Data @{ key = $Key; hit = [bool]$res.ok; reason = [string]$res.reason }
+    return $res
+}
+
+# LS 12-4 publish: same atomic MoveFileExW path the scratch record uses. A save failure is confined
+# to the cache layer - the run keeps its in-memory measurement, surfaces binding_persist=failed and
+# does NOT retry in the same run.
+function Write-SweepBinding {
+    param([string] $Key, $Entry)
+    if ($script:SweepSaves.ContainsKey($Key)) { return $script:SweepSaves[$Key] }
+    $res = @{ ok = $false; reason = 'not attempted' }
+    try {
+        $dir = Get-LauncherStateDir
+        if (-not (Test-Path -LiteralPath $dir -PathType Container)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+        $path = Get-SweepStatePath
+        $entries = [ordered]@{}
+        # Other target keys survive: the map exists so that switching profiles back and forth does
+        # not re-sweep. A v1 / unparsable document is simply replaced (the LS 12-4 migration).
+        $cur = Read-JsonFileStrict -Path $path
+        if ($cur.ok) {
+            $ver = Get-JsonValue -Obj $cur.value -Name 'state_version'
+            if ((Test-JsonNonNegativeInteger $ver) -and [long]$ver -eq [long]$script:SWEEP_STATE_VERSION) {
+                $old = Get-JsonValue -Obj $cur.value -Name 'entries'
+                foreach ($k in (Get-JsonKeys -Obj $old)) {
+                    if ($k -cne $Key) { $entries[$k] = (Get-JsonValue -Obj $old -Name $k) }
+                }
+            }
+        }
+        $entries[$Key] = $Entry
+        $doc = [ordered]@{ state_version = [int]$script:SWEEP_STATE_VERSION; entries = $entries }
+        $tmp = $path + '.tmp'
+        [System.IO.File]::WriteAllText($tmp, ($doc | ConvertTo-Json -Depth 12), (New-Object System.Text.UTF8Encoding($false)))
+        Move-FileAtomic -TempPath $tmp -FinalPath $path
+        $res = @{ ok = $true }
+        Write-Diag -Kind 'SWEEP_BINDING_SAVED' -Data @{ key = $Key; selected_qd = $Entry['selected_qd'] }
+    } catch {
+        $res = @{ ok = $false; reason = $_.Exception.Message }
+        Write-Diag -Kind 'sweep_binding_save_failed' -Data @{ key = $Key; reason = $_.Exception.Message }
+    }
+    $script:SweepSaves[$Key] = $res
+    return $res
+}
+
+# ---- LS 12-2 sweep run ----------------------------------------------------------------------
+function Invoke-QdSweep {
+    param([string] $OutputDir, [string] $ManifestSha256, [string] $PrefetchState, $CatalogN)
+    $bin = Join-Path $OutputDir 'experts.bin'
+    $st = Get-FileAbsenceState -Path $bin
+    if ($st.state -ne 'present') { return @{ ok = $false; reason = 'experts.bin is not available for the sweep' } }
+    $size = [long]0
+    try { $size = [long](New-Object System.IO.FileInfo($bin)).Length }
+    catch { return @{ ok = $false; reason = ('experts.bin size query failed: ' + $_.Exception.Message) } }
+
+    $strides = Get-ManifestStrides -ManifestPath (Join-Path $OutputDir 'manifest.json')
+    if (-not $strides.ok) { return @{ ok = $false; reason = $strides.reason } }
+    $al = Get-SweepAlignment -Path $bin -ManifestAlignBytes $strides.align_bytes
+    $blk = Get-SweepBlockBytes -Strides $strides.strides -AlignBytes $al.align_bytes
+    if (-not $blk.ok) { return @{ ok = $false; reason = $blk.reason } }
+    $blockCount = [long][math]::Floor($size / $blk.block_bytes)
+    if ($blockCount -lt [long]$script:SWEEP_MIN_BLOCK_SPAN) {
+        return @{ ok = $false; reason = ('experts.bin holds ' + $blockCount + ' full ' + $blk.block_bytes +
+                  ' B blocks, below the ' + $script:SWEEP_MIN_BLOCK_SPAN + ' block span the sweep needs') }
+    }
+    $seq = New-SweepOffsetSequence -ManifestSha256 $ManifestSha256 -BlockCount $blockCount `
+               -BlockBytes $blk.block_bytes -Count $script:SWEEP_OFFSET_COUNT
+    if (-not $seq.ok) { return @{ ok = $false; reason = $seq.reason } }
+
+    $win = [int]$script:SWEEP_WINDOW_MS
+    $totalMs = $win * 2 * @($script:SWEEP_QD_POINTS).Count
+    # LS 11-6-b (UI-4): this is a multi-second silent window, so it announces itself first.
+    Write-Line ('[sweep] measuring queue depth {0} on experts.bin ({1} B block, 2 x {2} ms per point, about {3} s)...' -f `
+                (($script:SWEEP_QD_POINTS) -join '/'), $blk.block_bytes, $win, [int]($totalMs / 1000))
+    $rounds = @()
+    $rounds += , (Invoke-SweepRound -TargetPath $bin -BlockBytes $blk.block_bytes -Offsets $seq.offsets `
+                      -WindowMs $win -QdOrder $script:SWEEP_ORDER_FORWARD -AlignBytes $al.align_bytes)
+    $rounds += , (Invoke-SweepRound -TargetPath $bin -BlockBytes $blk.block_bytes -Offsets $seq.offsets `
+                      -WindowMs $win -QdOrder $script:SWEEP_ORDER_REVERSE -AlignBytes $al.align_bytes)
+    $selA = Select-SweepQd -Points $rounds[0] -PrefetchState $PrefetchState -CatalogN $CatalogN
+    $selB = Select-SweepQd -Points $rounds[1] -PrefetchState $PrefetchState -CatalogN $CatalogN
+    $confirm = $false
+    if ([int]$selA.qd -ne [int]$selB.qd) {
+        # LS 12-2: the two crossed rounds disagreed once - one confirmation round, never a loop.
+        $confirm = $true
+        Write-Line ('[sweep] the two crossed rounds selected QD{0} and QD{1}; running one confirmation round...' -f $selA.qd, $selB.qd)
+        $rounds += , (Invoke-SweepRound -TargetPath $bin -BlockBytes $blk.block_bytes -Offsets $seq.offsets `
+                          -WindowMs $win -QdOrder $script:SWEEP_ORDER_FORWARD -AlignBytes $al.align_bytes)
+    }
+    $points = Merge-SweepRounds -Rounds $rounds
+    $sel = Select-SweepQd -Points $points -PrefetchState $PrefetchState -CatalogN $CatalogN
+    return @{ ok = $true; points = $points; selection = $sel; block_bytes = [long]$blk.block_bytes
+              window_duration_ms = $win; rounds = @($rounds).Count; confirm_round = $confirm
+              align_bytes = [long]$al.align_bytes; physical_sector = [long]$al.physical_bytes
+              manifest_align = [long]$al.manifest_bytes
+              block_count = $blockCount; stride_median = [long]$blk.median }
+}
+
+# LS 12-1 / 12-4 orchestration: look the target key up once, sweep at most once, publish once.
+# Every failure here is NON-TERMINAL - it degrades to QD1 / conservative-default exactly like the
+# scratch probe's failure branch (RS 5).
+function Resolve-QdSweep {
+    param([string] $OutputDir, [string] $SourceTag, [string] $ProfileId, [string] $ExpectDigest,
+          [string] $ManifestSha256, [string] $CheckedAt, $Profile)
+    $out = @{ ok = $false; qd = [int]$script:QD_DEGRADED; qd_source = 'conservative-default'
+              reason = $null; points = @(); from_binding = $false; persist_failed = $false
+              detail = 'sweep not run'; block_bytes = $null; window_duration_ms = $null }
+    try {
+        $pfState = [string](Get-JsonValue -Obj $Profile -Name 'prefetch_state')
+        $pfN = $null
+        $pf = Get-JsonValue -Obj $Profile -Name 'prefetch'
+        if ($null -ne $pf) {
+            $n = Get-JsonValue -Obj $pf -Name 'n'
+            if (Test-JsonNonNegativeInteger $n) { $pfN = [long]$n }
+        }
+
+        $vol = Get-VolumeIdentity -Path $OutputDir
+        $key = $null
+        if ($vol.ok) {
+            $tk = Get-SweepTargetKey -SourceTag $SourceTag -ProfileId $ProfileId -ExpectDigest $ExpectDigest `
+                      -ManifestSha256 $ManifestSha256 -VolumeGuid $vol.id
+            $key = $tk.key
+            # R11-1: the current verify_report.checked_at is part of the hit condition, not just of
+            # the stored record.
+            $hit = Read-SweepBinding -Key $key -CheckedAt $CheckedAt
+            if ($hit.ok) {
+                $sel = Select-SweepQd -Points $hit.points -PrefetchState $pfState -CatalogN $pfN
+                $out['points'] = $hit.points
+                $out['from_binding'] = $true
+                $out['block_bytes'] = $hit.block_bytes
+                $out['window_duration_ms'] = $hit.window_duration_ms
+                if ($sel.ok) {
+                    $out['ok'] = $true
+                    $out['qd'] = [int]$sel.qd
+                    $out['reason'] = [string]$sel.reason
+                    $out['qd_source'] = 'measured-sweep'
+                    $out['detail'] = ('stored binding from ' + $hit.swept_at)
+                } else {
+                    $out['detail'] = 'stored binding carries no valid point'
+                }
+                Write-Line ('[sweep] reusing the bound sweep record (QD{0}, {1})' -f $out['qd'], $out['detail'])
+                Write-Diag -Kind 'SWEEP_BINDING_HIT' -Data @{ key = $key; qd = $out['qd']; reason = $out['reason'] }
+                return $out
+            }
+            $out['detail'] = [string]$hit.reason
+        } else {
+            $out['detail'] = ('output volume identity unavailable - ' + $vol.reason)
+        }
+
+        if ($null -ne $key) {
+            if ($script:SweepRuns.ContainsKey($key)) { return $script:SweepRuns[$key] }
+        }
+        $run = Invoke-QdSweep -OutputDir $OutputDir -ManifestSha256 $ManifestSha256 `
+                   -PrefetchState $pfState -CatalogN $pfN
+        if (-not $run.ok) {
+            $out['detail'] = [string]$run.reason
+            Write-Line ('[sweep] QD sweep could not run ({0}) -> degraded: QD{1}, conservative default (RS 5)' -f $run.reason, $script:QD_DEGRADED)
+            Write-Diag -Kind 'SWEEP_FAILED' -Data @{ reason = $run.reason }
+            if ($null -ne $key) { $script:SweepRuns[$key] = $out }
+            return $out
+        }
+        $sel = $run.selection
+        $out['points'] = $run.points
+        $out['block_bytes'] = $run.block_bytes
+        $out['window_duration_ms'] = $run.window_duration_ms
+        if (-not $sel.ok) {
+            $out['detail'] = 'every swept point failed'
+            Write-Line ('[sweep] every swept point failed -> degraded: QD{0}, prefetch OFF (RS 5)' -f $script:QD_DEGRADED)
+            Write-Diag -Kind 'SWEEP_ALL_POINTS_FAILED' -Data @{ points = $run.points }
+            if ($null -ne $key) { $script:SweepRuns[$key] = $out }
+            return $out
+        }
+        $out['ok'] = $true
+        $out['qd'] = [int]$sel.qd
+        $out['reason'] = [string]$sel.reason
+        $out['qd_source'] = 'measured-sweep'
+        $out['detail'] = ('measured in this run ({0} round(s))' -f $run.rounds)
+        Write-Line ('[sweep] {0} -> QD{1} ({2})' -f (Format-SweepPoints -Points $run.points), $out['qd'], $out['reason'])
+        Write-Diag -Kind 'SWEEP_SELECTED' -Data @{ qd = $out['qd']; reason = $out['reason']; s90 = $sel.s90
+                                                    probe_algorithm = $script:SWEEP_PROBE_ALGORITHM
+                                                    measurement_method = $script:SWEEP_MEASUREMENT_METHOD
+                                                    q_base = $sel.q_base; points = $run.points
+                                                    block_bytes = $run.block_bytes; rounds = $run.rounds
+                                                    confirm_round = $run.confirm_round
+                                                    align_bytes = $run.align_bytes
+                                                    physical_sector = $run.physical_sector
+                                                    manifest_align = $run.manifest_align }
+        # A success is only stored when it is bound to a resolvable volume identity; an unbound
+        # record would be reusable on the wrong volume next time (same rule as the scratch record).
+        # R11-1 adds the same rule for time: without a usable verify_report.checked_at the entry
+        # could never satisfy the freshness condition, so it is not written at all.
+        $curChecked = ConvertTo-UtcInstant -Value $CheckedAt
+        if ($null -ne $key -and (-not $curChecked.ok)) {
+            $out['persist_failed'] = $true
+            Write-Line ('[sweep] binding_persist=failed (verify_report.checked_at is {0}); this run uses the measurement in memory.' -f $curChecked.reason)
+            $script:SweepRuns[$key] = $out
+            return $out
+        }
+        if ($null -ne $key) {
+            $entry = [ordered]@{
+                probe_algorithm    = $script:SWEEP_PROBE_ALGORITHM
+                measurement_method = $script:SWEEP_MEASUREMENT_METHOD
+                source_tag         = $SourceTag
+                profile_id         = $ProfileId
+                expectation_digest = ([string]$ExpectDigest).ToLowerInvariant()
+                manifest_sha256    = ([string]$ManifestSha256).ToLowerInvariant()
+                output_volume_guid = [string]$vol.id
+                selected_qd        = [int]$sel.qd
+                selected_reason    = [string]$sel.reason
+                block_bytes        = [long]$run.block_bytes
+                window_duration_ms = [int]$run.window_duration_ms
+                windows_per_point  = [int]$run.rounds
+                points             = @($run.points)
+                swept_at           = (Get-Date).ToUniversalTime().ToString('o')
+                repack_checked_at  = [string]$CheckedAt
+            }
+            $save = Write-SweepBinding -Key $key -Entry $entry
+            if (-not $save.ok) {
+                $out['persist_failed'] = $true
+                Write-Line ('[sweep] binding_persist=failed ({0}); this run uses the measurement in memory and the next start re-probes.' -f $save.reason)
+            }
+        } else {
+            $out['persist_failed'] = $true
+            Write-Line '[sweep] binding_persist=failed (no output volume identity); this run uses the measurement in memory.'
+        }
+        if ($null -ne $key) { $script:SweepRuns[$key] = $out }
+        return $out
+    } catch {
+        $out['ok'] = $false
+        $out['qd'] = [int]$script:QD_DEGRADED
+        $out['qd_source'] = 'conservative-default'
+        $out['detail'] = ('sweep fault: ' + $_.Exception.Message)
+        Write-Line ('[sweep] QD sweep faulted ({0}) -> degraded: QD{1} (RS 5)' -f $_.Exception.Message, $script:QD_DEGRADED)
+        Write-Diag -Kind 'SWEEP_FAULT' -Data @{ reason = $_.Exception.Message }
+        return $out
+    }
+}
+
+function Format-SweepPoints {
+    param($Points)
+    $parts = @()
+    foreach ($qd in $script:SWEEP_QD_POINTS) {
+        $txt = 'n/a'
+        foreach ($p in @($Points)) {
+            if ([int]$p.qd -ne [int]$qd) { continue }
+            if ([string]$p.status -ceq 'ok') { $txt = ('{0} MiB/s' -f $p.mibps) } else { $txt = 'failed' }
+        }
+        $parts += ('QD{0} {1}' -f $qd, $txt)
+    }
+    return ($parts -join ' | ')
+}
+
+# LS 12-1 priority: session/CLI override > stored preset > measured-sweep > conservative-default.
+# Preset and CLI values arrive in the same override table, and both are user intent, so both are
+# reported as user-override.
+function Get-QdSource {
+    param($Overrides, $Sweep)
+    if ($null -ne $Overrides -and $Overrides.ContainsKey('qd')) { return 'user-override' }
+    if ($null -ne $Sweep) { return [string]$Sweep.qd_source }
+    return 'conservative-default'
+}
+
+# endregion
+
+# ============================================================================
+# region 10. INSTANCE / OUTPUT / PORT LOCKS (LS 1-8, LS 2)
+# ============================================================================
+
+$script:HeldMutexes = @()
+$script:HeldFileLocks = @()
+
+function Acquire-NamedMutex {
+    param([string] $Name)
+    # Global\ first (moe_serve.ps1:804 precedent). A filtered token has no SeCreateGlobalPrivilege,
+    # so fall back to Local\ and record the downgrade rather than failing the launch.
+    foreach ($prefix in @('Global\', 'Local\')) {
+        try {
+            $created = $false
+            $mx = New-Object System.Threading.Mutex($true, ($prefix + $Name), [ref] $created)
+            if (-not $created) {
+                try { $mx.Dispose() } catch { }
+                return @{ ok = $false; reason = ('lock already held: ' + $prefix + $Name) }
+            }
+            if ($prefix -eq 'Local\') { Write-Diag -Kind 'MUTEX_SCOPE_DOWNGRADE' -Data @{ name = $Name } }
+            $script:HeldMutexes += $mx
+            return @{ ok = $true; mutex = $mx; name = ($prefix + $Name) }
+        } catch [System.UnauthorizedAccessException] {
+            continue
+        } catch {
+            return @{ ok = $false; reason = ('mutex error: ' + $_.Exception.Message) }
+        }
+    }
+    return @{ ok = $false; reason = 'mutex could not be created in either scope' }
+}
+
+function Acquire-FileLock {
+    param([string] $Path)
+    try {
+        $fs = New-Object System.IO.FileStream($Path, [System.IO.FileMode]::OpenOrCreate,
+                  [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+        $script:HeldFileLocks += $fs
+        return @{ ok = $true; stream = $fs }
+    } catch {
+        return @{ ok = $false; reason = ('exclusive output lock unavailable: ' + $_.Exception.Message) }
+    }
+}
+
+function Release-AllLocks {
+    foreach ($fs in $script:HeldFileLocks) { try { $fs.Dispose() } catch { } }
+    $script:HeldFileLocks = @()
+    foreach ($mx in $script:HeldMutexes) { try { $mx.ReleaseMutex() } catch { } ; try { $mx.Dispose() } catch { } }
+    $script:HeldMutexes = @()
+    $script:PortMutex = $null
+}
+
+function Get-SafeToken {
+    param([string] $Text)
+    $sha = [System.Security.Cryptography.SHA256]::Create().ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Text))
+    return (([System.BitConverter]::ToString($sha) -replace '-', '').ToLowerInvariant().Substring(0, 16))
+}
+
+# R1-1: two separate lock stages.
+#   (1) instance + profile + output lock - taken before anything destructive (.partial cleanup,
+#       repack) can touch the output directory.
+#   (2) effective-port lock - taken only once the port is final, i.e. after preset + CLI have been
+#       bound and the effective config has been built.
+$script:PortMutex = $null
+
+# LS OA-1: the profile lock is taken separately because the arch-template path does not know its
+# profile id until the derive-plan has run, and that plan must already be under the instance and
+# output locks (it is read-only, but it decides what the following repack will write there). The
+# catalog path is unchanged: it passes -ProfileId and both locks are taken in the same call, in the
+# same order, as before.
+function Add-ProfileLock {
+    param([string] $ProfileId)
+    $r = Acquire-NamedMutex -Name ('moe_direct_launcher_profile_' + (Get-SafeToken -Text $ProfileId))
+    if (-not $r.ok) { Stop-Launcher 'fail_instance_lock' ('profile lock: ' + $r.reason) }
+}
+
+function Acquire-LauncherLocks {
+    param([string] $ProfileId, [string] $OutputDir)
+    $r = Acquire-NamedMutex -Name 'moe_direct_launcher'
+    if (-not $r.ok) { Stop-Launcher 'fail_instance_lock' ('single-instance: ' + $r.reason) }
+    if ($ProfileId) { Add-ProfileLock -ProfileId $ProfileId }
+    if (-not (Test-Path -LiteralPath $OutputDir -PathType Container)) {
+        try { New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null }
+        catch { Stop-Launcher 'fail_resource' ('cannot create output directory: ' + $_.Exception.Message) }
+    }
+    $r = Acquire-FileLock -Path (Join-Path $OutputDir '.moe-launcher.lock')
+    if (-not $r.ok) { Stop-Launcher 'fail_instance_lock' ('output lock: ' + $r.reason) }
+    Write-Diag -Kind 'LOCKS_ACQUIRED' -Data @{ profile = $ProfileId; out = $OutputDir }
+}
+
+function Set-EffectivePortLock {
+    param([int] $PortNumber)
+    if ($null -ne $script:PortMutex -and [int]$script:PortMutex.port -eq $PortNumber) { return }
+    if ($null -ne $script:PortMutex) {
+        # the user changed the port in the custom loop: release the old reservation first
+        try { $script:PortMutex.mutex.ReleaseMutex() } catch { }
+        try { $script:PortMutex.mutex.Dispose() } catch { }
+        $script:HeldMutexes = @($script:HeldMutexes | Where-Object { $_ -ne $script:PortMutex.mutex })
+        $script:PortMutex = $null
+    }
+    $r = Acquire-NamedMutex -Name ('moe_direct_launcher_port_' + $PortNumber)
+    if (-not $r.ok) { Stop-Launcher 'fail_instance_lock' ('effective port lock: ' + $r.reason) }
+    $script:PortMutex = @{ mutex = $r.mutex; port = $PortNumber }
+    Write-Diag -Kind 'PORT_LOCK_ACQUIRED' -Data @{ port = $PortNumber }
+}
+
+# endregion
+
+# ============================================================================
+# region 11. .partial DETECTION AND CLEANUP (LS 2, LS 3 item 1)
+# ============================================================================
+
+# LS 3 item 1 / R1-3: only FileNotFound proves absence. Any other query error is a hard stop,
+# never "absent" - identical to the C++ GetLastError()==ERROR_FILE_NOT_FOUND contract
+# (moedirect-v2-b10057.patch:7327-7338). FileInfo.Exists cannot be used: it reports false for
+# permission and IO errors too, which silently converts "cannot prove absence" into "absent".
+function Get-FileAbsenceState {
+    param([string] $Path)
+    $attrs = [MoeLauncher.Native]::GetFileAttributesW($Path)
+    if ($attrs -ne $script:INVALID_FILE_ATTRIBUTES) { return @{ state = 'present'; path = $Path } }
+    $gle = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+    if ($gle -eq $script:ERROR_FILE_NOT_FOUND) { return @{ state = 'absent'; path = $Path; gle = $gle } }
+    if ($gle -eq $script:ERROR_PATH_NOT_FOUND) {
+        # A component of the path is missing. That proves the file cannot exist, but only if the
+        # directory's own absence is itself provable by the same rule; anything else stays unknown.
+        $dir = [System.IO.Path]::GetDirectoryName($Path)
+        $dattrs = [MoeLauncher.Native]::GetFileAttributesW($dir)
+        if ($dattrs -eq $script:INVALID_FILE_ATTRIBUTES) {
+            $dgle = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+            if ($dgle -eq $script:ERROR_FILE_NOT_FOUND -or $dgle -eq $script:ERROR_PATH_NOT_FOUND) {
+                return @{ state = 'absent'; path = $Path; gle = $gle; dir_gle = $dgle }
+            }
+        }
+        return @{ state = 'unknown'; path = $Path; gle = $gle; reason = ("directory query inconclusive (GetLastError=" + $gle + ")") }
+    }
+    return @{ state = 'unknown'; path = $Path; gle = $gle
+              reason = ("GetFileAttributesW failed (GetLastError=" + $gle + ") - absence not provable") }
+}
+
+function Get-PartialMarkerState {
+    param([string] $OutputDir)
+    return (Get-FileAbsenceState -Path (Join-Path $OutputDir 'experts.bin.partial'))
+}
+
+# LS 2: the four artifacts are removed together. Deleting only the marker would not restart the
+# repacker (repack_experts.py:1030 aborts while experts.bin / manifest.json survive without --force).
+function Invoke-PartialCleanup {
+    param([string] $OutputDir)
+    Write-Line ''
+    Write-Line '[partial] An interrupted repack was detected in this output directory.'
+    Write-Line '          v1 has no resume: the repack restarts from the beginning.'
+    Write-Line '          The following artifacts will be DELETED before restarting:'
+    foreach ($n in $script:PARTIAL_DELETE_SET) { Write-Line ('            - ' + (Join-Path $OutputDir $n)) }
+    if (-not (Confirm-User -Question 'Delete these artifacts and restart the repack? [y/N] ')) {
+        Stop-Launcher 'cancelled_user' 'user declined .partial cleanup'
+    }
+    $failed = @()
+    foreach ($n in $script:PARTIAL_DELETE_SET) {
+        $p = Join-Path $OutputDir $n
+        try {
+            if (Test-Path -LiteralPath $p -PathType Leaf) { Remove-Item -LiteralPath $p -Force -ErrorAction Stop }
+        } catch {
+            $failed += ($n + ': ' + $_.Exception.Message)
+            continue
+        }
+        try {
+            $fi = New-Object System.IO.FileInfo($p); $fi.Refresh()
+            if ($fi.Exists) { $failed += ($n + ': still present after delete') }
+        } catch {
+            $failed += ($n + ': absence check failed - ' + $_.Exception.Message)
+        }
+    }
+    if ($failed.Count -gt 0) {
+        Write-Diag -Kind 'PARTIAL_CLEANUP_FAILED' -Data @{ failed = $failed }
+        Stop-Launcher 'fail_partial_cleanup' ('.partial cleanup failed: ' + ($failed -join '; '))
+    }
+    Write-Diag -Kind 'PARTIAL_CLEANUP_OK' -Data @{ out = $OutputDir; deleted = $script:PARTIAL_DELETE_SET }
+    Write-Line '[partial] Cleanup complete; repack will start from the beginning.'
+}
+
+# endregion
+
+# ============================================================================
+# region 12. 7-ITEM VERIFY GATE (LS 3) - isomorphic with the C++ consumer
+#   1st source: bench/moe-direct/repro/moedirect-v2-b10057.patch:3738-3830 (read_verify_report_gate)
+#               and :7299-7360 (seal reference_lock / partial / manifest_sha256 binding)
+# ============================================================================
+
+function Get-LastNonEmptyRecordText {
+    param([string] $Path)
+    $b = Read-FileBytesStrict -Path $Path
+    if (-not $b.ok) { return @{ ok = $false; reason = $b.reason } }
+    $t = ConvertFrom-Utf8Strict -Bytes $b.bytes
+    if (-not $t.ok) { return @{ ok = $false; reason = $t.reason } }
+    $lines = $t.text -split "`n"
+    $last = $null
+    foreach ($ln in $lines) {
+        $trim = $ln.TrimEnd("`r", "`n", ' ', "`t")
+        if ($trim.Length -gt 0) { $last = $trim }
+    }
+    # A normal trailing newline leaves an empty final element and is skipped above; a truncated
+    # last record stays non-empty and must be rejected by strict parse (no earlier-line fallback).
+    if ($null -eq $last) { return @{ ok = $false; reason = 'verify_report.json has no non-empty record' } }
+    return @{ ok = $true; text = $last }
+}
+
+function Assert-VerifyGate {
+    param([string] $OutputDir, [string] $ProfileId, [string] $ExpectSha)
+
+    # (1) .partial absence - FileNotFound only
+    $pm = Get-PartialMarkerState -OutputDir $OutputDir
+    if ($pm.state -eq 'present') { Stop-Launcher 'fail_gate_verify' 'gate 1: experts.bin.partial present (interrupted or unverified artifact)' }
+    if ($pm.state -eq 'unknown') { Stop-Launcher 'fail_gate_verify' ('gate 1: experts.bin.partial absence not provable - ' + $pm.reason) }
+
+    $reportPath  = Join-Path $OutputDir 'verify_report.json'
+    $manifestPath = Join-Path $OutputDir 'manifest.json'
+    if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf))   { Stop-Launcher 'fail_gate_verify' 'gate 2: verify_report.json missing' }
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) { Stop-Launcher 'fail_gate_verify' 'gate 6: manifest.json missing' }
+
+    # (2) last non-empty physical record, strict parse
+    $lr = Get-LastNonEmptyRecordText -Path $reportPath
+    if (-not $lr.ok) { Stop-Launcher 'fail_gate_verify' ('gate 2: ' + $lr.reason) }
+    $pr = ConvertFrom-JsonStrict -Text $lr.text
+    if (-not $pr.ok) { Stop-Launcher 'fail_gate_verify' ('gate 2: last record strict parse failed - ' + $pr.reason) }
+    $rec = $pr.value
+
+    # (3) pass must be JSON boolean true
+    if (-not (Test-JsonHas -Obj $rec -Name 'pass')) { Stop-Launcher 'fail_gate_verify' 'gate 3: pass key missing' }
+    $passVal = Get-JsonValue -Obj $rec -Name 'pass'
+    if (-not (Test-JsonBoolean $passVal))    { Stop-Launcher 'fail_gate_verify' 'gate 3: pass is not a JSON boolean' }
+    if (-not (Test-JsonBooleanTrue $passVal)) { Stop-Launcher 'fail_gate_verify' 'gate 3: pass is false' }
+
+    # (4) three counts present, non-negative integers, all equal
+    $counts = @{}
+    foreach ($k in @('pairs_pass', 'pairs_total', 'expected_pairs')) {
+        if (-not (Test-JsonHas -Obj $rec -Name $k)) { Stop-Launcher 'fail_gate_verify' ('gate 4: ' + $k + ' missing') }
+        $v = Get-JsonValue -Obj $rec -Name $k
+        if (-not (Test-JsonNonNegativeInteger $v)) { Stop-Launcher 'fail_gate_verify' ('gate 4: ' + $k + ' is not a non-negative integer') }
+        $counts[$k] = [long]$v
+    }
+    if ($counts['pairs_pass'] -ne $counts['pairs_total'] -or $counts['pairs_total'] -ne $counts['expected_pairs']) {
+        Stop-Launcher 'fail_gate_verify' ('gate 4: count equality broken pairs_pass=' + $counts['pairs_pass'] +
+            ' pairs_total=' + $counts['pairs_total'] + ' expected_pairs=' + $counts['expected_pairs'])
+    }
+
+    # (5) three defect keys present, JSON arrays, length 0 (missing key != empty array)
+    foreach ($k in @('problems', 'failures', 'padding_failures')) {
+        if (-not (Test-JsonHas -Obj $rec -Name $k)) { Stop-Launcher 'fail_gate_verify' ('gate 5: ' + $k + ' missing (missing key is not an empty array)') }
+        $v = Get-JsonValue -Obj $rec -Name $k
+        if (-not (Test-JsonArray $v))      { Stop-Launcher 'fail_gate_verify' ('gate 5: ' + $k + ' is not a JSON array') }
+        if (-not (Test-JsonEmptyArray $v)) { Stop-Launcher 'fail_gate_verify' ('gate 5: ' + $k + ' is not empty') }
+    }
+
+    # (6) reference_lock three-way equality
+    $mr = Read-JsonFileStrict -Path $manifestPath
+    if (-not $mr.ok) { Stop-Launcher 'fail_gate_verify' ('gate 6: manifest.json unreadable - ' + $mr.reason) }
+    $mLock = Get-JsonValue -Obj $mr.value -Name 'reference_lock'
+    $rLock = Get-JsonValue -Obj $rec -Name 'reference_lock'
+    foreach ($pair in @(@('manifest', $mLock), @('verify_report', $rLock))) {
+        $lock = $pair[1]
+        if ($null -eq $lock) { Stop-Launcher 'fail_gate_verify' ('gate 6: ' + $pair[0] + '.reference_lock missing') }
+        if (-not (Test-JsonNonEmptyString (Get-JsonValue -Obj $lock -Name 'profile_id'))) {
+            Stop-Launcher 'fail_gate_verify' ('gate 6: ' + $pair[0] + '.reference_lock.profile_id missing or not a string')
+        }
+        if (-not (Test-Sha256Hex (Get-JsonValue -Obj $lock -Name 'expect_sha256'))) {
+            Stop-Launcher 'fail_gate_verify' ('gate 6: ' + $pair[0] + '.reference_lock.expect_sha256 missing or not 64 hex')
+        }
+    }
+    $mPid = [string](Get-JsonValue -Obj $mLock -Name 'profile_id')
+    $rPid = [string](Get-JsonValue -Obj $rLock -Name 'profile_id')
+    $mSha = ([string](Get-JsonValue -Obj $mLock -Name 'expect_sha256')).ToLowerInvariant()
+    $rSha = ([string](Get-JsonValue -Obj $rLock -Name 'expect_sha256')).ToLowerInvariant()
+    $cSha = $ExpectSha.ToLowerInvariant()
+    if (-not ($mPid -ceq $ProfileId -and $rPid -ceq $ProfileId)) {
+        Stop-Launcher 'fail_gate_verify' ("gate 6: reference_lock.profile_id three-way mismatch (manifest=" + $mPid + " report=" + $rPid + " selected=" + $ProfileId + ")")
+    }
+    if (-not ($mSha -eq $cSha -and $rSha -eq $cSha)) {
+        Stop-Launcher 'fail_gate_verify' 'gate 6: reference_lock.expect_sha256 three-way mismatch against the catalog expect hash'
+    }
+
+    # (7) cache key binding: manifest_sha256 is 64 hex AND equals the real manifest.json bytes
+    if (-not (Test-JsonHas -Obj $rec -Name 'manifest_sha256')) {
+        Stop-Launcher 'fail_gate_verify' 'gate 7: manifest_sha256 missing (report not bound to a cache key)'
+    }
+    $repSha = Get-JsonValue -Obj $rec -Name 'manifest_sha256'
+    if (-not (Test-Sha256Hex $repSha)) { Stop-Launcher 'fail_gate_verify' 'gate 7: manifest_sha256 is not a 64 hex string' }
+    $realSha = Get-FileSha256Lower -Path $manifestPath
+    if (-not $realSha.ok) { Stop-Launcher 'fail_gate_verify' ('gate 7: manifest.json re-hash failed - ' + $realSha.reason) }
+    if ($realSha.sha -ne ([string]$repSha).ToLowerInvariant()) {
+        Stop-Launcher 'fail_gate_verify' 'gate 7: manifest_sha256 != real manifest.json bytes (report belongs to a different artifact)'
+    }
+
+    Write-Diag -Kind 'VERIFY_GATE_OK' -Data @{ out = $OutputDir; profile = $ProfileId;
+        pairs = $counts['pairs_total']; manifest_sha256 = $realSha.sha }
+    Write-Line ('[gate] verify gate PASS (7/7) - pairs {0}, manifest {1}' -f $counts['pairs_total'], $realSha.sha.Substring(0, 12))
+    # checked_at is passed through for LS 12-4 freshness bookkeeping only (the repack completion
+    # time is the REPORT's checked_at, not the manifest's creation time). It is not a gate input:
+    # no gate branch above reads it, and its absence cannot change this function's verdict.
+    return @{ pairs = $counts['pairs_total']; manifest_sha256 = $realSha.sha
+              checked_at = [string](Get-JsonValue -Obj $rec -Name 'checked_at') }
+}
+
+# endregion
+
+# ============================================================================
+# region 13. USER PRESET (LS 1-7) - atomic round trip, zero partial application
+# ============================================================================
+
+function Get-PresetPath {
+    return (Join-Path (Get-LauncherStateDir) 'presets.user.json')
+}
+
+# Load order is fixed by LS 1-7: (1) atomic read (2) strict schema + exact schema_version
+# (3) source_tag/profile_id/expect_digest binding (4) allowlist projection (5) type/bounds
+# (6) regeneration from the current catalog (7) re-sizing (8) status. Any failure at any step
+# discards the whole preset - never a partial application.
+function Read-UserPreset {
+    param([string] $SourceTag, [string] $ProfileId, [string] $ExpectDigest, $Bounds)
+    $path = Get-PresetPath
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        return @{ applied = $false; reason = 'no stored preset'; overrides = @{} }
+    }
+    # (1) atomic read
+    $b = Read-FileBytesStrict -Path $path
+    if (-not $b.ok) { return (Discard-Preset -Reason ('unreadable - ' + $b.reason)) }
+    $t = ConvertFrom-Utf8Strict -Bytes $b.bytes
+    if (-not $t.ok) { return (Discard-Preset -Reason ('not valid utf-8 - ' + $t.reason)) }
+    $pr = ConvertFrom-JsonStrict -Text $t.text
+    if (-not $pr.ok) { return (Discard-Preset -Reason ('corrupt or truncated json - ' + $pr.reason)) }
+    $obj = $pr.value
+
+    # (2) strict schema + exact schema_version
+    foreach ($f in $script:PRESET_REQUIRED_FIELDS) {
+        if (-not (Test-JsonHas -Obj $obj -Name $f)) { return (Discard-Preset -Reason ('required field missing: ' + $f)) }
+    }
+    foreach ($k in (Get-JsonKeys -Obj $obj)) {
+        if ($script:PRESET_REQUIRED_FIELDS -notcontains $k) { return (Discard-Preset -Reason ('unknown top-level field: ' + $k)) }
+    }
+    $sv = Get-JsonValue -Obj $obj -Name 'schema_version'
+    if (-not (Test-JsonNonNegativeInteger $sv)) { return (Discard-Preset -Reason 'schema_version is not an integer') }
+    if ([long]$sv -ne [long]$script:PRESET_SCHEMA_VERSION) { return (Discard-Preset -Reason ('stale schema_version ' + $sv)) }
+
+    # (3) binding
+    if ([string](Get-JsonValue -Obj $obj -Name 'source_tag')    -cne $SourceTag)    { return (Discard-Preset -Reason 'source_tag binding mismatch') }
+    if ([string](Get-JsonValue -Obj $obj -Name 'profile_id')    -cne $ProfileId)    { return (Discard-Preset -Reason 'profile_id binding mismatch') }
+    if (([string](Get-JsonValue -Obj $obj -Name 'expect_digest')).ToLowerInvariant() -ne $ExpectDigest.ToLowerInvariant()) {
+        return (Discard-Preset -Reason 'expect_digest binding mismatch')
+    }
+
+    # (4) allowlist projection - keys outside the allowlist are dropped, never applied
+    $ovIn = Get-JsonValue -Obj $obj -Name 'overrides'
+    if ($null -eq $ovIn) { return (Discard-Preset -Reason 'overrides missing') }
+    $dropped = @()
+    $proj = @{}
+    foreach ($k in (Get-JsonKeys -Obj $ovIn)) {
+        if ($script:PRESET_ALLOWLIST_KEYS -contains $k) { $proj[$k] = (Get-JsonValue -Obj $ovIn -Name $k) }
+        else { $dropped += $k }
+    }
+
+    # (5) type / bounds
+    $checked = @{}
+    foreach ($k in $proj.Keys) {
+        $v = Test-OverrideValue -Key $k -Value ([string]$proj[$k]) -Bounds $Bounds
+        if (-not $v.ok) { return (Discard-Preset -Reason ('override ' + $k + ' rejected: ' + $v.reason)) }
+        $checked[$k] = $v.value
+    }
+
+    Write-Diag -Kind 'PRESET_LOADED' -Data @{ path = $path; overrides = $checked; dropped_keys = $dropped }
+    return @{ applied = $true; overrides = $checked; dropped = $dropped; path = $path }
+}
+
+function Discard-Preset {
+    param([string] $Reason)
+    # LS 1-7 / LS 5: preset discard is a degraded, non-terminal path.
+    Write-Line ('[preset] stored preset discarded (' + $Reason + '); falling back to catalog defaults.')
+    Write-Diag -Kind 'PRESET_DISCARDED' -Data @{ reason = $Reason }
+    return @{ applied = $false; reason = $Reason; overrides = @{} }
+}
+
+function Save-UserPreset {
+    param([string] $SourceTag, [string] $ProfileId, [string] $ExpectDigest, $Overrides)
+    $path = Get-PresetPath
+    $dir = Split-Path -Parent $path
+    try {
+        if (-not (Test-Path -LiteralPath $dir -PathType Container)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+        $obj = [ordered]@{
+            schema_version = [int]$script:PRESET_SCHEMA_VERSION
+            source_tag     = $SourceTag
+            profile_id     = $ProfileId
+            expect_digest  = $ExpectDigest
+            overrides      = [ordered]@{}
+        }
+        foreach ($k in $script:PRESET_ALLOWLIST_KEYS) {
+            if ($Overrides.ContainsKey($k)) { $obj['overrides'][$k] = [string]$Overrides[$k] }
+        }
+        $json = ($obj | ConvertTo-Json -Depth 6)
+        $tmp = $path + '.tmp'
+        [System.IO.File]::WriteAllText($tmp, $json, (New-Object System.Text.UTF8Encoding($false)))
+        # read-back re-parse before the atomic replace
+        $rb = Read-JsonFileStrict -Path $tmp
+        if (-not $rb.ok) { throw ('read-back parse failed: ' + $rb.reason) }
+        if ([long](Get-JsonValue -Obj $rb.value -Name 'schema_version') -ne [long]$script:PRESET_SCHEMA_VERSION) {
+            throw 'read-back schema_version mismatch'
+        }
+        Move-FileAtomic -TempPath $tmp -FinalPath $path
+        Write-Diag -Kind 'PRESET_SAVED' -Data @{ path = $path; overrides = $Overrides }
+        Write-Line ('[preset] saved: ' + $path)
+        return $true
+    } catch {
+        # LS 1-7 save failure is a non-terminal warning; the session keeps the effective values.
+        Write-Line ('[preset] WARNING: could not save preset (' + $_.Exception.Message + '). This session continues with the effective values; they will not persist.')
+        Write-Diag -Kind 'preset_save_failed' -Data @{ path = $path; reason = $_.Exception.Message }
+        try { if (Test-Path -LiteralPath ($path + '.tmp') -PathType Leaf) { Remove-Item -LiteralPath ($path + '.tmp') -Force -ErrorAction SilentlyContinue } } catch { }
+        return $false
+    }
+}
+
+function Remove-UserPreset {
+    $path = Get-PresetPath
+    try {
+        if (Test-Path -LiteralPath $path -PathType Leaf) { Remove-Item -LiteralPath $path -Force -ErrorAction Stop }
+        Write-Line '[preset] stored preset reset.'
+        Write-Diag -Kind 'PRESET_RESET' -Data @{ path = $path }
+    } catch {
+        Write-Line ('[preset] WARNING: reset failed (' + $_.Exception.Message + ')')
+        Write-Diag -Kind 'preset_save_failed' -Data @{ path = $path; reason = ('reset: ' + $_.Exception.Message) }
+    }
+}
+
+# endregion
+
+# ============================================================================
+# region 14. ALLOWLIST OVERRIDES / EFFECTIVE CONFIG (LS 1-2, LS 1-3)
+# ============================================================================
+
+function Get-BoundPair {
+    param($Bounds, [string] $Key)
+    $b = Get-JsonValue -Obj $Bounds -Name $Key
+    return @{ min = [long](Get-JsonValue -Obj $b -Name 'min'); max = [long](Get-JsonValue -Obj $b -Name 'max') }
+}
+
+function Test-OverrideValue {
+    param([string] $Key, [string] $Value, $Bounds)
+    # LS 13-8: 'autosave' is on | off | <minutes>, so it deliberately does NOT reuse the warmup
+    # on/true/1 spellings: '1' has to mean one minute, not "on". Everything else about the discipline
+    # is identical (raw string in, normalised value out, rejection = fail_custom_args or an
+    # interactive re-loop). The minute bounds are structural, like PORT_MIN/PORT_MAX: the catalog
+    # carries no allowlist_bounds entry for this key and none is invented from it.
+    if ($Key -eq 'autosave') {
+        $v = ([string]$Value).Trim().ToLowerInvariant()
+        if ($v -eq 'on')  { return @{ ok = $true; value = 'on' } }
+        if ($v -eq 'off') { return @{ ok = $true; value = 'off' } }
+        $m = [long]0
+        if (-not [long]::TryParse($v, [ref]$m)) {
+            return @{ ok = $false; reason = "autosave must be 'on', 'off' or a whole number of minutes" }
+        }
+        if ($m -lt $script:KV_AUTOSAVE_MIN_MINUTES -or $m -gt $script:KV_AUTOSAVE_MAX_MINUTES) {
+            return @{ ok = $false; reason = ('autosave minutes out of bounds [' + $script:KV_AUTOSAVE_MIN_MINUTES +
+                                             '..' + $script:KV_AUTOSAVE_MAX_MINUTES + ']') }
+        }
+        return @{ ok = $true; value = [string]$m }
+    }
+    # LS 13-2: 'warmstart' reuses the existing on/off branch byte for byte - same accepted spellings,
+    # same rejection, and therefore the same fail_custom_args / interactive re-loop behaviour.
+    if ($Key -eq 'warmup' -or $Key -eq 'warmstart') {
+        $v = ([string]$Value).Trim().ToLowerInvariant()
+        if ($v -eq 'on' -or $v -eq 'true' -or $v -eq '1')  { return @{ ok = $true; value = 'on' } }
+        if ($v -eq 'off' -or $v -eq 'false' -or $v -eq '0') { return @{ ok = $true; value = 'off' } }
+        return @{ ok = $false; reason = ($Key + " must be 'on' or 'off'") }
+    }
+    $n = [long]0
+    if (-not [long]::TryParse(([string]$Value).Trim(), [ref]$n)) {
+        return @{ ok = $false; reason = ($Key + ' must be an integer') }
+    }
+    $bp = Get-BoundPair -Bounds $Bounds -Key $Key
+    $lo = $bp.min; $hi = $bp.max
+    if ($Key -eq 'port') {
+        if ($lo -lt $script:PORT_MIN) { $lo = $script:PORT_MIN }
+        if ($hi -gt $script:PORT_MAX) { $hi = $script:PORT_MAX }
+    }
+    if ($Key -eq 'qd') {
+        if ($lo -lt $script:ENGINE_QD_MIN) { $lo = $script:ENGINE_QD_MIN }
+        if ($hi -gt $script:ENGINE_QD_MAX) { $hi = $script:ENGINE_QD_MAX }
+    }
+    if ($n -lt $lo -or $n -gt $hi) {
+        return @{ ok = $false; reason = ($Key + ' out of bounds [' + $lo + '..' + $hi + ']') }
+    }
+    return @{ ok = $true; value = [string]$n }
+}
+
+function Get-ArgvValue {
+    param([string[]] $Argv, [string] $Flag)
+    for ($i = 0; $i -lt $Argv.Count - 1; $i++) {
+        if ($Argv[$i] -ceq $Flag) { return $Argv[$i + 1] }
+    }
+    return $null
+}
+
+function Set-ArgvValue {
+    param([string[]] $Argv, [string] $Flag, [string] $Value)
+    $out = @()
+    $replaced = $false
+    for ($i = 0; $i -lt $Argv.Count; $i++) {
+        if ($Argv[$i] -ceq $Flag -and $i -lt $Argv.Count - 1) {
+            $out += $Flag; $out += $Value; $i++; $replaced = $true
+        } else { $out += $Argv[$i] }
+    }
+    if (-not $replaced) { $out += $Flag; $out += $Value }
+    return , $out
+}
+
+function Remove-ArgvFlag {
+    param([string[]] $Argv, [string] $Flag)
+    $out = @()
+    foreach ($a in $Argv) { if ($a -cne $Flag) { $out += $a } }
+    return , $out
+}
+
+# Removes a flag together with its value, at every occurrence (arity 1). Used so a catalog-supplied
+# --slot-save-path can never survive into the effective argv: this launcher owns that argument.
+function Remove-ArgvPair {
+    param([string[]] $Argv, [string] $Flag)
+    $out = @()
+    $i = 0
+    while ($i -lt $Argv.Count) {
+        if ($Argv[$i] -ceq $Flag) { $i = $i + 2; continue }
+        $out += [string]$Argv[$i]
+        $i = $i + 1
+    }
+    return , $out
+}
+
+# LS 1-2 table: this is the only place that decides live prefetch behaviour.
+function Resolve-EffectivePrefetch {
+    param($Profile, [bool] $ProbeOk)
+    $st = [string](Get-JsonValue -Obj $Profile -Name 'prefetch_state')
+    if ($st -ceq 'validated') {
+        if ($ProbeOk) {
+            $pf = Get-JsonValue -Obj $Profile -Name 'prefetch'
+            return @{ on = $true; echo = $script:PREFETCH_ECHO_ON
+                      k = [long](Get-JsonValue -Obj $pf -Name 'k'); n = [long](Get-JsonValue -Obj $pf -Name 'n') }
+        }
+        return @{ on = $false; echo = $script:PREFETCH_ECHO_PROBE_FAILED; degraded = $true }
+    }
+    if ($st -ceq 'reference-only') { return @{ on = $false; echo = $script:PREFETCH_ECHO_REFERENCE_ONLY } }
+    if ($st -ceq 'disabled')       { return @{ on = $false; echo = $script:PREFETCH_ECHO_CATALOG_DISABLED } }
+    Stop-Launcher 'fail_gate_catalog' ('prefetch_state unknown at resolve time: ' + $st)
+}
+
+# LS 1-2 (R6 revision) - the QD-dependent row of the same table, kept separate because effective_qd
+# is only known after preset / CLI / interactive-custom overrides have been folded in. It is applied
+# inside Build-EffectiveConfig, which is what makes it re-decided on EVERY config rebuild.
+# The launcher never raises QD to N+1 and never clamps the catalog N to QD-1: the catalog K/N pair
+# is a locked, verified combination, so an unverified one is not synthesised here.
+function Resolve-PrefetchForQd {
+    param($Decision, [int] $EffectiveQd)
+    if ($null -eq $Decision -or -not $Decision.on) { return $Decision }
+    if ([long]$EffectiveQd -ge ([long]$Decision.n + 1)) { return $Decision }
+    return @{ on = $false; echo = $script:PREFETCH_ECHO_QD_BELOW_DEPTH
+              qd_demoted = $true; catalog_k = $Decision.k; catalog_n = $Decision.n
+              effective_qd = [int]$EffectiveQd }
+}
+
+function Build-EffectiveConfig {
+    param($Catalog, $Profile, [string] $Root, [string] $OutputDir, [string] $ModelPath,
+          $Overrides, $PrefetchDecision, [int] $Qd)
+    $d = Get-JsonValue -Obj $Profile -Name 'defaults'
+    $argv = @()
+    foreach ($a in (Get-JsonArray -Obj $d -Name 'argv')) { $argv += [string]$a }
+
+    # model path is launcher-controlled (locked): the catalog cannot know where the user put it.
+    $argv = Set-ArgvValue -Argv $argv -Flag '-m' -Value $ModelPath
+
+    # locked layer: everything not listed below stays exactly as the catalog declared it.
+    $port = $null
+    if ($Overrides.ContainsKey('port')) { $port = [string]$Overrides['port'] } else { $port = Get-ArgvValue -Argv $argv -Flag '--port' }
+    if ($null -eq $port) { Stop-Launcher 'fail_gate_catalog' 'catalog defaults.argv has no --port and no override supplied' }
+    $argv = Set-ArgvValue -Argv $argv -Flag '--port' -Value $port
+    if ($Overrides.ContainsKey('ctx'))     { $argv = Set-ArgvValue -Argv $argv -Flag '-c' -Value ([string]$Overrides['ctx']) }
+    if ($Overrides.ContainsKey('threads')) { $argv = Set-ArgvValue -Argv $argv -Flag '-t' -Value ([string]$Overrides['threads']) }
+
+    # R2-2 warmup single owner: the ENGINE warmup is always off - '--no-warmup' is forced into the
+    # effective argv in every configuration. warmup=on only enables the launcher's own post-ready
+    # warmup request (Invoke-LauncherWarmup). Two reasons this direction and not the other:
+    #   - an engine-internal warmup failure happens BEFORE ready, so it can only surface as
+    #     fail_server_start/5 and can never reach the non-terminal degraded branch RS 5 requires;
+    #   - one observable warmup owner keeps startup deterministic and the failure reportable.
+    $warm = 'off'
+    if ($Overrides.ContainsKey('warmup')) { $warm = [string]$Overrides['warmup'] }
+    if (-not ($argv -ccontains '--no-warmup')) { $argv += '--no-warmup' }
+
+    # locked layer, restated at build time so a catalog typo cannot relax it (RS 7-3).
+    if (-not ($argv -ccontains '-np')) { $argv += @('-np', '1') }
+    else { $argv = Set-ArgvValue -Argv $argv -Flag '-np' -Value '1' }
+    $host0 = Get-ArgvValue -Argv $argv -Flag '--host'
+    if ($null -eq $host0) { $argv = Set-ArgvValue -Argv $argv -Flag '--host' -Value '127.0.0.1' ; $host0 = '127.0.0.1' }
+    if (-not (Test-LoopbackAddress -Address $host0)) {
+        Stop-Launcher 'fail_gate_catalog' ('catalog defaults.argv binds a non-loopback host (' + $host0 + '); loopback-only is locked (RS 7-3)')
+    }
+
+    # LS 13-2 (WS-1): the warmstart override is an allowlist key, so it is bound here - on every
+    # rebuild, before the argument surface is fixed. LS 13-1 then requires the directory to exist
+    # BEFORE --slot-save-path is injected (the server refuses to start when it does not), and the
+    # A-1 latch makes a failed guarantee turn the whole feature off for this run rather than
+    # terminating. Doing both here is what keeps argv, the status line and the diagnostic log
+    # describing the same decision.
+    $wsOverride = 'on'
+    if ($Overrides.ContainsKey('warmstart')) { $wsOverride = [string]$Overrides['warmstart'] }
+    $script:WarmstartCtx.override = $wsOverride
+    # LS 13-8: autosave is bound on the same rebuild. It takes no part in argv or env - it only
+    # decides whether the serving loop ticks - so it is resolved here purely to keep one binding
+    # point per rebuild.
+    $asOverride = 'on'
+    if ($Overrides.ContainsKey('autosave')) { $asOverride = [string]$Overrides['autosave'] }
+    Set-AutosaveSetting -Value $asOverride
+    $argv = Remove-ArgvPair -Argv $argv -Flag $script:ARG_SLOT_SAVE_PATH
+    $dirOk = Confirm-WarmstartDirectory -Stage 'config'
+    # LS 13-1 (2): the profile cap runs once, right here - after the directory guarantee (so the ON
+    # row counts and pins a current directory that now exists) and BEFORE the eligibility decision
+    # at the tail of this function.
+    Invoke-KvProfileCapOnce
+    if ($dirOk) {
+        $argv = Set-ArgvValue -Argv $argv -Flag $script:ARG_SLOT_SAVE_PATH -Value ($script:WarmstartCtx.dir.TrimEnd('\') + '\')
+    }
+
+    $env0 = @{}
+    $de = Get-JsonValue -Obj $d -Name 'env'
+    foreach ($k in (Get-JsonKeys -Obj $de)) { $env0[$k] = [string](Get-JsonValue -Obj $de -Name $k) }
+    $env0[$script:ENV_DIRECT]      = '1'
+    $env0[$script:ENV_DIRECT_DIR]  = $OutputDir
+    $env0[$script:ENV_EXPECTS_DIR] = (Join-Path $Root ([string](Get-JsonValue -Obj (Get-JsonValue -Obj $Catalog -Name 'runtime') -Name 'expects_dir')))
+    # BUDGET_AUTOTUNE_SPEC v0.2: the default budget is the autotune's answer and an explicit value
+    # (CLI / stored preset / interactive custom - they all arrive in $Overrides) outranks it. Both
+    # decisions live in Resolve-BudgetAutotune, so a rebuild re-decides the budget exactly like it
+    # re-decides the prefetch QD row above, and this build's BUDGET_AUTOTUNE record always lands
+    # before the caller's EFFECTIVE record. -PerfCustom is Test-CustomProvenance over THIS SAME
+    # overrides map - the map the main flow hands to that same function for the EFFECTIVE record's
+    # provenance/performance_gate - so the two records cannot answer the identity question from
+    # two different judgments (r2 F2-b).
+    $bt = Resolve-BudgetAutotune -Profile $Profile -Overrides $Overrides `
+              -Installed (Get-InstalledMemoryMib) `
+              -Geometry (Get-BudgetSlotGeometry -OutputDir $OutputDir) `
+              -Mem (Get-MemStatus) -ReproMode ([bool]$Repro) `
+              -PerfCustom (Test-CustomProvenance -Overrides $Overrides)
+    $budget = [long]$bt.budget_mb
+    $env0[$script:ENV_BUDGET_MB] = [string]$budget
+    $qdEff = $Qd
+    if ($Overrides.ContainsKey('qd')) { $qdEff = [int]$Overrides['qd'] }
+    $env0[$script:ENV_QD] = [string]$qdEff
+
+    # Default metrics accounting log (LAUNCHER_SPEC 8b: stop -> "graceful cleanup(metrics summary
+    # flush)" is only real if MOE_DIRECT_METRICS points somewhere). A value already supplied -
+    # via the profile/preset/custom env section above, or set ambient by the caller's own shell -
+    # is respected as-is; the launcher only fills the gap.
+    $metricsInjected = $false
+    if (-not $env0.ContainsKey($script:ENV_METRICS)) {
+        $extMetrics = [System.Environment]::GetEnvironmentVariable($script:ENV_METRICS)
+        if ($extMetrics) {
+            $env0[$script:ENV_METRICS] = $extMetrics
+        } else {
+            $logDir = Join-Path (Get-LauncherStateDir) 'logs'
+            if (-not (Test-Path -LiteralPath $logDir -PathType Container)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
+            $env0[$script:ENV_METRICS] = Join-Path $logDir ('metrics_{0}_{1}.jsonl' -f (Get-Date -Format 'yyyyMMddTHHmmss'), $PID)
+            $metricsInjected = $true
+        }
+    }
+    # Codex xcheck (reviews/codex_warmstart_a_xcheck.md, 편승 563ccc8 #2): validated here regardless
+    # of provenance (profile env / ambient / generated default above) - the child's working
+    # directory is the bundle root, so an unvalidated relative or in-bundle value becomes an
+    # unlisted bundle file that the NEXT launch self-rejects as fail_gate_bundle.
+    $metricsRaw = $env0[$script:ENV_METRICS]
+    if (-not [System.IO.Path]::IsPathRooted($metricsRaw)) {
+        Stop-Launcher 'fail_gate_catalog' ('MOE_DIRECT_METRICS must be an absolute path (relative): ' + $metricsRaw)
+    }
+    $metricsCanonical = [System.IO.Path]::GetFullPath($metricsRaw)
+    $rootWithSep = $Root.TrimEnd('\') + '\'
+    if ($metricsCanonical.Equals($Root, [System.StringComparison]::OrdinalIgnoreCase) -or
+        $metricsCanonical.StartsWith($rootWithSep, [System.StringComparison]::OrdinalIgnoreCase)) {
+        Stop-Launcher 'fail_gate_catalog' ('MOE_DIRECT_METRICS must be outside the bundle root (inside-bundle): ' + $metricsRaw)
+    }
+    $env0[$script:ENV_METRICS] = $metricsCanonical
+    Write-Diag -Kind 'METRICS_ENV' -Data @{ injected = $metricsInjected; path = $env0[$script:ENV_METRICS] }
+
+    # LS 1-2 (R6): effective_qd is final only here, so the QD row of the table is decided here -
+    # every rebuild (a custom edit, a stored preset, a CLI override) re-decides it.
+    $pf = Resolve-PrefetchForQd -Decision $PrefetchDecision -EffectiveQd $qdEff
+
+    # LS 1-2: outside the single 'on' row the raw K/N keys must be ABSENT, not set to zero.
+    $env0.Remove($script:ENV_PREFETCH_K) | Out-Null
+    $env0.Remove($script:ENV_PREFETCH_N) | Out-Null
+    $env0.Remove($script:ENV_NO_PREFETCH) | Out-Null
+    if ($pf.on) {
+        $env0[$script:ENV_PREFETCH_K] = [string]$pf.k
+        $env0[$script:ENV_PREFETCH_N] = [string]$pf.n
+    } else {
+        $env0[$script:ENV_NO_PREFETCH] = '1'
+    }
+    if ($pf.qd_demoted) {
+        Write-Diag -Kind 'PREFETCH_QD_DEMOTED' -Data @{ effective_qd = $qdEff; catalog_n = $pf.catalog_n
+                                                        catalog_k = $pf.catalog_k; echo = $pf.echo }
+    }
+
+    # LS 13-1: config-dependent eligibility is re-decided on EVERY returned effective config, and it
+    # is done HERE rather than at each call site so a future caller cannot forget it. The status
+    # screen renders $script:WarmstartCtx.status_text, so the 'kv :' line can never lag behind a
+    # custom edit.
+    Update-WarmstartEligibility -Argv $argv -EnvVars $env0
+
+    return @{ argv = $argv; env = $env0; port = [int]$port; budget_mb = $budget; qd = $qdEff;
+              warmup = $warm; prefetch = $pf; host = $host0; warmstart = $wsOverride
+              autosave = $asOverride
+              budget_source = $bt.source; budget_unmeasured = [bool]$bt.unmeasured }
+}
+
+# LS 13-2: performance-neutral override keys do not make a configuration "custom". They change no
+# argv, no env and no measurement condition, so demoting the performance gate for them would punish
+# a user for following the README.
+function Test-CustomProvenance {
+    param($Overrides)
+    foreach ($k in $Overrides.Keys) {
+        if ($script:PERF_NEUTRAL_OVERRIDE_KEYS -notcontains [string]$k) { return $true }
+    }
+    return $false
+}
+
+function Test-LoopbackAddress {
+    param([string] $Address)
+    if ($Address -eq 'localhost') { return $true }
+    $ip = $null
+    if ([System.Net.IPAddress]::TryParse($Address, [ref]$ip)) { return [System.Net.IPAddress]::IsLoopback($ip) }
+    return $false
+}
+
+# endregion
+
+# ============================================================================
+# region 14b. WARMSTART / slot-save wiring (LS 13 = WS-1)
+#   Value authority : WARMSTART_SPEC.md v0.5 FROZEN (A-1 .. A-9)
+#   Wiring authority: LAUNCHER_SPEC 13 (insertion points, argument surface, truth table,
+#                     recovery state machine, env block, diagnostic enum, selftest duties)
+#
+#   Two invariants hold for everything below and are worth stating once:
+#     - No new status enum and no new exit code. Every failure here is NON-TERMINAL and degraded
+#       (LS 13-3). The single exception is the restore ladder's last rung, which reuses the
+#       existing fail_server_start, and old-child cleanup failure, which reuses fail_teardown.
+#     - The mode decision comes from the CLI switches ONLY and is taken before any preset, catalog
+#       or custom layer is read, so no later layer can turn a hard-OFF run back on.
+# ============================================================================
+
+# A-6 mode source. -Smoke and -Repro both mean hard-OFF; giving both is not a contradiction because
+# they converge on the same result, so no combination check is needed.
+function Get-WarmstartMode {
+    param([bool] $SmokeMode, [bool] $ReproMode)
+    if ($SmokeMode -or $ReproMode) { return 'hard_off' }
+    return 'product'
+}
+
+function New-WarmstartState {
+    return @{
+        initialized      = $false        # until Initialize-Warmstart runs, everything behaves hard-OFF
+        mode             = 'hard_off'    # product | hard_off  (from the CLI switches, A-6)
+        override         = 'on'          # on | off            (soft-OFF allowlist key)
+        latched_off      = $false        # A-1 directory latch: whole feature off for this run
+        latch_reason     = $null
+        profile_id       = $null
+        dir              = $null
+        root             = $null
+        bundle_sha       = $null
+        manifest_sha     = $null
+        model_set        = $null
+        model_shas       = $null         # process-once cache (A-4 file-dependent input)
+        model_shas_attempted = $false    # process-once FAILURE latch: no repeated multi-GB retries
+        model_shas_error = $null
+        file_facts       = $null         # process-once cache (A-4 file-dependent input)
+        eligible         = $false
+        reason           = 'off_mode'
+        status_text      = 'off(mode)'
+        detail           = $null
+        restore_latched  = $false        # 13-4b (1): restore is attempted at most once per process
+        restore_done     = $false
+        recovery_count   = 0
+        gc_done          = $false        # LS 13-1 (1) generation sweep, once at lock time
+        # LS 13-1 (2) profile cap latch, STATE TRANSITION rather than a plain once-flag:
+        # none -> soft_off -> on is a real second run (a custom off->on materialises the current
+        # directory the soft-OFF pass could not count), while a rebuild in the same state is not.
+        cap_state        = 'none'        # none | soft_off | on
+        unavailable_warned = $false      # one operational-failure warning per run (A-2 (6))
+        dir_ready        = $false
+        hash_notice      = $false
+        tmp_after_join   = @()           # A-2 (8) recovery timing (2): after the child is joined
+        stale_after_stop = @()           # A-4b (5) recovery timing (3): at the end of teardown
+        # --- LS 13-8 / AUTOSAVE_SPEC ---
+        auto_facts       = @{}           # per-generation file-facts cache (A-4 evaluation split)
+        selected_name    = $script:KV_CANONICAL_DATA   # C: the candidate the restore will ask for
+        selected_origin  = $script:KV_ORIGIN_STOP
+        selected_saved_at = $null
+        autosave_setting = 'on'          # on | off | <minutes>, as parsed from the allowlist key
+        autosave_minutes = $script:KV_AUTOSAVE_DEFAULT_MIN
+        autosave_enabled = $true         # the key's own verdict; the warmstart state gates it again
+        autosave_next    = $null         # the generation the next write targets (decided lazily)
+        autosave_tokens  = $null         # A: last saved/restored sequence length ($null = nothing yet)
+        autosave_clock   = $null         # A: the running tick deadline
+        autosave_count   = 0
+        autosave_stopped = $false        # a save whose answer never came latches the feature off
+        autosave_warned  = $false        # one operational warning per run (A-2 (6) shape)
+    }
+}
+
+$script:WarmstartCtx = New-WarmstartState
+# Decided from the bound parameters, at load time - ahead of the catalog, the preset, the override
+# merge and Build-EffectiveConfig, exactly as A-6 requires.
+$script:WarmstartModeSwitch = Get-WarmstartMode -SmokeMode ([bool]$Smoke) -ReproMode ([bool]$Repro)
+
+function Get-KvRootDir { return (Join-Path (Get-LauncherStateDir) $script:KV_DIR_NAME) }
+
+function Get-KvProfileDir {
+    param([string] $ProfileId)
+    return (Join-Path (Get-KvRootDir) $ProfileId)
+}
+
+# The four rows of the LS 13-2 truth table collapse to this one answer.
+#   hard_off     -Smoke / -Repro          : no argument, NO contact with the kv tree at all
+#   soft_off     warmstart=off            : no argument, no POST, but the GC still runs
+#   latched_off  A-1 directory failure    : no argument, no POST, non-terminal degraded
+#   on           product default          : argument injected, A-2 / A-3 apply
+function Get-WarmstartState {
+    if (-not $script:WarmstartCtx.initialized) { return 'hard_off' }
+    if ($script:WarmstartCtx.mode -cne 'product') { return 'hard_off' }
+    if ($script:WarmstartCtx.override -ceq 'off') { return 'soft_off' }
+    if ($script:WarmstartCtx.latched_off) { return 'latched_off' }
+    return 'on'
+}
+
+function Test-WarmstartActive { return ((Get-WarmstartState) -ceq 'on') }
+
+# LS 13-6: exactly one reason value per reachable cold path, and the status text is a pure
+# rendering of it.
+function Get-KvStatusText {
+    param([bool] $Eligible, [string] $Reason)
+    if ($Eligible) { return 'eligible' }
+    if ($Reason -ceq $script:KV_REASON_OFF_USER) { return 'off(user)' }
+    if ($Reason -ceq $script:KV_REASON_OFF_MODE) { return 'off(mode)' }
+    return ('cold(' + $Reason + ')')
+}
+
+function Set-KvVerdict {
+    param([bool] $Eligible, [string] $Reason, $Detail)
+    $script:WarmstartCtx.eligible = $Eligible
+    $script:WarmstartCtx.reason = $Reason
+    $script:WarmstartCtx.detail = $Detail
+    $script:WarmstartCtx.status_text = (Get-KvStatusText -Eligible $Eligible -Reason $Reason)
+}
+
+# A-1 / LS 13-1: either confirmation failing switches the whole feature off for this run. It is a
+# warning plus a diagnostic line, never a termination - the server still starts, just cold.
+function Set-WarmstartOffLatch {
+    param([string] $Stage, [string] $Reason)
+    if ($script:WarmstartCtx.latched_off) { return }
+    $script:WarmstartCtx.latched_off = $true
+    $script:WarmstartCtx.latch_reason = $Reason
+    Write-Line ('[kv] WARNING: warmstart is off for this run (' + $Reason + '); the server starts normally without it.')
+    Write-Diag -Kind 'WARMSTART_OFF_LATCH' -Data @{ stage = $Stage; reason = $Reason
+                                                    effect = 'no --slot-save-path, no restore, no save' }
+}
+
+# A-1 directory guarantee. Called on every effective-config build (which covers the "at GC time"
+# confirmation, because the first build is the first moment the soft-OFF override is known) and
+# once more immediately before the child is spawned, ahead of the final EFFECTIVE diagnostic.
+function Confirm-WarmstartDirectory {
+    param([string] $Stage)
+    if ((Get-WarmstartState) -cne 'on') { return $false }
+    $dir = $script:WarmstartCtx.dir
+    if (-not $dir) {
+        Set-WarmstartOffLatch -Stage $Stage -Reason 'kv directory path was never resolved'
+        return $false
+    }
+    try {
+        if (-not (Test-Path -LiteralPath $dir -PathType Container)) {
+            New-Item -ItemType Directory -Path $dir -Force -ErrorAction Stop | Out-Null
+        }
+        if (-not (Test-Path -LiteralPath $dir -PathType Container)) { throw 'directory still absent after create' }
+    } catch {
+        Set-WarmstartOffLatch -Stage $Stage -Reason ('kv directory could not be created: ' + $_.Exception.Message)
+        return $false
+    }
+    if (-not $script:WarmstartCtx.dir_ready) {
+        $script:WarmstartCtx.dir_ready = $true
+        Write-Diag -Kind 'WARMSTART_DIR' -Data @{ stage = $Stage; dir = $dir }
+    }
+    return $true
+}
+
+# LS 13-1 startup insertion point: called straight after the exclusive locks and before any
+# eligibility decision. hard-OFF returns without touching the kv tree in any way.
+# LS OA-1 / OPEN_ARCH_DESIGN section 3: warmstart and autosave MAY be switched on for a derived
+# profile - nothing about the sidecar machinery is catalog specific - but only once four conditions
+# hold together. Three of them are wiring questions, the fourth is a measurement, and the verdict is
+# the M5 end-to-end round's to make, not this one's. Until then the predicate answers false, which
+# is what makes v0.2.1 ship the derived path with both features OFF. The conditions are stated here
+# rather than in a comment so the eventual flip is a data change with a record behind it.
+function Test-DerivedWarmstartGate {
+    $c = [ordered]@{
+        # a stable id is required or every boot would look like a different profile
+        deterministic_profile_id             = $true
+        # the sidecar binding must carry template id/version + the derived expect digest, so a
+        # re-derivation under a changed template can never restore onto the old state
+        manifest_binding_carries_template    = $false
+        # restore only after the engine seal and after ready - already true of the existing ladder
+        restore_after_seal_and_ready         = $true
+        # measured, not argued: a cold save -> restore and an autosave generation restore, both
+        # passing in the M5 end-to-end round
+        e2e_cold_and_autosave_restore_passed = $false
+    }
+    $unmet = @()
+    foreach ($k in $c.Keys) { if (-not $c[$k]) { $unmet += [string]$k } }
+    return @{ eligible = ($unmet.Count -eq 0); conditions = $c; unmet = @($unmet) }
+}
+
+function Initialize-Warmstart {
+    param([string] $ProfileId, [bool] $DerivedProfile = $false)
+    $script:WarmstartCtx.initialized = $true
+    $script:WarmstartCtx.mode = $script:WarmstartModeSwitch
+    $derivedGate = $null
+    if ($DerivedProfile -and $script:WarmstartCtx.mode -ceq 'product') {
+        $derivedGate = Test-DerivedWarmstartGate
+        if (-not $derivedGate.eligible) {
+            # Reuses the existing hard-OFF row of the LS 13-2 truth table rather than inventing a
+            # fifth: no --slot-save-path, no contact with the kv tree, "kv : off(mode)", autosave
+            # off with it. LS 13-6's reason enum is frozen, so the real cause is carried by the
+            # diagnostic record below instead of by a new reason string.
+            $script:WarmstartCtx.mode = 'arch_template'
+        }
+        Write-Diag -Kind 'WARMSTART_DERIVED_GATE' -Data @{ eligible = [bool]$derivedGate.eligible
+                                                            unmet = @($derivedGate.unmet)
+                                                            conditions = $derivedGate.conditions }
+    }
+    $script:WarmstartCtx.profile_id = $ProfileId
+    $script:WarmstartCtx.dir = Get-KvProfileDir -ProfileId $ProfileId
+    Write-Diag -Kind 'WARMSTART_MODE' -Data @{ mode = $script:WarmstartCtx.mode; smoke = [bool]$Smoke
+                                               repro = [bool]$Repro; profile = $ProfileId
+                                               derived = [bool]$DerivedProfile
+                                               dir = $script:WarmstartCtx.dir }
+    if ($script:WarmstartCtx.mode -cne 'product') {
+        Set-KvVerdict -Eligible $false -Reason $script:KV_REASON_OFF_MODE -Detail $null
+        return
+    }
+    # LS 13-1 (1): only the generation sweep runs here. The profile cap needs the FINAL warmstart
+    # override - soft-OFF never creates a current directory, so counting one in would recover a
+    # profile that was never over the cap - and the override is not known until the first
+    # Build-EffectiveConfig, which is where phase two runs.
+    Invoke-KvGenerationSweep
+    $script:WarmstartCtx.gc_done = $true
+}
+
+function Set-WarmstartBindings {
+    param([string] $Root, [string] $ManifestSha, $ModelSet)
+    $script:WarmstartCtx.root = $Root
+    $script:WarmstartCtx.manifest_sha = ([string]$ManifestSha).ToLowerInvariant()
+    $script:WarmstartCtx.model_set = $ModelSet
+}
+
+# ---------------------------------------------------------------------------------------------
+# A-4b GC. Runs once, at startup, under the instance lock, before any eligibility decision.
+# Retention is 0 for both .tmp and .stale (the failure ladder is mismatch -> cold, never a rollback
+# onto a stale generation), and at most KV_PROFILE_RETENTION profile directories survive.
+# ---------------------------------------------------------------------------------------------
+function Get-KvProfileCanonicalTicks {
+    param([string] $Dir)
+    # A-4b: a profile without a COMPLETE data+meta pair is recovered first. Int64.MinValue is that
+    # "oldest possible" marker, and it is reached normally - a profile whose very first save failed,
+    # or whose startup died before one, never has a pair.
+    # LS 13-8: recency is the newest of EVERY complete pair the profile holds, not the canonical's
+    # alone. An autosave generation is a restorable recovery point by exactly the same machine, so a
+    # profile that has never managed a normal stop - which is precisely the crash-prone machine this
+    # feature exists for - must not be ranked "oldest possible" and deleted ahead of a profile whose
+    # canonical is a year old. The cap itself is untouched (it counts directories, not files).
+    try {
+        $best = [long][Int64]::MinValue
+        foreach ($n in (@([string]$script:KV_CANONICAL_DATA) + @($script:KV_AUTOSAVE_GENERATIONS))) {
+            $d = Join-Path $Dir $n
+            $m = Join-Path $Dir (Get-KvMetaName -Name $n)
+            if (-not (Test-Path -LiteralPath $d -PathType Leaf)) { continue }
+            if (-not (Test-Path -LiteralPath $m -PathType Leaf)) { continue }
+            $t1 = [long](Get-Item -LiteralPath $d).LastWriteTimeUtc.Ticks
+            $t2 = [long](Get-Item -LiteralPath $m).LastWriteTimeUtc.Ticks
+            $t = $t1
+            if ($t2 -gt $t1) { $t = [long]$t2 }
+            if ($t -gt $best) { $best = [long]$t }
+        }
+        return @{ ok = $true; ticks = [long]$best }
+    } catch {
+        # NOT the "oldest possible" marker: a profile whose timestamp cannot be READ is a profile
+        # whose age is unknown, and ranking an unknown age first would make an unreadable directory
+        # the first thing deleted. The caller drops it from the candidate list and records it.
+        return @{ ok = $false; ticks = [long][Int64]::MinValue; reason = [string]$_.Exception.Message }
+    }
+}
+
+# Ordinal ordering key for step (3). Real tick values are always positive, so the sentinel sorts
+# first without any arithmetic that could overflow Int64.
+function Get-KvProfileSortKey {
+    param([long] $Ticks, [string] $Name)
+    $rank = '0' + ('0' * 19)
+    if ($Ticks -gt 0) { $rank = '1' + ([string]$Ticks).PadLeft(19, '0') }
+    return ($rank + '|' + $Name)
+}
+
+function Remove-KvGenerationFiles {
+    param([string] $Dir, $Failures)
+    $names = @()
+    try {
+        foreach ($f in @(Get-ChildItem -LiteralPath $Dir -File -ErrorAction Stop)) {
+            foreach ($pat in $script:KV_GC_PATTERNS) {
+                # -like, not -Filter: the Win32 wildcard matcher used by -Filter also honours short
+                # names and treats '.' specially, which would make the four patterns imprecise.
+                if ($f.Name -like $pat) { $names += [string]$f.Name; break }
+            }
+        }
+    } catch {
+        $Failures.Add(('enumerate ' + $Dir + ': ' + $_.Exception.Message)) | Out-Null
+        return 0
+    }
+    # Deterministic delete order (A-4b): ordinal file-name ascending.
+    $arr = [string[]]$names
+    if ($arr.Count -gt 1) { [Array]::Sort($arr, [StringComparer]::Ordinal) }
+    $removed = 0
+    foreach ($n in $arr) {
+        try {
+            Remove-Item -LiteralPath (Join-Path $Dir $n) -Force -ErrorAction Stop
+            $removed++
+        } catch {
+            # Per-file failure: record and keep going. The GC never blocks startup.
+            $Failures.Add(($n + ': ' + $_.Exception.Message)) | Out-Null
+        }
+    }
+    return @{ matched = $arr.Count; removed = $removed }
+}
+
+# A-2 (6) fixes the shape of every housekeeping failure: one warning line plus one diagnostic
+# record, never a status or an exit code. Each GC phase emits at most one of these.
+function Write-KvGcDegraded {
+    param([string] $Reason, $Data)
+    $d = @{ reason = $Reason }
+    if ($null -ne $Data) { foreach ($k in $Data.Keys) { $d[$k] = $Data[$k] } }
+    Write-Diag -Kind $script:KV_DIAG_GC_FAILED -Data $d
+    Write-Line ('[kv] WARNING: kv housekeeping did not fully complete (' + $Reason + '); the server starts normally.')
+}
+
+# LS 13-1 (1) PHASE ONE, at the exclusive lock: every existing profile's tmp/stale generations,
+# retention 0. This phase never deletes a profile directory, so it is safe before the final
+# warmstart override is known. hard-OFF does not reach it at all.
+function Invoke-KvGenerationSweep {
+    $root = Get-KvRootDir
+    $failures = New-Object System.Collections.ArrayList
+    $matched = 0
+    $removedTmp = 0
+    if (-not (Test-Path -LiteralPath $root -PathType Container)) {
+        # A-4b: an absent directory is not an error - there are simply zero targets.
+        Write-Diag -Kind 'WARMSTART_GC' -Data @{ root = $root; phase = 'generations'; state = 'absent'
+                                                 matched = 0; removed_generations = 0 }
+        return
+    }
+    $dirs = @()
+    try { $dirs = @(Get-ChildItem -LiteralPath $root -Directory -ErrorAction Stop) }
+    catch {
+        Write-KvGcDegraded -Reason ('profile enumeration failed: ' + $_.Exception.Message) `
+            -Data @{ root = $root; phase = 'generations' }
+        return
+    }
+    foreach ($d in $dirs) {
+        $r = Remove-KvGenerationFiles -Dir $d.FullName -Failures $failures
+        if ($r -is [hashtable]) { $matched += [int]$r.matched; $removedTmp += [int]$r.removed }
+    }
+    if ($matched -gt $script:KV_GC_WARN_MATCHES) {
+        # Crash-loop signal. The action is unchanged (delete them all); only the record differs.
+        Write-Diag -Kind 'WARMSTART_GC_WARN' -Data @{ root = $root; matched = $matched
+                                                      threshold = $script:KV_GC_WARN_MATCHES
+                                                      note = 'unusually many leftover generations (crash loop signal)' }
+    }
+    Write-Diag -Kind 'WARMSTART_GC' -Data @{ root = $root; phase = 'generations'; matched = $matched
+                                             removed_generations = $removedTmp; failures = @($failures) }
+    if ($failures.Count -gt 0) {
+        Write-KvGcDegraded -Reason 'some leftover generations could not be removed' `
+            -Data @{ root = $root; phase = 'generations'; failures = @($failures) }
+    }
+}
+
+# (5) the cap is re-checked against reality. Split out so the count is one testable answer rather
+# than a swallowed exception: a failed re-check is a recorded failure, not a silent -1.
+function Measure-KvProfileDirs {
+    param([string] $Root)
+    try { return @{ ok = $true; count = [int]@(Get-ChildItem -LiteralPath $Root -Directory -ErrorAction Stop).Count } }
+    catch { return @{ ok = $false; count = -1; reason = [string]$_.Exception.Message } }
+}
+
+# LS 13-1 (2) PHASE TWO, at the FIRST effective config - the first moment the final warmstart
+# override is known - and ahead of any eligibility decision. The cap is applied to the directories
+# that REALLY exist: the ON path has just created the current one (A-1 first confirmation) so it is
+# counted and pinned, while soft-OFF creates nothing and must not reserve a slot for a directory
+# that will never exist (reserving one recovers a fourth profile that was never over the cap).
+function Invoke-KvProfileCapAdjust {
+    param([string] $CurrentProfileId, [bool] $Corrective = $false)
+    $root = Get-KvRootDir
+    $failures = New-Object System.Collections.ArrayList
+    $removedProfiles = @()
+    if (-not (Test-Path -LiteralPath $root -PathType Container)) {
+        Write-Diag -Kind 'WARMSTART_GC' -Data @{ root = $root; phase = 'profile_cap'; state = 'absent'
+                                                 corrective = $Corrective
+                                                 removed_profiles = @(); profiles_after = 0 }
+        return
+    }
+    $dirs = @()
+    try { $dirs = @(Get-ChildItem -LiteralPath $root -Directory -ErrorAction Stop) }
+    catch {
+        Write-KvGcDegraded -Reason ('profile enumeration failed: ' + $_.Exception.Message) `
+            -Data @{ root = $root; phase = 'profile_cap'; corrective = $Corrective }
+        return
+    }
+
+    # (1) the current profile is pinned, (3) the rest are recovered oldest first.
+    $entries = @()
+    foreach ($d in $dirs) {
+        if ($d.Name -ceq $CurrentProfileId) { continue }
+        $t = Get-KvProfileCanonicalTicks -Dir $d.FullName
+        if (-not $t.ok) {
+            # (4) an unreadable timestamp removes the profile from the CANDIDATES, not from the
+            # disk. It still counts against the cap, so the overflow simply stays recorded.
+            $failures.Add(('profile ' + $d.Name + ': timestamp unreadable - ' + [string]$t.reason)) | Out-Null
+            continue
+        }
+        $entries += @{ name = [string]$d.Name; path = [string]$d.FullName
+                       key = (Get-KvProfileSortKey -Ticks ([long]$t.ticks) -Name ([string]$d.Name)) }
+    }
+    $excess = @($dirs).Count - $script:KV_PROFILE_RETENTION
+    if ($excess -gt 0 -and $entries.Count -gt 0) {
+        $keys = [string[]]@($entries | ForEach-Object { $_.key })
+        if ($keys.Count -gt 1) { [Array]::Sort($keys, [StringComparer]::Ordinal) }
+        foreach ($k in $keys) {
+            if ($excess -le 0) { break }
+            $hit = $null
+            foreach ($e in $entries) { if ($e.key -ceq $k) { $hit = $e; break } }
+            if ($null -eq $hit) { continue }
+            try {
+                Remove-Item -LiteralPath $hit.path -Recurse -Force -ErrorAction Stop
+                $removedProfiles += $hit.name
+                $excess = $excess - 1
+            } catch {
+                # (4) an individual failure moves on to the next candidate.
+                $failures.Add(('profile ' + $hit.name + ': ' + $_.Exception.Message)) | Out-Null
+            }
+        }
+    }
+
+    # (5) the cap is re-checked against reality, and only a real overflow is degraded.
+    $m = Measure-KvProfileDirs -Root $root
+    $final = [int]$m.count
+    if (-not $m.ok) { $failures.Add(('final profile count failed: ' + [string]$m.reason)) | Out-Null }
+    Write-Diag -Kind 'WARMSTART_GC' -Data @{ root = $root; phase = 'profile_cap'; corrective = $Corrective
+                                             removed_profiles = $removedProfiles; profiles_after = $final
+                                             retention = $script:KV_PROFILE_RETENTION
+                                             failures = @($failures) }
+    if ($final -gt $script:KV_PROFILE_RETENTION -or $failures.Count -gt 0) {
+        Write-KvGcDegraded -Reason ('the profile cap could not be fully enforced (profiles_after=' + $final + ')') `
+            -Data @{ root = $root; phase = 'profile_cap'; profiles_after = $final
+                     retention = $script:KV_PROFILE_RETENTION; failures = @($failures) }
+    }
+}
+
+# LS 13-1 (2) latch = a state transition, not a plain once-flag. The three-choice loop rebuilds the
+# effective config on every custom edit and the cap must not walk the tree on each of them - but
+# `warmstart` IS one of those custom keys, and an off -> on edit CREATES the current directory that
+# the soft-OFF pass deliberately did not count. Without a corrective run that path reaches five
+# profile directories through the normal UI alone (soft-OFF's documented "on" return contract and
+# the cap of four have to hold at the same time).
+#   none      -> first adjustment, in whichever state the first build resolved to
+#   soft_off  -> on : one corrective adjustment, then latched
+#   on        -> terminal: the current directory already exists and is already counted, so no later
+#                rebuild (in either direction) can add a directory the cap has not seen
+function Invoke-KvProfileCapOnce {
+    if (-not $script:WarmstartCtx.initialized) { return }
+    # hard-OFF performs neither phase: the kv tree is untouched (LS 13-2 truth table row 1/2).
+    if ($script:WarmstartCtx.mode -cne 'product') { return }
+    if ($script:WarmstartCtx.cap_state -ceq 'on') { return }
+    # latched_off counts as soft_off here: its current directory could not be created either, so
+    # there is nothing extra to count.
+    $target = 'soft_off'
+    if ((Get-WarmstartState) -ceq 'on') { $target = 'on' }
+    if ($script:WarmstartCtx.cap_state -ceq $target) { return }
+    $corrective = ($script:WarmstartCtx.cap_state -ceq 'soft_off')
+    $script:WarmstartCtx.cap_state = $target
+    Invoke-KvProfileCapAdjust -CurrentProfileId ([string]$script:WarmstartCtx.profile_id) -Corrective $corrective
+}
+
+# ---------------------------------------------------------------------------------------------
+# A-4c canonical projection and its hash.
+# The serialiser is written out by hand on purpose: ConvertTo-Json's escaping, key order and
+# separator choices drift between PowerShell versions, and this value is a stored binding that has
+# to reproduce byte for byte on a later build.
+# ---------------------------------------------------------------------------------------------
+function ConvertTo-KvJsonString {
+    param([string] $Value)
+    $sb = New-Object System.Text.StringBuilder
+    [void]$sb.Append('"')
+    foreach ($ch in ([string]$Value).ToCharArray()) {
+        $c = [int][char]$ch
+        if ($ch -eq '"')  { [void]$sb.Append('\"'); continue }
+        if ($ch -eq '\')  { [void]$sb.Append('\\'); continue }
+        # Control characters and every non-ASCII UTF-16 unit become \uXXXX with lowercase hex. The
+        # short forms (\n, \t, ...) are deliberately NOT used: one escape rule means one output.
+        if ($c -lt 32 -or $c -gt 126) { [void]$sb.Append('\u'); [void]$sb.Append($c.ToString('x4')); continue }
+        [void]$sb.Append($ch)
+    }
+    [void]$sb.Append('"')
+    return $sb.ToString()
+}
+
+function ConvertTo-KvCanonicalJson {
+    param([string[]] $Argv, [hashtable] $EnvVars)
+    $sb = New-Object System.Text.StringBuilder
+    [void]$sb.Append('{"schema":1,"argv":[')
+    $first = $true
+    foreach ($a in @($Argv)) {
+        if (-not $first) { [void]$sb.Append(',') }
+        [void]$sb.Append((ConvertTo-KvJsonString -Value ([string]$a)))
+        $first = $false
+    }
+    [void]$sb.Append('],"env":{')
+    $keys = @()
+    foreach ($k in $EnvVars.Keys) { $keys += [string]$k }
+    $arr = [string[]]$keys
+    if ($arr.Count -gt 1) { [Array]::Sort($arr, [StringComparer]::Ordinal) }
+    $first = $true
+    foreach ($k in $arr) {
+        if (-not $first) { [void]$sb.Append(',') }
+        [void]$sb.Append((ConvertTo-KvJsonString -Value $k))
+        [void]$sb.Append(':')
+        [void]$sb.Append((ConvertTo-KvJsonString -Value ([string]$EnvVars[$k])))
+        $first = $false
+    }
+    [void]$sb.Append('}}')
+    return $sb.ToString()
+}
+
+function Get-KvSemanticsProjection {
+    param([string[]] $Argv, [hashtable] $EnvVars)
+    $outArgv = @()
+    $i = 0
+    $src = @($Argv)
+    while ($i -lt $src.Count) {
+        $a = [string]$src[$i]
+        $drop = $null
+        foreach ($e in $script:KV_SEMANTICS_ARGV_DROP) { if ($a -ceq [string]$e.flag) { $drop = $e; break } }
+        if ($null -ne $drop) { $i = $i + 1 + [int]$drop.arity; continue }
+        $outArgv += $a
+        $i = $i + 1
+    }
+    $outEnv = @{}
+    foreach ($k in $EnvVars.Keys) {
+        $skip = $false
+        foreach ($d in $script:KV_SEMANTICS_ENV_DROP) {
+            if ([string]::Equals([string]$k, $d, [System.StringComparison]::OrdinalIgnoreCase)) { $skip = $true; break }
+        }
+        # A-4c: the 26 OS bootstrap allowlist keys take no part in the projection either. They are
+        # in the child's block by contract (LS 13-5) and $config.env is explicitly allowed to
+        # override one of them, so hashing them would make an operator's PATH edit a cold start
+        # while binding nothing: engine bytes are bound by engine_bundle_sha256 and the bundle's
+        # DLLs resolve from the application directory ahead of PATH.
+        if (-not $skip) {
+            foreach ($d in $script:ENV_OS_BOOTSTRAP_ALLOWLIST) {
+                if ([string]::Equals([string]$k, $d, [System.StringComparison]::OrdinalIgnoreCase)) { $skip = $true; break }
+            }
+        }
+        if (-not $skip) { $outEnv[[string]$k] = [string]$EnvVars[$k] }
+    }
+    # No unary comma on the member: a hashtable value is stored as-is, and wrapping the array here
+    # would make the caller's [string[]] binder flatten the whole argv into one joined string.
+    return @{ argv = @($outArgv); env = $outEnv }
+}
+
+function Get-KvSemanticsSha256 {
+    param([string[]] $Argv, [hashtable] $EnvVars)
+    $p = Get-KvSemanticsProjection -Argv $Argv -EnvVars $EnvVars
+    $doc = ConvertTo-KvCanonicalJson -Argv $p.argv -EnvVars $p.env
+    $bytes = (New-Object System.Text.UTF8Encoding($false)).GetBytes($doc)
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try { $h = $sha.ComputeHash($bytes) } finally { $sha.Dispose() }
+    return (([System.BitConverter]::ToString($h) -replace '-', '').ToLowerInvariant())
+}
+
+# ---------------------------------------------------------------------------------------------
+# Binding inputs.
+# ---------------------------------------------------------------------------------------------
+# A-5 (UI-4 kin): hashing a multi-GB file is a long silent stretch, and this launcher's rule is
+# that no such stretch exists without a line announcing it.
+function Write-KvHashNotice {
+    param([string] $What, [long] $Bytes, [string] $Tag = 'kv')
+    Write-Line ('[{0}] {1} ({2} MB)...' -f $Tag, $What, [long]([Math]::Round($Bytes / 1MB)))
+}
+
+function Get-KvBundleSha {
+    if ($script:WarmstartCtx.bundle_sha) { return $script:WarmstartCtx.bundle_sha }
+    if (-not $script:WarmstartCtx.root) { return $null }
+    $p = Join-Path $script:WarmstartCtx.root $script:BUNDLE_MANIFEST_NAME
+    $h = Get-FileSha256Lower -Path $p
+    if (-not $h.ok) { return $null }
+    $script:WarmstartCtx.bundle_sha = $h.sha
+    return $h.sha
+}
+
+# A-4: the base GGUF shard hashes. The computation, the identity key and the persistent cache all
+# live in Get-ModelShardSha256Set (region 7) since LS OA-1 gave them a second reader - the M1 source
+# pin. What stays here is the part that is specific to warmstart: the process-level cache and the
+# FAILURE latch. Eligibility is re-evaluated on every effective config rebuild, and without that
+# latch a custom edit would restart the multi-GB hashing pass that just failed, over and over.
+function Get-KvModelShardShas {
+    if ($null -ne $script:WarmstartCtx.model_shas) { return , $script:WarmstartCtx.model_shas }
+    if ($script:WarmstartCtx.model_shas_attempted) { return $null }
+    $set = $script:WarmstartCtx.model_set
+    if ($null -eq $set) { return $null }
+    $script:WarmstartCtx.model_shas_attempted = $true
+    $r = Get-ModelShardSha256Set -ModelSet $set -NoticeTag 'kv'
+    if (-not $r.ok) {
+        $script:WarmstartCtx.model_shas_error = [string]$r.reason
+        return $null
+    }
+    $script:WarmstartCtx.model_shas = @($r.shas)
+    return , $script:WarmstartCtx.model_shas
+}
+
+# The first eight bytes of the state file. They are recorded at save time and re-checked at
+# eligibility time, so the check is self-consistent whatever the engine's exact header layout is;
+# WARMSTART_SPEC 1 documents those bytes as the GGSQ magic plus the sequence-state version.
+function Get-KvFileHeaderFields {
+    param([string] $Path)
+    $fs = $null
+    try {
+        $fs = New-Object System.IO.FileStream($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read,
+                  [System.IO.FileShare]::ReadWrite)
+        $buf = New-Object byte[] 8
+        $n = $fs.Read($buf, 0, 8)
+        if ($n -ne 8) { return @{ ok = $false; reason = 'state file is shorter than its 8 byte header' } }
+        $magic = ''
+        for ($i = 0; $i -lt 4; $i++) { $magic = $magic + $buf[$i].ToString('x2') }
+        $ver = [long]([uint32]$buf[4] -bor ([uint32]$buf[5] -shl 8) -bor ([uint32]$buf[6] -shl 16) -bor ([uint32]$buf[7] -shl 24))
+        return @{ ok = $true; magic = $magic; version = $ver }
+    } catch {
+        return @{ ok = $false; reason = ('state file header read failed: ' + $_.Exception.Message) }
+    } finally {
+        if ($fs) { $fs.Dispose() }
+    }
+}
+
+function Get-KvArgvLong {
+    param([string[]] $Argv, [string] $Flag)
+    # 0 means "the catalog default applies, no explicit value in argv". A real ctx or -np is never
+    # 0, so the sentinel cannot collide with a genuine value.
+    $v = Get-ArgvValue -Argv $Argv -Flag $Flag
+    if ($null -eq $v) { return [long]0 }
+    $n = [long]0
+    if (-not [long]::TryParse(([string]$v).Trim(), [ref]$n)) { return [long]0 }
+    if ($n -lt 0) { return [long]0 }
+    return $n
+}
+
+# ---------------------------------------------------------------------------------------------
+# A-4 sidecar.
+# ---------------------------------------------------------------------------------------------
+# LS 13-8: one naming rule for every stored generation - the sidecar is the data name plus
+# '.meta.json'. The canonical pair obeys it (slot0.kv -> slot0.kv.meta.json), which is why the
+# autosave generations need no second convention.
+function Get-KvMetaName {
+    param([string] $Name)
+    return ([string]$Name + '.meta.json')
+}
+function Get-KvDataPath {
+    param([string] $Name = $script:KV_CANONICAL_DATA)
+    return (Join-Path $script:WarmstartCtx.dir $Name)
+}
+function Get-KvMetaPath {
+    param([string] $Name = $script:KV_CANONICAL_DATA)
+    return (Join-Path $script:WarmstartCtx.dir (Get-KvMetaName -Name $Name))
+}
+function Get-KvCanonicalDataPath { return (Join-Path $script:WarmstartCtx.dir $script:KV_CANONICAL_DATA) }
+function Get-KvCanonicalMetaPath { return (Join-Path $script:WarmstartCtx.dir $script:KV_CANONICAL_META) }
+
+# C: the restore candidates, in a fixed order. The canonical stop save comes first only so that its
+# verdict is the one the status line falls back to; the actual choice between eligible candidates is
+# made on saved_at alone (origin-agnostic).
+function Get-KvCandidateNames {
+    $out = @([string]$script:KV_CANONICAL_DATA)
+    foreach ($n in $script:KV_AUTOSAVE_GENERATIONS) { $out += [string]$n }
+    return , $out
+}
+
+# The verification order for C: newest stored saved_at first. Reading a small sidecar is cheap and
+# an unusable or absent one sorts last, so the expensive half (the whole-file hash) is only paid for
+# the generations that are actually in the running - and, in the overwhelming case of a single
+# stored generation, exactly once. Ties keep the fixed candidate order (canonical, a, b).
+function Get-KvCandidateOrder {
+    $items = @()
+    $idx = 0
+    foreach ($n in (Get-KvCandidateNames)) {
+        $ticks = [long][Int64]::MinValue
+        $m = Read-KvSidecar -Path (Get-KvMetaPath -Name $n)
+        if ($m.ok) { $ticks = Get-KvSavedAtTicks -Meta $m.value }
+        $items += @{ name = [string]$n; ticks = [long]$ticks; index = [int]$idx }
+        $idx = $idx + 1
+    }
+    $out = @()
+    $taken = @{}
+    while ($out.Count -lt $items.Count) {
+        $pick = $null
+        foreach ($it in $items) {
+            if ($taken.ContainsKey([string]$it.name)) { continue }
+            if ($null -eq $pick) { $pick = $it; continue }
+            if ([long]$it.ticks -gt [long]$pick.ticks) { $pick = $it; continue }
+            if ([long]$it.ticks -eq [long]$pick.ticks -and [int]$it.index -lt [int]$pick.index) { $pick = $it }
+        }
+        $taken[[string]$pick.name] = $true
+        $out += [string]$pick.name
+    }
+    return , $out
+}
+
+# Strict sidecar read: any structural problem is "the file cannot be used with ANY configuration",
+# which LS 13-6 maps to the single reason meta_parse_failed.
+function Read-KvSidecar {
+    param([string] $Path)
+    $r = Read-JsonFileStrict -Path $Path
+    if (-not $r.ok) { return @{ ok = $false; reason = $r.reason } }
+    $o = $r.value
+    foreach ($k in @('meta_schema_version', 'n_ctx', 'n_parallel', 'llama_state_seq_version', 'n_tokens', 'n_bytes')) {
+        if (-not (Test-JsonNonNegativeInteger (Get-JsonValue -Obj $o -Name $k))) {
+            return @{ ok = $false; reason = ($k + ' missing or not a non-negative integer') }
+        }
+    }
+    foreach ($k in @('profile_id', 'llama_state_seq_magic', 'generation_id', 'saved_at')) {
+        if (-not (Test-JsonNonEmptyString (Get-JsonValue -Obj $o -Name $k))) {
+            return @{ ok = $false; reason = ($k + ' missing or not a non-empty string') }
+        }
+    }
+    foreach ($k in @('repack_manifest_sha256', 'engine_bundle_sha256', 'effective_state_semantics_sha256', 'kv_file_sha256')) {
+        if (-not (Test-Sha256Hex (Get-JsonValue -Obj $o -Name $k))) {
+            return @{ ok = $false; reason = ($k + ' missing or not a 64 hex digest') }
+        }
+    }
+    $shards = Get-JsonValue -Obj $o -Name 'model_shards_sha256'
+    if (-not (Test-JsonArray $shards) -or @($shards).Count -eq 0) {
+        return @{ ok = $false; reason = 'model_shards_sha256 missing or not a non-empty array' }
+    }
+    foreach ($s in @($shards)) {
+        if (-not (Test-Sha256Hex $s)) { return @{ ok = $false; reason = 'model_shards_sha256 entry is not a 64 hex digest' } }
+    }
+    return @{ ok = $true; value = $o }
+}
+
+function Get-KvMetaShards {
+    param($Meta)
+    $out = @()
+    foreach ($s in (Get-JsonArray -Obj $Meta -Name 'model_shards_sha256')) { $out += ([string]$s).ToLowerInvariant() }
+    return , $out
+}
+
+# A-4b: class (a) - the file cannot be restored under ANY configuration, so both halves go and the
+# next start converges on a clean cold. Class (b) - the file is internally sound and only disagrees
+# with the current configuration, so it is KEPT: putting the configuration back must bring it back.
+function Remove-KvCanonicalPair {
+    param([string] $Why, [string] $Name = $script:KV_CANONICAL_DATA)
+    $removed = @()
+    $failed = @()
+    foreach ($p in @((Get-KvDataPath -Name $Name), (Get-KvMetaPath -Name $Name))) {
+        try {
+            if (Test-Path -LiteralPath $p -PathType Leaf) { Remove-Item -LiteralPath $p -Force -ErrorAction Stop; $removed += $p }
+        } catch { $failed += ($p + ': ' + $_.Exception.Message) }
+    }
+    Write-Diag -Kind 'WARMSTART_CANONICAL_DISCARDED' -Data @{ why = $Why; generation = $Name
+                                                              removed = $removed; failed = $failed }
+}
+
+# A-4 file-dependent half: computed once per process AND PER GENERATION. It also performs the class
+# (a) recovery, which is why it must not run more than once for the same name.
+function Measure-KvFileFacts {
+    param([string] $Name = $script:KV_CANONICAL_DATA)
+    $dataPath = Get-KvDataPath -Name $Name
+    $metaPath = Get-KvMetaPath -Name $Name
+    if (-not (Test-Path -LiteralPath $metaPath -PathType Leaf)) {
+        return @{ ok = $false; reason = $script:KV_REASON_SIDECAR_MISSING }
+    }
+    if (-not (Test-Path -LiteralPath $dataPath -PathType Leaf)) {
+        return @{ ok = $false; reason = $script:KV_REASON_KV_FILE_MISSING }
+    }
+    $meta = Read-KvSidecar -Path $metaPath
+    if (-not $meta.ok) {
+        Remove-KvCanonicalPair -Why ('meta_parse_failed: ' + $meta.reason) -Name $Name
+        return @{ ok = $false; reason = $script:KV_REASON_META_PARSE_FAILED; detail = $meta.reason }
+    }
+    $len = [long]0
+    try { $len = [long](New-Object System.IO.FileInfo($dataPath)).Length }
+    catch {
+        return @{ ok = $false; reason = $script:KV_REASON_UNAVAILABLE; detail = ('length query failed: ' + $_.Exception.Message) }
+    }
+    if ($len -ne [long](Get-JsonValue -Obj $meta.value -Name 'n_bytes')) {
+        Remove-KvCanonicalPair -Why 'file_integrity_broken: n_bytes != real length' -Name $Name
+        return @{ ok = $false; reason = $script:KV_REASON_FILE_INTEGRITY
+                  detail = ('n_bytes=' + [string](Get-JsonValue -Obj $meta.value -Name 'n_bytes') + ' real=' + $len) }
+    }
+    Write-KvHashNotice -What 'verifying stored slot state' -Bytes $len
+    $h = Get-FileSha256Lower -Path $dataPath
+    if (-not $h.ok) {
+        return @{ ok = $false; reason = $script:KV_REASON_UNAVAILABLE; detail = $h.reason }
+    }
+    if ($h.sha -cne ([string](Get-JsonValue -Obj $meta.value -Name 'kv_file_sha256')).ToLowerInvariant()) {
+        Remove-KvCanonicalPair -Why 'file_integrity_broken: kv_file_sha256 != real file hash' -Name $Name
+        return @{ ok = $false; reason = $script:KV_REASON_FILE_INTEGRITY; detail = 'kv_file_sha256 mismatch' }
+    }
+    $hdr = Get-KvFileHeaderFields -Path $dataPath
+    if (-not $hdr.ok) {
+        Remove-KvCanonicalPair -Why ('file_integrity_broken: ' + $hdr.reason) -Name $Name
+        return @{ ok = $false; reason = $script:KV_REASON_FILE_INTEGRITY; detail = $hdr.reason }
+    }
+    # Unreachable once the whole-file hash agreed (the header bytes are inside that hash); kept as
+    # the same-class double fail-close A-4 asks for, and it emits no new reason value.
+    if (($hdr.magic -cne ([string](Get-JsonValue -Obj $meta.value -Name 'llama_state_seq_magic')).ToLowerInvariant()) -or
+        ([long]$hdr.version -ne [long](Get-JsonValue -Obj $meta.value -Name 'llama_state_seq_version'))) {
+        Remove-KvCanonicalPair -Why 'file_integrity_broken: state header disagrees with the sidecar' -Name $Name
+        return @{ ok = $false; reason = $script:KV_REASON_FILE_INTEGRITY; detail = 'state header mismatch' }
+    }
+    return @{ ok = $true; meta = $meta.value; length = $len; sha = $h.sha }
+}
+
+# The canonical generation keeps its own field rather than an entry in the map: the harness clears
+# `file_facts` to force a re-evaluation, and that knob has to keep meaning exactly what it meant.
+function Get-KvFileFacts {
+    param([string] $Name = $script:KV_CANONICAL_DATA)
+    if ($Name -ceq $script:KV_CANONICAL_DATA) {
+        if ($null -ne $script:WarmstartCtx.file_facts) { return $script:WarmstartCtx.file_facts }
+        $r = Measure-KvFileFacts -Name $Name
+        $script:WarmstartCtx.file_facts = $r
+        return $r
+    }
+    if ($null -eq $script:WarmstartCtx.auto_facts) { $script:WarmstartCtx.auto_facts = @{} }
+    if ($script:WarmstartCtx.auto_facts.ContainsKey($Name)) { return $script:WarmstartCtx.auto_facts[$Name] }
+    $r = Measure-KvFileFacts -Name $Name
+    $script:WarmstartCtx.auto_facts[$Name] = $r
+    return $r
+}
+
+# C: saved_at is the ONLY ordering key between eligible candidates, and it is informational in the
+# sidecar (never part of the match predicate), so an unusable value must not disqualify a file - it
+# just sorts last. Int64.MinValue is that "oldest possible" marker, as in the profile GC.
+function Get-KvSavedAtTicks {
+    param($Meta)
+    $inst = ConvertTo-UtcInstant -Value (Get-JsonValue -Obj $Meta -Name 'saved_at')
+    if (-not $inst.ok) { return [long][Int64]::MinValue }
+    return [long]$inst.utc.Ticks
+}
+
+function Get-KvOrigin {
+    param($Meta)
+    $o = Get-JsonValue -Obj $Meta -Name 'origin'
+    if (Test-JsonNonEmptyString $o) { return [string]$o }
+    return [string]$script:KV_ORIGIN_STOP
+}
+
+# A-4 configuration-dependent half: re-decided on EVERY Build-EffectiveConfig return, because a
+# custom edit can flip the verdict. Field disagreements render as "<exact sidecar key>_mismatch".
+function Compare-KvConfigBinding {
+    param($Meta, [string[]] $Argv, [hashtable] $EnvVars)
+    if ([long](Get-JsonValue -Obj $Meta -Name 'meta_schema_version') -ne [long]$script:KV_META_SCHEMA_VERSION) {
+        return @{ ok = $false; reason = 'meta_schema_version_mismatch' }
+    }
+    if ([string](Get-JsonValue -Obj $Meta -Name 'profile_id') -cne [string]$script:WarmstartCtx.profile_id) {
+        return @{ ok = $false; reason = 'profile_id_mismatch' }
+    }
+    if (([string](Get-JsonValue -Obj $Meta -Name 'repack_manifest_sha256')).ToLowerInvariant() -cne [string]$script:WarmstartCtx.manifest_sha) {
+        return @{ ok = $false; reason = 'repack_manifest_sha256_mismatch' }
+    }
+    $bundle = Get-KvBundleSha
+    if ($null -eq $bundle) { return @{ ok = $false; reason = $script:KV_REASON_UNAVAILABLE; detail = 'bundle manifest hash unavailable' } }
+    if (([string](Get-JsonValue -Obj $Meta -Name 'engine_bundle_sha256')).ToLowerInvariant() -cne $bundle) {
+        return @{ ok = $false; reason = 'engine_bundle_sha256_mismatch' }
+    }
+    if ([long](Get-JsonValue -Obj $Meta -Name 'n_ctx') -ne (Get-KvArgvLong -Argv $Argv -Flag '-c')) {
+        return @{ ok = $false; reason = 'n_ctx_mismatch' }
+    }
+    if ([long](Get-JsonValue -Obj $Meta -Name 'n_parallel') -ne (Get-KvArgvLong -Argv $Argv -Flag '-np')) {
+        return @{ ok = $false; reason = 'n_parallel_mismatch' }
+    }
+    $sem = Get-KvSemanticsSha256 -Argv $Argv -EnvVars $EnvVars
+    if (([string](Get-JsonValue -Obj $Meta -Name 'effective_state_semantics_sha256')).ToLowerInvariant() -cne $sem) {
+        return @{ ok = $false; reason = 'effective_state_semantics_sha256_mismatch'; detail = ('now=' + $sem) }
+    }
+    # Last, because it is the only expensive input left and every cheaper disagreement has already
+    # short-circuited it.
+    $shas = Get-KvModelShardShas
+    if ($null -eq $shas) { return @{ ok = $false; reason = $script:KV_REASON_UNAVAILABLE; detail = 'model shard hashes unavailable' } }
+    $stored = Get-KvMetaShards -Meta $Meta
+    if (@($stored).Count -ne @($shas).Count) { return @{ ok = $false; reason = 'model_shards_sha256_mismatch' } }
+    for ($i = 0; $i -lt @($shas).Count; $i++) {
+        if ([string]@($stored)[$i] -cne [string]@($shas)[$i]) { return @{ ok = $false; reason = 'model_shards_sha256_mismatch' } }
+    }
+    return @{ ok = $true; semantics = $sem }
+}
+
+# A-2 (6): an OPERATIONAL failure (hashing, a length query, a binding input that cannot be read) is
+# eligibility_unavailable, and the frozen shape for it is one warning line plus the diagnostic that
+# Update-WarmstartEligibility already writes. Latched for the run: the verdict is recomputed on
+# every effective config rebuild and the same failure must not repaint the console each time.
+function Write-KvUnavailableWarning {
+    param([string] $Detail)
+    if ($script:WarmstartCtx.unavailable_warned) { return }
+    $script:WarmstartCtx.unavailable_warned = $true
+    $why = 'reason unavailable'
+    if ($Detail) { $why = $Detail }
+    Write-Line ('[kv] WARNING: the stored slot state could not be evaluated (' + $why + '); this run starts cold.')
+}
+
+# Called from the tail of Build-EffectiveConfig, so "re-evaluated on every returned effective
+# config" is structural rather than a rule someone has to remember at each call site.
+function Update-WarmstartEligibility {
+    param([string[]] $Argv, [hashtable] $EnvVars)
+    $state = Get-WarmstartState
+    if ($state -ceq 'hard_off')    { Set-KvVerdict -Eligible $false -Reason $script:KV_REASON_OFF_MODE -Detail $null; return }
+    if ($state -ceq 'soft_off')    { Set-KvVerdict -Eligible $false -Reason $script:KV_REASON_OFF_USER -Detail $null; return }
+    if ($state -ceq 'latched_off') { Set-KvVerdict -Eligible $false -Reason $script:KV_REASON_UNAVAILABLE -Detail $script:WarmstartCtx.latch_reason; return }
+    # After ready the verdict belongs to the actual restore result, which must not be overwritten
+    # by a later configuration rebuild.
+    if ($script:WarmstartCtx.restore_done) { return }
+    if (-not $script:WarmstartCtx.root) {
+        Set-KvVerdict -Eligible $false -Reason $script:KV_REASON_UNAVAILABLE -Detail 'bindings not established yet'
+        return
+    }
+    # C: every stored generation is judged by the SAME machine (file facts, then the configuration
+    # binding); the winner is simply the eligible one with the newest saved_at, whatever wrote it.
+    # The candidates are VERIFIED in newest-first order and the first one to survive both halves is
+    # the answer - but the loop does NOT stop there. Get-KvFileFacts is where the A-4b class (a)
+    # recovery happens, so skipping the lower-ranked candidates would silently retire that contract
+    # for every generation below the winner: a damaged canonical sitting under a newer sound
+    # autosave would never be discarded and would keep failing the same way at every start. The
+    # election is unchanged (newest eligible wins); only the damage check is exhaustive.
+    # The canonical verdict is kept separately because it is the one the status line falls back to
+    # when nothing is eligible - that keeps the reason enum and every existing cold path unchanged.
+    $summary = @()
+    $canon = $null
+    $best = $null
+    foreach ($name in (Get-KvCandidateOrder)) {
+        $isCanon = ($name -ceq $script:KV_CANONICAL_DATA)
+        $facts = Get-KvFileFacts -Name $name
+        if (-not $facts.ok) {
+            $v = @{ generation = $name; eligible = $false; reason = [string]$facts.reason; detail = $facts.detail; stage = 'file' }
+            if ($isCanon) { $canon = $v }
+            # Absence is the normal state of a generation that was never written: it is not worth a
+            # record of its own, and it must not drown the real verdict in the diagnostic log.
+            if (-not $isCanon -and @($script:KV_REASON_SIDECAR_MISSING, $script:KV_REASON_KV_FILE_MISSING) -cnotcontains [string]$facts.reason) {
+                $summary += $v
+            }
+            if ([string]$facts.reason -ceq $script:KV_REASON_UNAVAILABLE) { Write-KvUnavailableWarning -Detail ([string]$facts.detail) }
+            continue
+        }
+        $cmp = Compare-KvConfigBinding -Meta $facts.meta -Argv $Argv -EnvVars $EnvVars
+        if (-not $cmp.ok) {
+            $v = @{ generation = $name; eligible = $false; reason = [string]$cmp.reason; detail = $cmp.detail; stage = 'config' }
+            if ($isCanon) { $canon = $v }
+            if (-not $isCanon) { $summary += $v }
+            if ([string]$cmp.reason -ceq $script:KV_REASON_UNAVAILABLE) { Write-KvUnavailableWarning -Detail ([string]$cmp.detail) }
+            continue
+        }
+        $cand = @{ generation = $name; eligible = $true; facts = $facts; cmp = $cmp
+                   origin = (Get-KvOrigin -Meta $facts.meta)
+                   saved_at = [string](Get-JsonValue -Obj $facts.meta -Name 'saved_at') }
+        if ($isCanon) { $canon = @{ generation = $name; eligible = $true; reason = 'eligible' } }
+        if (-not $isCanon) { $summary += @{ generation = $name; eligible = $true; saved_at = $cand.saved_at } }
+        # Newest first, so the first candidate that survives both halves IS the answer; the rest are
+        # still evaluated (that is the class (a) recovery above) but can no longer be elected.
+        if ($null -eq $best) { $best = $cand }
+    }
+
+    if ($null -eq $best) {
+        # No generation is usable. The verdict, the reason and the recovery all stay exactly what
+        # they were before autosave existed: the canonical's own answer.
+        if ($null -eq $canon) { $canon = @{ reason = $script:KV_REASON_SIDECAR_MISSING; detail = $null; stage = 'file' } }
+        Set-KvVerdict -Eligible $false -Reason $canon.reason -Detail $canon.detail
+        Write-Diag -Kind 'WARMSTART_ELIGIBILITY' -Data @{ eligible = $false; reason = $canon.reason
+                                                          detail = $canon.detail; stage = $canon.stage
+                                                          candidates = $summary }
+        return
+    }
+    Set-KvVerdict -Eligible $true -Reason 'eligible' -Detail $null
+    $script:WarmstartCtx.meta = $best.facts.meta
+    $script:WarmstartCtx.selected_name = [string]$best.generation
+    $script:WarmstartCtx.selected_origin = [string]$best.origin
+    $script:WarmstartCtx.selected_saved_at = [string]$best.saved_at
+    Write-Diag -Kind 'WARMSTART_ELIGIBILITY' -Data @{ eligible = $true; reason = 'eligible'
+                                                      n_bytes = $best.facts.length; kv_file_sha256 = $best.facts.sha
+                                                      effective_state_semantics_sha256 = $best.cmp.semantics
+                                                      generation_id = [string](Get-JsonValue -Obj $best.facts.meta -Name 'generation_id')
+                                                      selected = [string]$best.generation
+                                                      origin = [string]$best.origin
+                                                      saved_at = [string]$best.saved_at
+                                                      candidates = $summary }
+}
+
+# ---------------------------------------------------------------------------------------------
+# A-2 / A-3 wire. Routes and field names are the measured contract recorded in WARMSTART_SPEC 1.
+# ---------------------------------------------------------------------------------------------
+function Invoke-KvSlotAction {
+    param($Config, [string] $Action, [string] $FileName, [int] $TimeoutSec)
+    $uri = ('http://{0}:{1}/slots/{2}?action={3}' -f $Config.host, $Config.port, $script:KV_SLOT_ID, $Action)
+    $body = $null
+    if ($FileName) { $body = '{"filename":' + (ConvertTo-KvJsonString -Value $FileName) + '}' }
+    return (Invoke-HttpJson -Uri $uri -Method 'POST' -Body $body -TimeoutSec $TimeoutSec)
+}
+
+# A-2 (4): HTTP 200 alone does NOT prove a save happened - llama_state_seq_save_file() returning 0
+# is still answered with a 200. Every one of these has to hold.
+function Test-KvSlotResponse {
+    param($Response, [string] $FileName, [string[]] $PositiveFields)
+    if ($null -eq $Response -or -not $Response.ok) {
+        $why = 'no response'
+        if ($null -ne $Response -and $Response.reason) { $why = [string]$Response.reason }
+        # A thrown non-2xx IS a delivered answer (PS 5.1 turns it into a terminating error rather
+        # than a response object); only a transport failure is truly undelivered.
+        $got = $false
+        if ($null -ne $Response) { $got = [bool]$Response.response_received }
+        return @{ ok = $false; delivered = $got; reason = $why }
+    }
+    if ([int]$Response.status -ne 200) {
+        return @{ ok = $false; delivered = $true; reason = ('http status ' + $Response.status) }
+    }
+    $p = ConvertFrom-JsonStrict -Text $Response.body
+    if (-not $p.ok) { return @{ ok = $false; delivered = $true; reason = ('malformed response body - ' + $p.reason) } }
+    $j = $p.value
+    $slot = Get-JsonValue -Obj $j -Name 'id_slot'
+    if (-not (Test-JsonNonNegativeInteger $slot) -or [long]$slot -ne [long]$script:KV_SLOT_ID) {
+        return @{ ok = $false; delivered = $true; reason = 'id_slot missing or not slot 0' }
+    }
+    $echo = Get-JsonValue -Obj $j -Name 'filename'
+    if (-not (Test-JsonNonEmptyString $echo) -or ([string]$echo -cne $FileName)) {
+        return @{ ok = $false; delivered = $true; reason = 'filename echo does not match the requested name' }
+    }
+    $vals = @{}
+    foreach ($f in $PositiveFields) {
+        $v = Get-JsonValue -Obj $j -Name $f
+        if (-not (Test-JsonNonNegativeInteger $v)) { return @{ ok = $false; delivered = $true; reason = ($f + ' missing or not an integer') } }
+        if ([long]$v -le 0) { return @{ ok = $false; delivered = $true; reason = ($f + ' is 0') } }
+        $vals[$f] = [long]$v
+    }
+    return @{ ok = $true; delivered = $true; values = $vals }
+}
+
+# A-3 / A-4b. Runs after ready, before the launcher warmup. The restore attempt is latched to once
+# per process so the ladder can never re-enter itself.
+function Invoke-WarmstartRestore {
+    param($Config)
+    $out = @{ restored = $false; recovery = $false; n_restored = 0 }
+    if (-not (Test-WarmstartActive)) { return $out }
+    if ($script:WarmstartCtx.restore_latched) { return $out }
+    if (-not $script:WarmstartCtx.eligible) { return $out }
+    $script:WarmstartCtx.restore_latched = $true
+
+    # C: the generation eligibility selected - the newest stored one, whatever wrote it. With no
+    # autosave present that is the canonical name, byte for byte as before.
+    $name = [string]$script:WarmstartCtx.selected_name
+    if (-not $name) { $name = [string]$script:KV_CANONICAL_DATA }
+    $r = Invoke-KvSlotAction -Config $Config -Action 'restore' -FileName $name `
+             -TimeoutSec $script:KV_RESTORE_TIMEOUT_S
+    $v = Test-KvSlotResponse -Response $r -FileName $name -PositiveFields @('n_restored', 'n_read')
+    if ($v.ok) {
+        $out.restored = $true
+        $out.n_restored = [long]$v.values['n_restored']
+        $script:WarmstartCtx.restore_done = $true
+        # A (change gate): the restored length is what "no change since the last save" means for the
+        # first autosave tick of this run.
+        $script:WarmstartCtx.autosave_tokens = [long]$out.n_restored
+        # B (survivor pin): a restored autosave generation is the only complete recovery point this
+        # run is known to have, so the next autosave aims at the OTHER one whatever the sidecar
+        # clocks say. Without the pin the selector's "oldest saved_at first" rule can hand the next
+        # write the generation that was just restored - reachable whenever the newer generation lost
+        # eligibility on the configuration, because a class (b) disagreement KEEPS the file and it
+        # stays the newest by saved_at - and a crash during that write would leave nothing
+        # restorable at all. The pin lifts itself on the first successful write (which flips the
+        # target back); a failed write keeps aiming at the generation it already lost, so the
+        # restored one stays protected until a complete replacement exists.
+        if ($script:KV_AUTOSAVE_GENERATIONS -ccontains $name) {
+            $script:WarmstartCtx.autosave_next = (Get-KvOtherGeneration -Name $name)
+        }
+        Set-KvVerdict -Eligible $true -Reason 'restored' -Detail $null
+        $script:WarmstartCtx.status_text = ('restored(' + $out.n_restored + ' tokens)')
+        Write-Line ('[kv] restored(' + $out.n_restored + ' tokens) from the stored slot state.')
+        Write-Diag -Kind 'WARMSTART_RESTORE_OK' -Data @{ n_restored = $out.n_restored
+                                                         n_read = [long]$v.values['n_read']
+                                                         generation = $name
+                                                         origin = [string]$script:WarmstartCtx.selected_origin
+                                                         saved_at = [string]$script:WarmstartCtx.selected_saved_at }
+        return $out
+    }
+
+    # Ladder rung 2: anything other than a clean restore erases the slot before going cold.
+    Write-Diag -Kind $script:KV_DIAG_RESTORE_FAILED -Data @{ reason = $v.reason; delivered = $v.delivered }
+    Write-Line ('[kv] WARNING: slot restore failed (' + $v.reason + '); erasing the slot and starting cold.')
+    $e = Invoke-KvSlotAction -Config $Config -Action 'erase' -FileName $null -TimeoutSec $script:KV_ERASE_TIMEOUT_S
+    $eraseOk = ($null -ne $e -and $e.ok -and [int]$e.status -eq 200)
+    if ($eraseOk) {
+        # Rung 3: cold only AFTER the erase is confirmed.
+        $script:WarmstartCtx.restore_done = $true
+        Set-KvVerdict -Eligible $false -Reason $script:KV_REASON_RESTORE_FAILED -Detail $v.reason
+        Write-Line '[kv] cold(restore_failed) - slot erased, this run starts without a warm cache.'
+        Write-Diag -Kind 'WARMSTART_RESTORE_COLD' -Data @{ reason = $script:KV_REASON_RESTORE_FAILED; erase = 'ok' }
+        return $out
+    }
+    # Rung 4: the erase failed too, so the slot may hold a partially restored state. The only
+    # remaining way to a known-clean slot is a fresh server.
+    $why = 'erase request failed'
+    if ($null -ne $e -and $e.reason) { $why = [string]$e.reason }
+    elseif ($null -ne $e -and $e.ok) { $why = ('erase http status ' + $e.status) }
+    Write-Diag -Kind $script:KV_DIAG_RESTORE_FAILED -Data @{ reason = $why; stage = 'erase'; next = 'recovery restart' }
+    $out.recovery = $true
+    return $out
+}
+
+# ---------------------------------------------------------------------------------------------
+# A-2 save. Inserted immediately before the graceful stop signal, because the save response has to
+# arrive before CTRL_BREAK. Fully self-contained: nothing here throws, so a save problem can never
+# be promoted into fail_teardown by the caller's own catch.
+# ---------------------------------------------------------------------------------------------
+function Test-WarmstartSaveAllowed {
+    param($Child, [string] $PendingStatus)
+    if (-not (Test-WarmstartActive)) { return $false }
+    if (-not $script:ChildWasReady) { return $false }
+    if ($null -eq $Child) { return $false }
+    # Only a requested, normal stop saves. Every fail_* path leaves the stored state alone.
+    if (@('ok', 'ok_smoke') -notcontains [string]$PendingStatus) { return $false }
+    try { if ((Test-ChildExited -Child $Child).exited) { return $false } } catch { return $false }
+    return $true
+}
+
+function Get-KvGenerationId {
+    return ((Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssfff') + 'Z_' + $PID)
+}
+
+function Write-KvSaveDegraded {
+    param([string] $Reason, $Data)
+    $d = @{ reason = $Reason }
+    if ($null -ne $Data) { foreach ($k in $Data.Keys) { $d[$k] = $Data[$k] } }
+    Write-Diag -Kind $script:KV_DIAG_SAVE_FAILED -Data $d
+    Write-Line ('[kv] WARNING: slot save skipped or failed (' + $Reason + '); shutdown continues normally.')
+}
+
+function Invoke-WarmstartSave {
+    param($Child, [string] $PendingStatus, $Config)
+    # Declared ahead of the try so the outer catch can recover them: a fault anywhere after the
+    # server has created the tmp file must not leave that generation on the volume (A-2 (8)).
+    $tmpPath = $null
+    $metaTmp = $null
+    $responseReceived = $false
+    try {
+        if (-not (Test-WarmstartSaveAllowed -Child $Child -PendingStatus $PendingStatus)) { return }
+        if ($null -eq $Config) { return }
+        $script:WarmstartCtx.save_attempted = $true
+        $dir = $script:WarmstartCtx.dir
+        $dataPath = Get-KvCanonicalDataPath
+        $metaPath = Get-KvCanonicalMetaPath
+        $gen = Get-KvGenerationId
+        $tmpName  = $script:KV_CANONICAL_DATA + '.tmp.' + $gen
+        $tmpPath  = Join-Path $dir $tmpName
+        $metaTmp  = Join-Path $dir ($script:KV_CANONICAL_META + '.tmp.' + $gen)
+        $dataStale = Join-Path $dir ($script:KV_CANONICAL_DATA + '.stale.' + $gen)
+        $metaStale = Join-Path $dir ($script:KV_CANONICAL_META + '.stale.' + $gen)
+
+        # A-2 (7): with a previous generation on disk its size is a real estimate of this one's, so
+        # a save that would obviously not fit is skipped instead of filling the volume. A failure of
+        # the query itself is treated the same way - no freedom is left here.
+        $prev = Read-KvSidecar -Path $metaPath
+        if ($prev.ok) {
+            $need = [long](Get-JsonValue -Obj $prev.value -Name 'n_bytes')
+            $free = Get-VolumeFreeMb -Path $dir
+            if (-not $free.ok) {
+                Write-KvSaveDegraded -Reason ('kv volume free space query failed: ' + $free.reason) -Data $null
+                return
+            }
+            $needMb = [long]([Math]::Ceiling(([double]$need * 1.1) / 1MB))
+            if ([long]$free.free_mb -lt $needMb) {
+                Write-KvSaveDegraded -Reason ('kv volume free space ' + $free.free_mb + ' MB is below the ' + $needMb + ' MB this save needs') -Data $null
+                return
+            }
+        }
+
+        Write-Line '[kv] saving the slot state before shutdown...'
+        $r = Invoke-KvSlotAction -Config $Config -Action 'save' -FileName $tmpName -TimeoutSec $script:KV_SAVE_TIMEOUT_S
+        $v = Test-KvSlotResponse -Response $r -FileName $tmpName -PositiveFields @('n_saved', 'n_written')
+        $responseReceived = [bool]$v.delivered
+        if (-not $v.ok) {
+            if ($v.delivered) {
+                # Recovery timing (1): a verdict was reached with the server still holding nothing
+                # open, so the generation's tmp goes now.
+                Remove-KvPathBestEffort -Path $tmpPath -Why 'save failed (response received)'
+            } else {
+                # Recovery timing (2): no response came back, so the server may still be writing.
+                # Deletion waits until the child has been joined.
+                $script:WarmstartCtx.tmp_after_join += $tmpPath
+            }
+            Write-KvSaveDegraded -Reason $v.reason -Data @{ filename = $tmpName; delivered = $v.delivered }
+            return
+        }
+
+        $len = [long]0
+        try { $len = [long](New-Object System.IO.FileInfo($tmpPath)).Length }
+        catch {
+            Remove-KvPathBestEffort -Path $tmpPath -Why 'save length query failed'
+            Write-KvSaveDegraded -Reason ('saved file length query failed: ' + $_.Exception.Message) -Data $null
+            return
+        }
+        if ($len -le 0) {
+            Remove-KvPathBestEffort -Path $tmpPath -Why 'saved file is empty'
+            Write-KvSaveDegraded -Reason 'the saved file is empty on disk' -Data $null
+            return
+        }
+        Write-KvHashNotice -What 'checksumming the saved slot state' -Bytes $len
+        $h = Get-FileSha256Lower -Path $tmpPath
+        if (-not $h.ok) {
+            Remove-KvPathBestEffort -Path $tmpPath -Why 'save hashing failed'
+            Write-KvSaveDegraded -Reason $h.reason -Data $null
+            return
+        }
+        $hdr = Get-KvFileHeaderFields -Path $tmpPath
+        if (-not $hdr.ok) {
+            Remove-KvPathBestEffort -Path $tmpPath -Why 'save header read failed'
+            Write-KvSaveDegraded -Reason $hdr.reason -Data $null
+            return
+        }
+        $shards = Get-KvModelShardShas
+        $bundle = Get-KvBundleSha
+        if ($null -eq $shards -or $null -eq $bundle) {
+            Remove-KvPathBestEffort -Path $tmpPath -Why 'binding inputs unavailable'
+            Write-KvSaveDegraded -Reason 'model shard or bundle binding inputs are unavailable' -Data $null
+            return
+        }
+
+        $meta = [ordered]@{
+            meta_schema_version              = [int]$script:KV_META_SCHEMA_VERSION
+            profile_id                       = [string]$script:WarmstartCtx.profile_id
+            model_shards_sha256              = @($shards)
+            repack_manifest_sha256           = [string]$script:WarmstartCtx.manifest_sha
+            engine_bundle_sha256             = [string]$bundle
+            effective_state_semantics_sha256 = (Get-KvSemanticsSha256 -Argv $Config.argv -EnvVars $Config.env)
+            n_ctx                            = [long](Get-KvArgvLong -Argv $Config.argv -Flag '-c')
+            n_parallel                       = [long](Get-KvArgvLong -Argv $Config.argv -Flag '-np')
+            llama_state_seq_magic            = [string]$hdr.magic
+            llama_state_seq_version          = [long]$hdr.version
+            n_tokens                         = [long]$v.values['n_saved']
+            n_bytes                          = [long]$len
+            kv_file_sha256                   = [string]$h.sha
+            generation_id                    = [string]$gen
+            saved_at                         = (Get-Date).ToUniversalTime().ToString('o')
+        }
+
+        # A-4b write transaction, order fixed: data first, then the meta that carries the data's
+        # hash. A power loss at any gap therefore leaves either a cold start or a consistent older
+        # generation - never a meta that describes bytes which are not there.
+        try {
+            if (Test-Path -LiteralPath $dataPath -PathType Leaf) {
+                [System.IO.File]::Replace($tmpPath, $dataPath, $dataStale)
+                $script:WarmstartCtx.stale_after_stop += $dataStale
+            } else {
+                Move-FileAtomic -TempPath $tmpPath -FinalPath $dataPath
+            }
+        } catch {
+            Remove-KvPathBestEffort -Path $tmpPath -Why 'data publish failed'
+            Write-KvSaveDegraded -Reason ('publishing the state file failed: ' + $_.Exception.Message) -Data $null
+            return
+        }
+        try {
+            [System.IO.File]::WriteAllText($metaTmp, ($meta | ConvertTo-Json -Depth 6), (New-Object System.Text.UTF8Encoding($false)))
+            $rb = Read-KvSidecar -Path $metaTmp
+            if (-not $rb.ok) { throw ('read-back parse failed: ' + $rb.reason) }
+            if (Test-Path -LiteralPath $metaPath -PathType Leaf) {
+                [System.IO.File]::Replace($metaTmp, $metaPath, $metaStale)
+                $script:WarmstartCtx.stale_after_stop += $metaStale
+            } else {
+                Move-FileAtomic -TempPath $metaTmp -FinalPath $metaPath
+            }
+        } catch {
+            Remove-KvPathBestEffort -Path $metaTmp -Why 'meta publish failed'
+            Write-KvSaveDegraded -Reason ('publishing the sidecar failed: ' + $_.Exception.Message) -Data $null
+            return
+        }
+        Write-Line ('[kv] saved ' + $v.values['n_saved'] + ' tokens (' + [long]([Math]::Round($len / 1MB)) + ' MB) for the next start.')
+        Write-Diag -Kind 'WARMSTART_SAVE_OK' -Data @{ generation_id = $gen; n_tokens = [long]$v.values['n_saved']
+                                                      n_bytes = $len; kv_file_sha256 = $h.sha }
+    } catch {
+        # Total containment (LS 13-1). A save fault is degraded, never a teardown status.
+        try { Write-Diag -Kind $script:KV_DIAG_SAVE_FAILED -Data @{ reason = ('save stage fault: ' + $_.Exception.Message)
+                                                                    response_received = $responseReceived } } catch { }
+        try { Write-Line ('[kv] WARNING: slot save failed (' + $_.Exception.Message + '); shutdown continues normally.') } catch { }
+        # A-2 (8) with the same two timings as the normal failure path: an answered request means
+        # the server is done writing, so the generation goes now; anything else waits for the join.
+        try {
+            foreach ($p in @($tmpPath, $metaTmp)) {
+                if (-not $p) { continue }
+                if ($responseReceived) { [void](Remove-KvPathBestEffort -Path $p -Why 'save stage fault (response received)') }
+                else { $script:WarmstartCtx.tmp_after_join += $p }
+            }
+        } catch { }
+    }
+}
+
+function Remove-KvPathBestEffort {
+    param([string] $Path, [string] $Why)
+    try {
+        if (Test-Path -LiteralPath $Path -PathType Leaf) { Remove-Item -LiteralPath $Path -Force -ErrorAction Stop }
+        return $true
+    } catch {
+        Write-Diag -Kind $script:KV_DIAG_SAVE_FAILED -Data @{ reason = ('leftover cleanup failed: ' + $_.Exception.Message)
+                                                              path = $Path; why = $Why }
+        return $false
+    }
+}
+
+# Recovery timings (2) and (3): the deferred tmp of a save whose response never came, once the
+# child is gone, and this transaction's stale pair at the very end of teardown.
+function Complete-WarmstartTeardownCleanup {
+    try {
+        foreach ($p in @($script:WarmstartCtx.tmp_after_join)) { [void](Remove-KvPathBestEffort -Path $p -Why 'save timed out') }
+        $script:WarmstartCtx.tmp_after_join = @()
+        foreach ($p in @($script:WarmstartCtx.stale_after_stop)) { [void](Remove-KvPathBestEffort -Path $p -Why 'superseded generation') }
+        $script:WarmstartCtx.stale_after_stop = @()
+    } catch { }
+}
+
+# ---------------------------------------------------------------------------------------------
+# LS 13-8 / AUTOSAVE_SPEC v0.1 - the periodic crash-recovery save.
+#
+# Three properties carry the whole design:
+#   A  a tick only fires when the server is IDLE and the sequence has CHANGED since the last save,
+#      so the feature costs a serving run nothing it can feel;
+#   B  the two generations are written alternately, so the one being written is the only one a
+#      crash can damage and the previous one always survives;
+#   D  it is subordinate to warmstart - hard-OFF, soft-OFF and the A-1 directory latch all switch
+#      it off, and its own key can never switch any of them back on.
+# Every failure here is non-terminal and degraded, and reuses the existing warmstart_save_failed
+# diagnostic kind: LS 13-3 freezes the degraded list at three kinds and no new one is invented.
+# ---------------------------------------------------------------------------------------------
+function Set-AutosaveSetting {
+    param([string] $Value)
+    $v = ([string]$Value).Trim().ToLowerInvariant()
+    $script:WarmstartCtx.autosave_setting = $v
+    if ($v -ceq 'off') {
+        $script:WarmstartCtx.autosave_enabled = $false
+        $script:WarmstartCtx.autosave_minutes = [int]$script:KV_AUTOSAVE_DEFAULT_MIN
+        return
+    }
+    $script:WarmstartCtx.autosave_enabled = $true
+    $m = [long]0
+    if ([long]::TryParse($v, [ref]$m) -and
+        $m -ge [long]$script:KV_AUTOSAVE_MIN_MINUTES -and $m -le [long]$script:KV_AUTOSAVE_MAX_MINUTES) {
+        $script:WarmstartCtx.autosave_minutes = [int]$m
+    } else {
+        # 'on' and anything the parser already normalised away both land on the default period.
+        $script:WarmstartCtx.autosave_minutes = [int]$script:KV_AUTOSAVE_DEFAULT_MIN
+    }
+}
+
+function Test-AutosaveActive {
+    if (-not (Test-WarmstartActive)) { return $false }
+    if (-not $script:WarmstartCtx.autosave_enabled) { return $false }
+    if ($script:WarmstartCtx.autosave_stopped) { return $false }
+    return $true
+}
+
+# A-2 (6) shape, adapted to something that repeats: the diagnostic is written every time, the
+# console warning only once per run - a five minute cadence must not repaint the same line forever.
+function Write-KvAutosaveDegraded {
+    param([string] $Reason, $Data)
+    $d = @{ reason = $Reason; stage = 'autosave' }
+    if ($null -ne $Data) { foreach ($k in $Data.Keys) { $d[$k] = $Data[$k] } }
+    Write-Diag -Kind $script:KV_DIAG_SAVE_FAILED -Data $d
+    if ($script:WarmstartCtx.autosave_warned) { return }
+    $script:WarmstartCtx.autosave_warned = $true
+    Write-Line ('[kv] WARNING: autosave skipped (' + $Reason + '); serving continues normally.')
+}
+
+# A (idle gate): GET /slots is the server's own answer about its own slots - it is served from the
+# task queue as a high-priority task, so "is_processing" is the state the save task would meet.
+# `n_prompt_tokens` is the slot's cached sequence length (prompt + generated), which is exactly the
+# quantity a save stores; it is only present once the slot has held a task, and its absence is
+# therefore read as "no evidence of a change", never as zero.
+function Get-KvSlotsSnapshot {
+    param($Config, [int] $TimeoutSec = 0)
+    if ($TimeoutSec -le 0) { $TimeoutSec = [int]$script:KV_SLOTS_TIMEOUT_S }
+    $uri = ('http://{0}:{1}/slots' -f $Config.host, $Config.port)
+    $r = Invoke-HttpJson -Uri $uri -Method 'GET' -TimeoutSec $TimeoutSec
+    if ($null -eq $r -or -not $r.ok) {
+        $why = 'no response'
+        if ($null -ne $r -and $r.reason) { $why = [string]$r.reason }
+        return @{ ok = $false; reason = $why }
+    }
+    if ([int]$r.status -ne 200) { return @{ ok = $false; reason = ('http status ' + $r.status) } }
+    $p = ConvertFrom-JsonStrict -Text $r.body
+    if (-not $p.ok) { return @{ ok = $false; reason = ('malformed /slots body - ' + $p.reason) } }
+    # A one element array is unrolled into a single object by ConvertFrom-Json, and the launcher
+    # locks -np 1, so that IS the normal shape here.
+    $items = @($p.value)
+    $busy = $false
+    $slot = $null
+    $seen = 0
+    foreach ($s in $items) {
+        $proc = Get-JsonValue -Obj $s -Name 'is_processing'
+        if (-not (Test-JsonBoolean $proc)) { continue }
+        $seen = $seen + 1
+        if ([bool]$proc) { $busy = $true }
+        $id = Get-JsonValue -Obj $s -Name 'id'
+        if ((Test-JsonNonNegativeInteger $id) -and [long]$id -eq [long]$script:KV_SLOT_ID) { $slot = $s }
+    }
+    if ($seen -eq 0) { return @{ ok = $false; reason = 'the /slots answer carries no slot state' } }
+    if ($null -eq $slot) { return @{ ok = $false; reason = ('the /slots answer carries no slot ' + $script:KV_SLOT_ID) } }
+    $tok = Get-JsonValue -Obj $slot -Name 'n_prompt_tokens'
+    $has = (Test-JsonNonNegativeInteger $tok)
+    $n = [long]0
+    if ($has) { $n = [long]$tok }
+    return @{ ok = $true; idle = (-not $busy); has_tokens = $has; tokens = $n }
+}
+
+# B: the next write targets the OLDER generation, so the newer one is the one that survives a crash
+# during it. A generation whose sidecar is absent or unreadable is the oldest possible candidate,
+# which is also how a half-written generation gets reclaimed by the next write.
+function Select-AutosaveGeneration {
+    if ($script:WarmstartCtx.autosave_next) { return [string]$script:WarmstartCtx.autosave_next }
+    $pick = $null
+    foreach ($n in $script:KV_AUTOSAVE_GENERATIONS) {
+        $ticks = [long][Int64]::MinValue
+        $m = Read-KvSidecar -Path (Get-KvMetaPath -Name $n)
+        if ($m.ok) { $ticks = Get-KvSavedAtTicks -Meta $m.value }
+        if ($null -eq $pick -or [long]$ticks -lt [long]$pick.ticks) { $pick = @{ name = [string]$n; ticks = [long]$ticks } }
+    }
+    $script:WarmstartCtx.autosave_next = [string]$pick.name
+    return [string]$pick.name
+}
+
+function Get-KvOtherGeneration {
+    param([string] $Name)
+    foreach ($n in $script:KV_AUTOSAVE_GENERATIONS) { if ($n -cne $Name) { return [string]$n } }
+    return [string]$Name
+}
+
+# A-2 (7) input: the best available measurement of what this save is about to write. The target's
+# own previous size first, then the other generation, then the stop save - all three describe the
+# same slot on the same configuration. Nothing available (the very first save on this machine) means
+# no estimate exists and the check is skipped, exactly as A-2 (7) says.
+function Get-KvAutosaveSizeHint {
+    param([string] $Name)
+    $names = @([string]$Name, (Get-KvOtherGeneration -Name $Name), [string]$script:KV_CANONICAL_DATA)
+    foreach ($n in $names) {
+        $m = Read-KvSidecar -Path (Get-KvMetaPath -Name $n)
+        if ($m.ok) {
+            $b = Get-JsonValue -Obj $m.value -Name 'n_bytes'
+            if ((Test-JsonNonNegativeInteger $b) -and [long]$b -gt 0) { return [long]$b }
+        }
+    }
+    return [long]0
+}
+
+# One autosave transaction. B fixes the order: save API -> validated success -> checksum -> sidecar.
+# The generation is written under its final name on purpose - the alternation IS the atomicity, and
+# a half-written generation is caught by the same fail-close that catches any other damaged pair
+# (its sidecar still describes the previous bytes, so length/hash disagree and both halves go).
+function Invoke-AutosaveWrite {
+    param($Config, [long] $Tokens)
+    $name = Select-AutosaveGeneration
+    $dataPath = Get-KvDataPath -Name $name
+    $metaPath = Get-KvMetaPath -Name $name
+
+    $need = Get-KvAutosaveSizeHint -Name $name
+    if ($need -gt 0) {
+        $free = Get-VolumeFreeMb -Path $script:WarmstartCtx.dir
+        if (-not $free.ok) {
+            Write-KvAutosaveDegraded -Reason ('kv volume free space query failed: ' + $free.reason) -Data $null
+            return $false
+        }
+        $needMb = [long]([Math]::Ceiling(([double]$need * 1.1) / 1MB))
+        if ([long]$free.free_mb -lt $needMb) {
+            Write-KvAutosaveDegraded -Reason ('kv volume free space ' + $free.free_mb + ' MB is below the ' +
+                                              $needMb + ' MB this autosave needs') -Data $null
+            return $false
+        }
+    }
+
+    Write-Line ('[kv] autosave: the server is idle, storing the current ' + $Tokens + ' token state...')
+    # V-4 input. The save duration has never been measured (AUTOSAVE_SPEC 1-2 records it as
+    # unmeasured), and the V-2 run is the first occasion that can produce it - so the two windows
+    # this transaction has are timed here rather than inferred later from record timestamps:
+    # elapsed_ms is the save itself (request out -> answer in) and total_ms adds the launcher's own
+    # verification pass over the same bytes (checksum + header + sidecar publish).
+    $tStart = Get-Date
+    $r = Invoke-KvSlotAction -Config $Config -Action 'save' -FileName $name -TimeoutSec $script:KV_SAVE_TIMEOUT_S
+    $saveMs = [long][Math]::Round(((Get-Date) - $tStart).TotalMilliseconds)
+    $v = Test-KvSlotResponse -Response $r -FileName $name -PositiveFields @('n_saved', 'n_written')
+    if (-not $v.ok) {
+        if ($v.delivered) {
+            # A verdict with the server no longer holding the file: this generation is dead, and its
+            # old sidecar now describes bytes the truncating save destroyed, so both halves go.
+            [void](Remove-KvPathBestEffort -Path $dataPath -Why 'autosave failed (response received)')
+            [void](Remove-KvPathBestEffort -Path $metaPath -Why 'autosave failed (response received)')
+        } else {
+            # No answer at all: the server may still be writing that file, so the deletion waits for
+            # the join (A-2 (8) timing (2)) - and autosave stops for this run, because reusing a
+            # generation the server might still be writing is the one thing the alternation cannot
+            # protect against.
+            $script:WarmstartCtx.tmp_after_join += $dataPath
+            $script:WarmstartCtx.tmp_after_join += $metaPath
+            $script:WarmstartCtx.autosave_stopped = $true
+        }
+        Write-KvAutosaveDegraded -Reason $v.reason -Data @{ generation = $name; delivered = $v.delivered }
+        return $false
+    }
+
+    $len = [long]0
+    try { $len = [long](New-Object System.IO.FileInfo($dataPath)).Length }
+    catch {
+        [void](Remove-KvPathBestEffort -Path $dataPath -Why 'autosave length query failed')
+        [void](Remove-KvPathBestEffort -Path $metaPath -Why 'autosave length query failed')
+        Write-KvAutosaveDegraded -Reason ('saved file length query failed: ' + $_.Exception.Message) -Data $null
+        return $false
+    }
+    if ($len -le 0) {
+        [void](Remove-KvPathBestEffort -Path $dataPath -Why 'autosave produced an empty file')
+        [void](Remove-KvPathBestEffort -Path $metaPath -Why 'autosave produced an empty file')
+        Write-KvAutosaveDegraded -Reason 'the saved file is empty on disk' -Data $null
+        return $false
+    }
+    Write-KvHashNotice -What 'checksumming the autosaved slot state' -Bytes $len
+    $h = Get-FileSha256Lower -Path $dataPath
+    $hdr = $null
+    if ($h.ok) { $hdr = Get-KvFileHeaderFields -Path $dataPath }
+    $shards = Get-KvModelShardShas
+    $bundle = Get-KvBundleSha
+    $why = $null
+    if (-not $h.ok) { $why = ('autosave hashing failed: ' + [string]$h.reason) }
+    elseif ($null -eq $hdr) { $why = 'the state header was never read' }
+    elseif (-not $hdr.ok) { $why = [string]$hdr.reason }
+    elseif ($null -eq $shards -or $null -eq $bundle) { $why = 'model shard or bundle binding inputs are unavailable' }
+    if ($null -ne $why -and $why.Length -eq 0) { $why = 'the saved generation could not be verified' }
+    if ($why) {
+        [void](Remove-KvPathBestEffort -Path $dataPath -Why 'autosave verification failed')
+        [void](Remove-KvPathBestEffort -Path $metaPath -Why 'autosave verification failed')
+        Write-KvAutosaveDegraded -Reason $why -Data @{ generation = $name }
+        return $false
+    }
+
+    $gen = Get-KvGenerationId
+    $meta = [ordered]@{
+        meta_schema_version              = [int]$script:KV_META_SCHEMA_VERSION
+        profile_id                       = [string]$script:WarmstartCtx.profile_id
+        model_shards_sha256              = @($shards)
+        repack_manifest_sha256           = [string]$script:WarmstartCtx.manifest_sha
+        engine_bundle_sha256             = [string]$bundle
+        effective_state_semantics_sha256 = (Get-KvSemanticsSha256 -Argv $Config.argv -EnvVars $Config.env)
+        n_ctx                            = [long](Get-KvArgvLong -Argv $Config.argv -Flag '-c')
+        n_parallel                       = [long](Get-KvArgvLong -Argv $Config.argv -Flag '-np')
+        llama_state_seq_magic            = [string]$hdr.magic
+        llama_state_seq_version          = [long]$hdr.version
+        n_tokens                         = [long]$v.values['n_saved']
+        n_bytes                          = [long]$len
+        kv_file_sha256                   = [string]$h.sha
+        generation_id                    = [string]$gen
+        saved_at                         = (Get-Date).ToUniversalTime().ToString('o')
+        # A-4c kin: the same wire fields, plus the provenance of this generation. Restore ignores it
+        # (C is origin-agnostic); it exists so a stored tree can be read back honestly.
+        origin                           = [string]$script:KV_ORIGIN_AUTOSAVE
+    }
+    try {
+        [System.IO.File]::WriteAllText($metaPath, ($meta | ConvertTo-Json -Depth 6), (New-Object System.Text.UTF8Encoding($false)))
+        $rb = Read-KvSidecar -Path $metaPath
+        if (-not $rb.ok) { throw ('read-back parse failed: ' + $rb.reason) }
+    } catch {
+        [void](Remove-KvPathBestEffort -Path $dataPath -Why 'autosave sidecar write failed')
+        [void](Remove-KvPathBestEffort -Path $metaPath -Why 'autosave sidecar write failed')
+        Write-KvAutosaveDegraded -Reason ('writing the autosave sidecar failed: ' + $_.Exception.Message) -Data @{ generation = $name }
+        return $false
+    }
+
+    # The write is complete: only now does the change gate move on, and only now does the other
+    # generation become the target (a failed write keeps aiming at the generation it already lost).
+    $script:WarmstartCtx.autosave_tokens = [long]$v.values['n_saved']
+    $script:WarmstartCtx.autosave_next = (Get-KvOtherGeneration -Name $name)
+    $script:WarmstartCtx.autosave_count = [int]$script:WarmstartCtx.autosave_count + 1
+    Write-Line ('[kv] autosave: stored ' + $v.values['n_saved'] + ' tokens (' +
+                [long]([Math]::Round($len / 1MB)) + ' MB) as a crash recovery point.')
+    Write-Diag -Kind 'WARMSTART_AUTOSAVE_OK' -Data @{ generation = $name; generation_id = $gen
+                                                      n_tokens = [long]$v.values['n_saved']; n_bytes = $len
+                                                      kv_file_sha256 = $h.sha
+                                                      origin = [string]$script:KV_ORIGIN_AUTOSAVE
+                                                      autosave_count = [int]$script:WarmstartCtx.autosave_count
+                                                      started_at = $tStart.ToUniversalTime().ToString('o')
+                                                      elapsed_ms = [long]$saveMs
+                                                      total_ms = [long][Math]::Round(((Get-Date) - $tStart).TotalMilliseconds) }
+    return $true
+}
+
+# The serving loop calls this on every iteration; everything below the deadline is a cheap return.
+# Fully self-contained: like the UI-9 echo it may never throw, because an autosave defect must not
+# become a serving verdict.
+function Invoke-AutosaveTick {
+    param($Config)
+    try {
+        if (-not (Test-AutosaveActive)) { return }
+        if ($null -eq $Config) { return }
+        $now = (Get-Date)
+        if ($null -eq $script:WarmstartCtx.autosave_clock) {
+            # The clock starts when serving starts, so the first tick is one full period after ready.
+            $script:WarmstartCtx.autosave_clock = $now
+            return
+        }
+        if ((($now - [datetime]$script:WarmstartCtx.autosave_clock).TotalMinutes) -lt [double]$script:WarmstartCtx.autosave_minutes) { return }
+        # The tick is consumed whatever the gates decide: an unmet condition means no action, and
+        # the next tick is a full period away (A).
+        $script:WarmstartCtx.autosave_clock = $now
+        $snap = Get-KvSlotsSnapshot -Config $Config
+        if (-not $snap.ok) {
+            Write-KvAutosaveDegraded -Reason ('the idle probe failed: ' + $snap.reason) -Data $null
+            return
+        }
+        if (-not $snap.idle) {
+            Write-Diag -Kind 'WARMSTART_AUTOSAVE_SKIP' -Data @{ reason = 'a request is in flight' }
+            return
+        }
+        if (-not $snap.has_tokens) {
+            Write-Diag -Kind 'WARMSTART_AUTOSAVE_SKIP' -Data @{ reason = 'the slot holds no sequence yet' }
+            return
+        }
+        if ($null -ne $script:WarmstartCtx.autosave_tokens -and
+            [long]$snap.tokens -eq [long]$script:WarmstartCtx.autosave_tokens) {
+            Write-Diag -Kind 'WARMSTART_AUTOSAVE_SKIP' -Data @{ reason = 'unchanged since the last save'
+                                                                n_tokens = [long]$snap.tokens }
+            return
+        }
+        [void](Invoke-AutosaveWrite -Config $Config -Tokens ([long]$snap.tokens))
+    } catch {
+        # Same shape as the UI-9 echo: one record, then silence for the rest of the run.
+        try { $script:WarmstartCtx.autosave_stopped = $true } catch { }
+        try { Write-Diag -Kind $script:KV_DIAG_SAVE_FAILED -Data @{ stage = 'autosave'
+                                                                    reason = ('autosave tick fault: ' + $_.Exception.Message)
+                                                                    effect = 'autosave is off for the rest of this run' } } catch { }
+    }
+}
+
+# ---------------------------------------------------------------------------------------------
+# LS 13-4b recovery restart - the restore ladder's last rung.
+# ---------------------------------------------------------------------------------------------
+# A "fresh" output path (13-4b (4)): different from the previous incarnation's AND provably absent
+# at spawn time. A second-resolution timestamp alone is not enough - two recovery restarts inside
+# the same second would collide on the same name, and the launcher PID is identical too - so the
+# incarnation number is part of the name and the absence is then confirmed.
+function New-KvRecoveryPath {
+    param([string] $Path, [int] $Incarnation)
+    $dir = [System.IO.Path]::GetDirectoryName($Path)
+    $base = [System.IO.Path]::GetFileNameWithoutExtension($Path)
+    $ext = [System.IO.Path]::GetExtension($Path)
+    $n = $Incarnation
+    $tries = 0
+    while ($tries -lt 64) {
+        $cand = Join-Path $dir ($base + '.recovery' + $n + $ext)
+        if (-not (Test-Path -LiteralPath $cand)) { return $cand }
+        $n = $n + 1
+        $tries = $tries + 1
+    }
+    throw ('no free recovery path derived from ' + $Path)
+}
+
+# (2) The old child is stopped WITHOUT a save attempt and WITHOUT releasing any lock.
+# Complete-Teardown is deliberately not reused: it also releases the launcher/profile/output/port
+# locks, and this process is still holding them for the replacement child.
+function Stop-OwnedChildForRecovery {
+    param($Child, [int] $PortNumber)
+    $res = Stop-OwnedChildGraceful -Child $Child -PortNumber $PortNumber
+    Close-OwnedChildHandles
+    $why = ''
+    if ($res.taskkill_used)          { $why = 'taskkill fallback was used' }
+    elseif ($res.ctrl_attempted -and -not $res.ctrl_sent) { $why = 'CTRL_BREAK could not be delivered' }
+    elseif ($res.grace_exceeded)     { $why = 'graceful grace period exceeded' }
+    elseif ($res.stop_nonzero)       { $why = 'child exited non-zero during stop' }
+    elseif (-not $res.child_gone)    { $why = 'child process still alive' }
+    elseif (-not $res.listener_gone) { $why = 'port listener still present' }
+    Write-Diag -Kind 'WARMSTART_RECOVERY' -Data @{ stage = 'stop_old_child'; failed = $why }
+    # (3) old-child cleanup failure keeps the existing top-priority teardown verdict.
+    if ($why) { Stop-Launcher 'fail_teardown' ('warmstart recovery could not stop the previous server: ' + $why) }
+}
+
+function Invoke-WarmstartRecoveryRestart {
+    param($Config, [string] $ServerExe, [string] $Root, [string] $StdOutPath, [string] $StdErrPath)
+    $script:WarmstartCtx.recovery_count = $script:WarmstartCtx.recovery_count + 1
+    $n = [int]$script:WarmstartCtx.recovery_count
+    Write-Line '[kv] the slot erase failed as well; restarting the server so the slot is known clean.'
+    Stop-OwnedChildForRecovery -Child $script:OwnedChild -PortNumber ([int]$script:LastServerPort)
+    $script:ChildWasReady = $false
+
+    # (4) a new process group and an entirely fresh file surface: metrics, stdout and stderr.
+    $newOut = New-KvRecoveryPath -Path $StdOutPath -Incarnation $n
+    $newErr = New-KvRecoveryPath -Path $StdErrPath -Incarnation $n
+    $env2 = @{}
+    foreach ($k in $Config.env.Keys) { $env2[[string]$k] = [string]$Config.env[$k] }
+    if ($env2.ContainsKey($script:ENV_METRICS)) {
+        # Even an externally fixed metrics path is derived into a new sibling: the engine opens that
+        # file with CREATE_NEW, so re-using the name would fail the new incarnation outright.
+        $env2[$script:ENV_METRICS] = New-KvRecoveryPath -Path ([string]$env2[$script:ENV_METRICS]) -Incarnation $n
+        Write-Diag -Kind 'METRICS_ENV' -Data @{ injected = $true; path = $env2[$script:ENV_METRICS]
+                                                recovery_incarnation = $n }
+    }
+    $cfg2 = @{}
+    foreach ($k in $Config.Keys) { $cfg2[[string]$k] = $Config[$k] }
+    $cfg2['env'] = $env2
+
+    $sr = Start-OwnedChild -Exe $ServerExe -Args0 $Config.argv -EnvVars $env2 -WorkDir $Root `
+              -StdOutPath $newOut -StdErrPath $newErr -NewProcessGroup $true -Role 'server'
+    # (6) only a spawn or health failure of the replacement is terminal, and it reuses the existing
+    # fail_server_start rather than inventing a status.
+    if (-not $sr.ok) { Stop-Launcher 'fail_server_start' ('warmstart recovery server start failed: ' + $sr.reason) }
+    $child = $sr.child
+    Write-Diag -Kind 'WARMSTART_RECOVERY' -Data @{ stage = 'respawn'; incarnation = $n; pid = $child.pid
+                                                   out_log = $newOut; err_log = $newErr }
+    Write-Line ('[start] recovery server pid {0}; waiting for health on http://{1}:{2}/health' -f $child.pid, $cfg2.host, $cfg2.port)
+    Wait-ForServerReady -Child $child -Config $cfg2 -ErrLog $newErr
+    $script:ChildWasReady = $true
+
+    # (5) the restore latch is spent, so no second attempt; the save right is kept, because storing
+    # the cold-grown state on a normal stop is harmless now and useful at the next boot.
+    $script:WarmstartCtx.restore_done = $true
+    Set-KvVerdict -Eligible $false -Reason $script:KV_REASON_RECOVERY_COLD -Detail $null
+    # (7) the launcher keeps warmup ownership: this is not a successful restore.
+    Write-Line '[kv] cold(recovery_cold) - the server was restarted, so this run continues without a warm cache.'
+    Write-Diag -Kind 'WARMSTART_RECOVERY' -Data @{ stage = 'ready'; incarnation = $n
+                                                   reason = $script:KV_REASON_RECOVERY_COLD }
+    return @{ child = $child; config = $cfg2; err_log = $newErr }
+}
+
+# endregion
+
+# ============================================================================
+# region 15. STATUS SCREEN + 3-CHOICE MENU (LS 1-1, LS 1-3, LS 6)
+# ============================================================================
+
+function Read-UserLine {
+    param([string] $Prompt)
+    if ($NonInteractive) { return $null }
+    try { [Console]::Out.Write($Prompt) } catch { }
+    try { return [Console]::In.ReadLine() } catch { return $null }
+}
+
+function Confirm-User {
+    param([string] $Question)
+    if ($AssumeYes) { return $true }
+    if ($AssumeNo)  { return $false }
+    if ($NonInteractive) { return $false }
+    $a = Read-UserLine -Prompt $Question
+    if ($null -eq $a) { return $false }
+    $a = $a.Trim().ToLowerInvariant()
+    return ($a -eq 'y' -or $a -eq 'yes')
+}
+
+function Show-Status {
+    param($Profile, $Config, $ProbeResult, $Custom, $RamVerdict, $Sweep, [string] $QdSource, $SurfaceAxes = $null)
+    $gates = Get-JsonValue -Obj $Profile -Name 'gates'
+    $fmt = Test-JsonBooleanTrue (Get-JsonValue -Obj $gates -Name 'format_validated')
+    $perf = Test-JsonBooleanTrue (Get-JsonValue -Obj $gates -Name 'performance_validated')
+
+    Write-Line ''
+    Write-Line '================ MoE-Direct - launch configuration ================'
+    Write-Line ('  profile          : {0} ({1})' -f [string](Get-JsonValue -Obj $Profile -Name 'profile_id'),
+                                                    [string](Get-JsonValue -Obj $Profile -Name 'display_name'))
+    # LS 1-3: three separate axes. Custom only downgrades the performance axis.
+    $fmtTxt = 'FAIL'
+    if ($fmt) { $fmtTxt = 'PASS (repack verify)' }
+    Write-Line ('  format gate      : {0}' -f $fmtTxt)
+    # BUDGET_AUTOTUNE_SPEC v0.2 section 2: an autotuned budget that is not the catalog's measured
+    # one puts the run off the measured operating point, so it demotes this axis for the same reason
+    # a custom edit does. The rows stay ordered custom -> auto -> catalog: a custom edit is the
+    # stronger statement about provenance and keeps its own wording.
+    if ($Custom) {
+        Write-Line '  performance gate : [unmeasured] (custom configuration)'
+    } elseif ($Config.budget_unmeasured) {
+        Write-Line '  performance gate : [unmeasured] (auto budget differs from the measured configuration)'
+    } elseif ($perf) {
+        Write-Line '  performance gate : PASS (reference machine)'
+    } else {
+        Write-Line '  performance gate : [unmeasured] (not performance-validated in the catalog)'
+    }
+    $prov = 'catalog defaults'
+    if ($Custom) { $prov = 'custom' } elseif ($Config.budget_unmeasured) { $prov = 'auto' }
+    Write-Line ('  config provenance: {0}' -f $prov)
+    # LS OA-1 surface axes. Deliberately a block of their own rather than three more values folded
+    # into the gate lines above: they answer different questions (bytes / selection authority /
+    # serving validation) and the whole point of stating them separately is that a reader cannot
+    # take one of the three as an answer to another.
+    if ($null -ne $SurfaceAxes) {
+        Write-Line ''
+        Write-Line ('  copy integrity     : {0}' -f $SurfaceAxes.copy_integrity)
+        Write-Line ('  inventory authority: {0}' -f $SurfaceAxes.inventory_authority)
+        Write-Line ('  serving validation : {0}' -f $SurfaceAxes.serving_validation)
+        if ($SurfaceAxes.note) { Write-Line ('                       {0}' -f $SurfaceAxes.note) }
+    }
+    Write-Line ''
+    Write-Line ('  port             : {0} (loopback {1})' -f $Config.port, $Config.host)
+    $ctxTxt = Get-ArgvValue -Argv $Config.argv -Flag '-c'
+    if ($null -eq $ctxTxt) { $ctxTxt = '(catalog default)' }
+    $thrTxt = Get-ArgvValue -Argv $Config.argv -Flag '-t'
+    if ($null -eq $thrTxt) { $thrTxt = '(catalog default)' }
+    Write-Line ('  ctx / threads    : {0} / {1}' -f $ctxTxt, $thrTxt)
+    # BUDGET_AUTOTUNE_SPEC v0.2 section 3: no silent automatic value - the source travels with the
+    # number on the launch screen, and the banner line above carries the arithmetic behind it.
+    Write-Line ('  budget / QD      : {0} MB [{1}] / {2}' -f $Config.budget_mb, $Config.budget_source, $Config.qd)
+    Write-Line ('  warmup           : {0} (default OFF)' -f $Config.warmup)
+    # LS 13-1: pre-start eligibility, NOT the result. The actual restore outcome is echoed after
+    # ready, on its own line.
+    Write-Line ('  kv               : {0}' -f $script:WarmstartCtx.status_text)
+    # LS 13-8 (D5): the periodic save writes to the user's own machine on a cadence, so it is stated
+    # on the launch screen next to the rest of the kv family rather than only in the diagnostics.
+    # It reports the EFFECTIVE answer: the key can only ever turn autosave off, so a run whose
+    # warmstart is off reads "off" here no matter what the key says, and says which one decided.
+    $asTxt = 'off'
+    if (Test-AutosaveActive) { $asTxt = ('on (every {0} min)' -f [int]$script:WarmstartCtx.autosave_minutes) }
+    elseif ($script:WarmstartCtx.autosave_enabled) { $asTxt = 'off (warmstart is off)' }
+    Write-Line ('  autosave         : {0}' -f $asTxt)
+    Write-Line ('  effective_prefetch: {0}   [catalog prefetch_state={1}]' -f $Config.prefetch.echo,
+                                                    [string](Get-JsonValue -Obj $Profile -Name 'prefetch_state'))
+    if ([string](Get-JsonValue -Obj $Profile -Name 'prefetch_state') -ceq 'reference-only') {
+        Write-Line '                     reference-only = offline signal eligibility only; live prefetch is NOT verified and is forbidden.'
+    }
+    if ($RamVerdict -and $RamVerdict.verdict -eq 'unmeasured') {
+        Write-Line ('  ram verdict      : [unmeasured] ({0})' -f $RamVerdict.reason)
+    }
+    # LS 1-4 scratch tier: pre-repack I/O sanity, provisional. Since LS 12 it no longer decides QD.
+    if ($ProbeResult -and (-not $ProbeResult.ok)) {
+        Write-Line ('  ssd probe        : failed ({0}) - scratch sanity only, provisional' -f $ProbeResult.reason)
+    } elseif ($ProbeResult -and $ProbeResult.ok) {
+        Write-Line ('  ssd probe        : {0} MiB/s (scratch sanity, provisional)' -f $ProbeResult.mibps)
+    }
+    # LS 12-5: the four sweep points, the adopted QD and the reason share the ssd probe block.
+    if ($Sweep) {
+        if ($Sweep.ok) {
+            $line = ('  qd sweep         : {0} -> QD{1} ({2})' -f (Format-SweepPoints -Points $Sweep.points), $Sweep.qd, $Sweep.reason)
+        } elseif (@($Sweep.points).Count -gt 0) {
+            $line = ('  qd sweep         : {0} -> QD{1} (degraded, conservative default)' -f (Format-SweepPoints -Points $Sweep.points), $script:QD_DEGRADED)
+        } else {
+            $line = ('  qd sweep         : unavailable ({0}) -> QD{1} (conservative default)' -f $Sweep.detail, $script:QD_DEGRADED)
+        }
+        if ($Sweep.from_binding) { $line = $line + ' [stored binding]' }
+        if ($Sweep.persist_failed) { $line = $line + ' [binding_persist=failed]' }
+        Write-Line $line
+        Write-Line ('  effective QD     : {0} (qd_source={1})' -f $Config.qd, $QdSource)
+        # LS 12-5: only the sweep point that matches the FINAL QD may be consumed as the measured
+        # read rate. No stand-in - not the selected point, not the QD1 number.
+        $pt = Get-SweepPointForQd -Points $Sweep.points -Qd ([int]$Config.qd)
+        if ($null -ne $pt) {
+            Write-Line ('  measured io      : {0} MiB/s at QD{1} (sweep point)' -f $pt.mibps, $Config.qd)
+        } else {
+            Write-Line ('  measured io      : unavailable (no valid sweep point at QD{0})' -f $Config.qd)
+        }
+    }
+    Write-Line ''
+    Write-Line '  reference measurements (catalog-rendered; conditions required):'
+    foreach ($row in (Format-ReferenceMeasurements -Profile $Profile)) { Write-Line $row }
+    Write-Line ''
+    Write-Line '  I/O ceiling is not an expected tok/s. Fixed per-token cost is machine specific and'
+    Write-Line '  is shown as [unmeasured] for machines other than the reference machine.'
+    Write-Line '==================================================================='
+}
+
+function Show-CustomWarning {
+    Write-Line ''
+    Write-Line '--- custom configuration warning ---------------------------------'
+    Write-Line 'You are leaving the launcher-recommended configuration for this model.'
+    Write-Line 'Custom settings are not covered by any published performance numbers'
+    Write-Line '(performance shown as [unmeasured]; format integrity checks remain enforced).'
+    Write-Line 'Custom values may hit RAM/VRAM limits. Locked items (prefetch state, integrity'
+    Write-Line 'gates, single-slot, loopback bind) cannot be modified here.'
+    Write-Line '------------------------------------------------------------------'
+}
+
+function Invoke-CustomEditor {
+    param($Overrides, $Bounds)
+    Show-CustomWarning
+    $keys = @('port', 'ctx', 'threads', 'budget_mb', 'qd', 'warmup', 'warmstart', 'autosave')
+    Write-Line 'Editable items (blank keeps the current value):'
+    foreach ($k in $keys) {
+        $cur = '(catalog default)'
+        if ($Overrides.ContainsKey($k)) { $cur = [string]$Overrides[$k] }
+        $ans = Read-UserLine -Prompt ('  ' + $k + ' [' + $cur + ']: ')
+        if ($null -eq $ans) { continue }
+        $ans = $ans.Trim()
+        if ($ans.Length -eq 0) { continue }
+        $v = Test-OverrideValue -Key $k -Value $ans -Bounds $Bounds
+        if (-not $v.ok) {
+            # LS 5: interactive violations re-loop, they never terminate.
+            Write-Line ('    rejected: ' + $v.reason)
+            continue
+        }
+        $Overrides[$k] = $v.value
+    }
+    return $Overrides
+}
+
+# R1-9: only an empty line means "take the default". Any other unrecognised input re-asks; it must
+# never be silently promoted to start.
+# LS 11 (UI-1 1/2): when - and only when - a real console is attached, the same three answers are
+# offered as an arrow-key menu first. Every other path (pipe, redirect, CI, selftest, -NonInteractive,
+# menu render failure) falls through to the text prompt below, unchanged byte for byte.
+function Read-MenuChoice {
+    if ($NonInteractive) { return $script:ActionResolved }
+    if (Test-MenuModeAvailable) {
+        $picked = Read-MenuChoiceInteractive
+        if ($null -ne $picked) { return $picked }
+    }
+    # LS 11-7 a: an interactive text prompt is armed here as well (menu mode unavailable, or the
+    # menu fell back), so the same queue flush applies. No-op with stdin redirected, which is why
+    # the non-interactive prompt below keeps its exact v0.4 bytes and its existing regressions.
+    $null = Clear-ConsoleInputQueue
+    while ($true) {
+        Assert-NotCancelledPreReady
+        Write-Line ''
+        Write-Line 'Choose: [start] / custom / stop     (Enter = start)'
+        $a = Read-UserLine -Prompt 'choice> '
+        if ($null -eq $a) { return 'start' }   # stdin closed: take the default
+        $a = $a.Trim().ToLowerInvariant()
+        if ($a.Length -eq 0) { return 'start' }
+        if ($a -eq 'start')  { return 'start' }
+        if ($a -eq 'custom') { return 'custom' }
+        if ($a -eq 'stop')   { return 'stop' }
+        Write-Line ('  unrecognised choice "' + $a + '". Enter start, custom or stop (or press Enter for start).')
+    }
+}
+
+# ---------------------------------------------------------------------------------------------
+# LS 11 (UI-1) - interactive selection layer.
+# Display and input collection only. Nothing below writes a wire string, a status enum, an exit
+# code, a gate verdict or an argv/env entry: a menu selection is injected into exactly the same
+# variable the text prompt fills, and identify / shard discovery / every gate run afterwards
+# unchanged. The only new stored file is the recent list (UI-1 4).
+# ---------------------------------------------------------------------------------------------
+
+$script:RECENT_MODELS_SCHEMA = 1
+$script:RECENT_MODELS_MAX    = 24   # entries kept in recent_models.json
+$script:RECENT_MODELS_SHOW   = 8    # recent entries offered in the menu
+$script:SCAN_MODELS_SHOW     = 12   # scanned entries offered in the menu
+$script:SCAN_MAX_DEPTH       = 3    # path components below the root, file included
+$script:MODELS_DIR_NAME      = 'moe-models'
+
+function Get-RecentModelsPath {
+    return (Join-Path (Get-LauncherStateDir) 'recent_models.json')
+}
+
+# UI-1 3-a: the recent list is a convenience cache, never a gate input. Anything unreadable,
+# undecodable, unparsable or shaped wrong is ignored (diagnostic log only) and the menu simply
+# loses that source - deliberately NOT the atomic preset round trip of LS 1-7.
+function Read-RecentModels {
+    $path = Get-RecentModelsPath
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return @() }
+    $b = Read-FileBytesStrict -Path $path
+    if (-not $b.ok) { Write-Diag -Kind 'RECENT_IGNORED' -Data @{ reason = $b.reason }; return @() }
+    $t = ConvertFrom-Utf8Strict -Bytes $b.bytes
+    if (-not $t.ok) { Write-Diag -Kind 'RECENT_IGNORED' -Data @{ reason = $t.reason }; return @() }
+    $pr = ConvertFrom-JsonStrict -Text $t.text
+    if (-not $pr.ok) { Write-Diag -Kind 'RECENT_IGNORED' -Data @{ reason = $pr.reason }; return @() }
+    if (-not (Test-JsonArray (Get-JsonValue -Obj $pr.value -Name 'paths'))) {
+        Write-Diag -Kind 'RECENT_IGNORED' -Data @{ reason = 'paths[] missing or not an array' }
+        return @()
+    }
+    $out = @()
+    foreach ($p in (Get-JsonArray -Obj $pr.value -Name 'paths')) {
+        if (-not (Test-JsonNonEmptyString $p)) { continue }
+        $out += [string]$p
+    }
+    return $out
+}
+
+# UI-1 3-a: append on identify success. Most recent first, duplicates removed, capped. A write
+# failure is silent to the user and non-terminal - losing the cache costs a menu entry, nothing more.
+function Add-RecentModel {
+    param([string] $Path)
+    try {
+        if (-not $Path) { return }
+        $list = @([string]$Path)
+        foreach ($p in (Read-RecentModels)) {
+            if ($p -eq $Path) { continue }
+            $list += $p
+        }
+        if ($list.Count -gt $script:RECENT_MODELS_MAX) { $list = @($list[0..($script:RECENT_MODELS_MAX - 1)]) }
+        $path0 = Get-RecentModelsPath
+        $dir = Split-Path -Parent $path0
+        if (-not (Test-Path -LiteralPath $dir -PathType Container)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+        $json = ([ordered]@{ schema_version = [int]$script:RECENT_MODELS_SCHEMA; paths = @($list) } | ConvertTo-Json -Depth 4)
+        [System.IO.File]::WriteAllText($path0, $json, (New-Object System.Text.UTF8Encoding($false)))
+        Write-Diag -Kind 'RECENT_APPENDED' -Data @{ path = $Path; count = $list.Count }
+    } catch {
+        Write-Diag -Kind 'RECENT_IGNORED' -Data @{ reason = ('append failed: ' + $_.Exception.Message) }
+    }
+}
+
+# UI-1 3-b: a split set is offered once, through its -00001-of- member. This hides siblings from
+# the LIST only; LS 1-5 discovery still runs on whatever file is finally selected.
+function Test-ShardRepresentative {
+    param([string] $FileName)
+    $m = [regex]::Match([string]$FileName, $script:SPLIT_REGEX)
+    if (-not $m.Success) { return $true }
+    return ([int]$m.Groups['idx'].Value -eq 1)
+}
+
+# UI-1 3-b: *.gguf under the given roots, at most $MaxDepth path components below each root
+# (1 = directly in the root, 3 = two directories down). 3 is the frozen value because the typical
+# Hugging Face download lands as <root>\<model>\<hf repo name>\model.gguf - a depth-2 cut would
+# miss exactly that layout. Names and sizes only: no header is opened here, identification stays
+# the sole judge of what a file is.
+# R6 required fix: "C:\" is a VOLUME ROOT, "C:" is that drive's current directory - a different
+# place entirely (PowerShell resolves the latter per-drive). An unconditional TrimEnd('\') turned a
+# legitimate "-ModelsRoot C:\" into a scan of whatever directory happened to be current on C:.
+# Trim the trailing separator only when the result is still the same location.
+function Get-NormalizedScanRoot {
+    param([string] $Root)
+    $r = [string]$Root
+    if ($r.Length -eq 0) { return $r }
+    $trimmed = $r.TrimEnd('\')
+    if ($trimmed.Length -eq 0) { return $r }                          # "\" / "\\" - leave as given
+    if ($trimmed -match '^[A-Za-z]:$') { return ($trimmed + '\') }    # C:\ stays C:\ ; bare C: becomes the root
+    return $trimmed
+}
+
+function Get-GgufScanCandidates {
+    param([string[]] $Roots, [int] $MaxDepth = 3)
+    $out = @()
+    foreach ($root in @($Roots)) {
+        if (-not $root) { continue }
+        $r = Get-NormalizedScanRoot -Root ([string]$root)
+        if (-not (Test-Path -LiteralPath $r -PathType Container)) { continue }
+        $files = @()
+        try { $files = @(Get-ChildItem -LiteralPath $r -Recurse -File -Filter '*.gguf' -ErrorAction SilentlyContinue) }
+        catch { Write-Diag -Kind 'SCAN_IGNORED' -Data @{ root = $r; reason = $_.Exception.Message }; continue }
+        foreach ($f in $files) {
+            if (-not $f.FullName.StartsWith($r, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+            $rel = $f.FullName.Substring($r.Length).TrimStart('\')
+            if (@($rel -split '\\').Count -gt $MaxDepth) { continue }
+            if (-not (Test-ShardRepresentative -FileName $f.Name)) { continue }
+            $out += @{ path = $f.FullName; name = $f.Name; bytes = [long]$f.Length; mtime = $f.LastWriteTimeUtc }
+        }
+    }
+    return $out
+}
+
+# UI-3 (LS 11-3 b): the size shown for a split set is the sum of its name-pattern siblings, not the
+# size of the one representative file. Shard 1 is frequently metadata-only (the 397B set shows
+# 10.4 MB for a 244 GB model), and a quarter-sized chunk of a 148 GB model is just as misleading.
+# Contract kept: no GGUF header is opened here. Only directory-level sizes are summed, only the
+# siblings that actually exist are counted, and nothing here decides whether the set is complete -
+# that stays with identify / Get-ModelShardSet (LS 1-5), which runs after the selection.
+function Get-ShardDisplayAggregate {
+    param([string] $Path)
+    $res = @{ bytes = [long](-1); shards = 1; split = $false; declared = 1 }
+    $name = [System.IO.Path]::GetFileName([string]$Path)
+    $m = [regex]::Match($name, $script:SPLIT_REGEX)
+    if (-not $m.Success) {
+        try { $res.bytes = [long](Get-Item -LiteralPath $Path -ErrorAction Stop).Length } catch { }
+        return $res
+    }
+    $res.split = $true
+    $dir = [System.IO.Path]::GetDirectoryName([string]$Path)
+    $prefix = $m.Groups['base'].Value
+    $cnt = [int]$m.Groups['cnt'].Value
+    $res.declared = $cnt
+    $sum = [long]0
+    $found = 0
+    for ($i = 1; $i -le $cnt; $i++) {
+        # same naming rule as Get-ShardPaths (LS 1-5), but display-only: a missing sibling is
+        # simply not summed instead of being an error.
+        $sib = Join-Path $dir ('{0}-{1:d5}-of-{2:d5}.gguf' -f $prefix, $i, $cnt)
+        if (-not (Test-Path -LiteralPath $sib -PathType Leaf)) { continue }
+        try { $sum = $sum + [long](Get-Item -LiteralPath $sib -ErrorAction Stop).Length; $found++ } catch { }
+    }
+    if ($found -eq 0) { return $res }
+    $res.bytes = $sum
+    # The count describes what was actually summed, so size and count can never disagree.
+    $res.shards = $found
+    return $res
+}
+
+# LS 11-6-e: "is this one ready to use right now?" - the three repack artifacts sitting in the
+# launcher's DEFAULT output directory for that model (<model dir>\repack\). EXISTENCE ONLY: this is
+# not a verify verdict and it deliberately opens nothing. The 7-item gate still runs afterwards and
+# remains the only thing that can call a repack good. A custom -OutDir is not consulted here, so a
+# model repacked elsewhere simply shows no label rather than a wrong one.
+function Test-RepackArtifactsPresent {
+    param([string] $ModelPath)
+    try {
+        $dir = [System.IO.Path]::GetDirectoryName([string]$ModelPath)
+        if (-not $dir) { return $false }
+        $repack = Join-Path $dir 'repack'
+        foreach ($n in @('experts.bin', 'manifest.json', 'verify_report.json')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $repack $n) -PathType Leaf)) { return $false }
+        }
+        return $true
+    } catch { return $false }
+}
+
+# UI-1 3-b/3-c: -ModelsRoot first (when it exists), then <X>:\moe-models\ on every ready fixed drive.
+function Get-ModelScanRoots {
+    $roots = @()
+    if ($ModelsRoot) {
+        $r = ([string]$ModelsRoot).Trim().Trim('"')
+        if ($r.Length -gt 0 -and (Test-Path -LiteralPath $r -PathType Container)) {
+            $roots += (Get-NormalizedScanRoot -Root (Resolve-Path -LiteralPath $r).ProviderPath)
+        } else {
+            Write-Diag -Kind 'SCAN_IGNORED' -Data @{ root = [string]$ModelsRoot; reason = '-ModelsRoot is not an existing directory' }
+        }
+    }
+    try {
+        foreach ($d in [System.IO.DriveInfo]::GetDrives()) {
+            if ($d.DriveType -ne [System.IO.DriveType]::Fixed) { continue }
+            if (-not $d.IsReady) { continue }
+            $conv = Join-Path $d.Name $script:MODELS_DIR_NAME
+            if (Test-Path -LiteralPath $conv -PathType Container) { $roots += $conv }
+        }
+    } catch { Write-Diag -Kind 'SCAN_IGNORED' -Data @{ root = '(fixed drives)'; reason = $_.Exception.Message } }
+    return $roots
+}
+
+# UI-1 3: recent (existing only, newest first, max 8) followed by the scan (newest first, max 12).
+# A path already offered by the recent source is not offered a second time by the scan, so every
+# menu index maps to exactly one file.
+function Build-ModelCandidates {
+    param([string[]] $RecentPaths, [string[]] $ScanRoots)
+    $items = @()
+    $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    $recentAdded = 0
+    foreach ($p in @($RecentPaths)) {
+        if ($recentAdded -ge $script:RECENT_MODELS_SHOW) { break }
+        if (-not $p) { continue }
+        if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { continue }
+        if (-not $seen.Add([string]$p)) { continue }
+        $agg = Get-ShardDisplayAggregate -Path ([string]$p)
+        $items += @{ path = [string]$p; name = [System.IO.Path]::GetFileName([string]$p)
+                     bytes = [long]$agg.bytes; shards = [int]$agg.shards
+                     repacked = (Test-RepackArtifactsPresent -ModelPath ([string]$p)); source = 'recent' }
+        $recentAdded++
+    }
+    $scan = @(Get-GgufScanCandidates -Roots $ScanRoots -MaxDepth $script:SCAN_MAX_DEPTH)
+    $scan = @($scan | Sort-Object -Property @{ Expression = { $_.mtime } } -Descending)
+    $scanAdded = 0
+    $truncated = $false
+    foreach ($c in $scan) {
+        if (-not $seen.Add([string]$c.path)) { continue }
+        if ($scanAdded -ge $script:SCAN_MODELS_SHOW) { $truncated = $true; break }
+        $agg = Get-ShardDisplayAggregate -Path ([string]$c.path)
+        $items += @{ path = [string]$c.path; name = [string]$c.name
+                     bytes = [long]$agg.bytes; shards = [int]$agg.shards
+                     repacked = (Test-RepackArtifactsPresent -ModelPath ([string]$c.path)); source = 'scan' }
+        $scanAdded++
+    }
+    return @{ items = @($items); truncated = $truncated; recent_count = $recentAdded; scan_count = $scanAdded }
+}
+
+function Format-CandidateSize {
+    param([long] $Bytes)
+    if ($Bytes -lt 0) { return '(size unavailable)' }
+    if ($Bytes -ge 1073741824) { return ('{0:N1} GB' -f ($Bytes / 1073741824.0)) }
+    if ($Bytes -ge 1048576)    { return ('{0:N1} MB' -f ($Bytes / 1048576.0)) }
+    return ('{0} B' -f $Bytes)
+}
+
+# UI-1 3 / UI-3: file name and size only. Reading the header to enrich the label is forbidden - the
+# verdict is identify's job, after the selection. For a split set the size is the summed one and the
+# number of summed shards is stated next to it, so a metadata-only shard 1 cannot read as the whole
+# model. ASCII separator on purpose: LS 8 freezes the output surface as English ASCII.
+function Format-ModelCandidate {
+    param($Candidate)
+    $size = Format-CandidateSize -Bytes ([long]$Candidate.bytes)
+    $n = 1
+    if ($null -ne $Candidate.shards) { $n = [int]$Candidate.shards }
+    $parts = @($size)
+    if ($n -gt 1) { $parts += ('{0} shards' -f $n) }
+    # LS 11-6-e: presence of the three artifacts only - never a verify verdict.
+    if ($Candidate.repacked) { $parts += 'repacked' }
+    return ('{0}   [{1}]' -f [string]$Candidate.name, ($parts -join ', '))
+}
+
+# UI-1 1: menu mode requires a real console. Redirected stdin (pipe, file, CI, the selftest
+# harness), -NonInteractive, or a host without RawUI key input all keep the v0.4 text prompts.
+function Test-MenuModeAvailable {
+    if ($NonInteractive) { return $false }
+    try { if ([Console]::IsInputRedirected) { return $false } } catch { return $false }
+    try {
+        $ru = $Host.UI.RawUI
+        if ($null -eq $ru) { return $false }
+        $null = $ru.KeyAvailable
+        $null = $ru.CursorPosition
+        return $true
+    } catch { return $false }
+}
+
+# UI-1 1/2: the widget. Up/Down move, Enter confirms; with -AcceptTyping the caller's own words can
+# still be typed instead (the v0.4 answers stay reachable). Any host/console failure is thrown to
+# the caller, which logs one diagnostic line and returns to the text prompt.
+# $FocusHints (UI-6): one hint per item. Enter always confirms the FOCUSED item, so a fixed
+# "Enter = start" footer read as a contradiction once the focus moved (real screen: "> stop" under
+# a footer promising start). Display only - the Enter behaviour itself is unchanged. The
+# non-interactive text prompt keeps its own "(Enter = start)" wording, which is accurate there.
+function Show-SelectionMenu {
+    param([string] $Title, [string[]] $Items, [int] $InitialIndex = 0, [string] $Hint = '',
+          [string[]] $FocusHints = @(), [switch] $AcceptTyping)
+    $ru = $Host.UI.RawUI
+    $items0 = @($Items)
+    if ($items0.Count -eq 0) { throw 'selection menu called with no items' }
+    $idx = $InitialIndex
+    if ($idx -lt 0 -or $idx -ge $items0.Count) { $idx = 0 }
+    $typed = ''
+
+    Write-Line ''
+    if ($Title) { Write-Line $Title }
+    # Pre-render blank lines first so that any scrolling happens BEFORE the redraw anchor is taken;
+    # an anchor captured above a scroll would repaint the wrong rows.
+    $lineCount = $items0.Count + 1
+    for ($i = 0; $i -lt $lineCount; $i++) { Write-Line '' }
+    $pos = $ru.CursorPosition
+    $anchor = New-Object System.Management.Automation.Host.Coordinates 0, ([Math]::Max(0, [int]$pos.Y - $lineCount))
+
+    # LS 11-7 a: arm on an empty queue - see Clear-ConsoleInputQueue.
+    $null = Clear-ConsoleInputQueue
+    # LS 11-7 b: Ctrl+C must arrive here AS A KEY, never as a host break. Injection probe
+    # (fixtures\ctrlc_inject_probe.ps1, measured 26-07-30):
+    #   ReadKey 'NoEcho,IncludeKeyDown'                        -> pipeline stopped silently, no
+    #                                                             catch reached, process exit 0
+    #   TreatControlCAsInput alone, same ReadKey options       -> same silent stop
+    #   AllowCtrlC (with or without TreatControlCAsInput)      -> key returned (char 3), alive
+    # AllowCtrlC is what stops the silent death; TreatControlCAsInput is what stops a Ctrl+C pressed
+    # WHILE this read blocks from being turned into a signal that no blocked ReadKey wakes up for
+    # (measured: with it set, a real Ctrl+C keystroke arrives as char 3 and no signal is raised).
+    # Scoped: the previous value is restored on every exit path, including the cancellation throw.
+    $ctrlcPrev = $null
+    try { $ctrlcPrev = [Console]::TreatControlCAsInput; [Console]::TreatControlCAsInput = $true }
+    catch { $ctrlcPrev = $null }
+    try {
+        while ($true) {
+            Assert-NotCancelledPreReady
+            $width = 78
+            try { $width = [Math]::Max(20, [int]$ru.BufferSize.Width - 1) } catch { }
+            $ru.CursorPosition = $anchor
+            for ($i = 0; $i -lt $items0.Count; $i++) {
+                $mark = '    '
+                if ($i -eq $idx) { $mark = '  > ' }
+                $line = $mark + [string]$items0[$i]
+                if ($line.Length -gt $width) { $line = $line.Substring(0, $width) }
+                Write-Line $line.PadRight($width)
+            }
+            $foot = [string]$Hint
+            if (@($FocusHints).Count -gt $idx -and $null -ne @($FocusHints)[$idx]) { $foot = [string](@($FocusHints)[$idx]) }
+            if ($AcceptTyping -and $typed.Length -gt 0) { $foot = '  typed: ' + $typed }
+            if ($foot.Length -gt $width) { $foot = $foot.Substring(0, $width) }
+            Write-Line $foot.PadRight($width)
+
+            $k = $ru.ReadKey('NoEcho,IncludeKeyDown,AllowCtrlC')
+            # LS 11-7 b: Ctrl+C is a cancellation, and it takes the SAME pre-ready path the console
+            # signal takes (cancelled_user, STOP diagnostic, exit 2). It may never end the process
+            # without a status line. Ctrl+Break still travels the signal latch, unchanged.
+            if ([int][char]$k.Character -eq 3) {
+                Stop-Launcher 'cancelled_user' 'ctrl+c received at the selection menu'
+            }
+            $vk = [int]$k.VirtualKeyCode
+            if ($vk -eq 38) { $idx--; if ($idx -lt 0) { $idx = $items0.Count - 1 }; continue }          # Up
+            if ($vk -eq 40) { $idx++; if ($idx -ge $items0.Count) { $idx = 0 }; continue }              # Down
+            if ($vk -eq 13) { return @{ index = $idx; typed = $typed } }                                # Enter
+            if (-not $AcceptTyping) { continue }
+            if ($vk -eq 8) { if ($typed.Length -gt 0) { $typed = $typed.Substring(0, $typed.Length - 1) }; continue }
+            $ch = [char]$k.Character
+            if ([int]$ch -ge 32 -and [int]$ch -lt 127 -and $typed.Length -lt 32) { $typed = $typed + $ch }
+        }
+    } finally {
+        if ($null -ne $ctrlcPrev) { try { [Console]::TreatControlCAsInput = $ctrlcPrev } catch { } }
+    }
+}
+
+# UI-1 2: the arrow-key form of the v0.4 three-choice prompt. Returns start/custom/stop, or $null
+# when the menu could not be driven - and $null means "use the text prompt", never "assume start".
+function Read-MenuChoiceInteractive {
+    $words = @('start', 'custom', 'stop')
+    try {
+        $items = @('start   - launch the server with the configuration above',
+                   'custom  - edit the allowlisted values first',
+                   'stop    - quit without starting')
+        while ($true) {
+            $r = Show-SelectionMenu -Title 'Choose: [start] / custom / stop     (Up/Down + Enter, or type the word)' `
+                     -Items $items -InitialIndex 0 -Hint '  Enter = start' `
+                     -FocusHints @('  Enter = start', '  Enter = custom', '  Enter = stop') -AcceptTyping
+            $t = ([string]$r.typed).Trim().ToLowerInvariant()
+            if ($t.Length -eq 0) { return $words[[int]$r.index] }
+            if ($words -contains $t) { return $t }
+            # R1-9 also holds here: an unrecognised answer re-asks, it is never promoted to start.
+            Write-Line ('  unrecognised choice "' + $t + '". Enter start, custom or stop (or press Enter for start).')
+        }
+    } catch {
+        # LS 11-7 b: a cancellation is an intent, not a render failure. Demoting it to the text
+        # prompt would swallow the user's Ctrl+C; only real host/console faults fall back.
+        if ($null -ne $_.Exception -and $_.Exception.GetType().FullName -eq 'MoeLauncher.LauncherExit') { throw }
+        Write-Diag -Kind 'MENU_FALLBACK' -Data @{ where = 'choice'; reason = $_.Exception.Message }
+        return $null
+    }
+}
+
+# UI-1 3: the first-run model selection. Returns a path, or $null for "fall through to the text
+# prompt" - which covers menu mode unavailable, zero candidates, the explicit "enter path manually"
+# item and any render failure. The returned path is NOT validated here; Resolve-ModelPath and
+# identify treat it exactly like a typed one.
+function Select-ModelPathInteractive {
+    if (-not (Test-MenuModeAvailable)) { return $null }
+    try {
+        $cand = Build-ModelCandidates -RecentPaths (Read-RecentModels) -ScanRoots (Get-ModelScanRoots)
+        $items0 = @($cand.items)
+        Write-Diag -Kind 'MODEL_MENU' -Data @{ recent = $cand.recent_count; scanned = $cand.scan_count
+                                               truncated = $cand.truncated }
+        if ($items0.Count -eq 0) { return $null }
+        $labels = @()
+        foreach ($c in $items0) { $labels += (Format-ModelCandidate -Candidate $c) }
+        $labels += 'enter path manually'
+        $title = 'Select the model GGUF   (Up/Down + Enter)'
+        if ($cand.truncated) {
+            $title = $title + ('   [scan list truncated to the {0} most recent files]' -f $script:SCAN_MODELS_SHOW)
+        }
+        $r = Show-SelectionMenu -Title $title -Items $labels -InitialIndex 0 `
+                 -Hint ('  {0} recent, {1} found under <drive>:\{2}' -f $cand.recent_count, $cand.scan_count, $script:MODELS_DIR_NAME)
+        $i = [int]$r.index
+        if ($i -lt 0 -or $i -ge $items0.Count) { return $null }   # "enter path manually"
+        return [string]$items0[$i].path
+    } catch {
+        # LS 11-7 b: same rule as the choice menu - a LauncherExit (cancellation) is re-thrown.
+        if ($null -ne $_.Exception -and $_.Exception.GetType().FullName -eq 'MoeLauncher.LauncherExit') { throw }
+        Write-Diag -Kind 'MENU_FALLBACK' -Data @{ where = 'model'; reason = $_.Exception.Message }
+        return $null
+    }
+}
+
+# endregion
+
+# ============================================================================
+# region 16. CHILD LIFECYCLE (LS 1-8) - spawn / job bind / health / stop
+# ============================================================================
+
+$script:OwnedChild = $null
+$script:LastServerPort = 0   # port the teardown path must observe as released
+$script:ChildWasReady = $false   # only a child that reached ready owned the port listener
+# LS 13-1: the teardown save needs the effective config of the child that is actually running
+# (host/port for the POST, argv/env for the sidecar binding). After a recovery restart this points
+# at the new incarnation's config, not the original one.
+$script:LastServerConfig = $null
+
+function New-InheritableFile {
+    param([string] $Path)
+    $sa = New-Object 'MoeLauncher.Native+SECURITY_ATTRIBUTES'
+    $sa.nLength = [System.Runtime.InteropServices.Marshal]::SizeOf($sa)
+    $sa.lpSecurityDescriptor = [IntPtr]::Zero
+    $sa.bInheritHandle = 1
+    $h = [MoeLauncher.Native]::CreateFileW($Path, $script:GENERIC_WRITE,
+            ($script:FILE_SHARE_READ -bor $script:FILE_SHARE_WRITE), [ref]$sa, $script:CREATE_ALWAYS, 0, [IntPtr]::Zero)
+    if ($h -eq $script:INVALID_HANDLE) { return [IntPtr]::Zero }
+    return $h
+}
+
+function New-InheritableNulRead {
+    $sa = New-Object 'MoeLauncher.Native+SECURITY_ATTRIBUTES'
+    $sa.nLength = [System.Runtime.InteropServices.Marshal]::SizeOf($sa)
+    $sa.lpSecurityDescriptor = [IntPtr]::Zero
+    $sa.bInheritHandle = 1
+    $h = [MoeLauncher.Native]::CreateFileW('NUL', $script:GENERIC_READ,
+            ($script:FILE_SHARE_READ -bor $script:FILE_SHARE_WRITE), [ref]$sa, $script:OPEN_EXISTING, 0, [IntPtr]::Zero)
+    if ($h -eq $script:INVALID_HANDLE) { return [IntPtr]::Zero }
+    return $h
+}
+
+# R1-8: Windows CRT argument quoting. A naive Replace('"','\"') mis-encodes any argument that ends
+# in a backslash - "D:\Model Cache\" would escape the closing quote and swallow the next argument.
+# Rule (learn.microsoft.com "Parsing C command-line arguments"): a run of N backslashes is doubled
+# when it precedes a quote or the closing quote, and left as-is otherwise.
+function ConvertTo-CrtArgument {
+    param([string] $Arg)
+    if ($Arg.Length -gt 0 -and $Arg -notmatch '[\s"]') { return $Arg }
+    $sb = New-Object System.Text.StringBuilder
+    [void]$sb.Append('"')
+    $slashes = 0
+    for ($i = 0; $i -lt $Arg.Length; $i++) {
+        $c = $Arg[$i]
+        if ($c -eq '\') { $slashes++; continue }
+        if ($c -eq '"') {
+            [void]$sb.Append([char]0x5C, ($slashes * 2 + 1))
+            [void]$sb.Append('"')
+            $slashes = 0
+            continue
+        }
+        if ($slashes -gt 0) { [void]$sb.Append([char]0x5C, $slashes); $slashes = 0 }
+        [void]$sb.Append($c)
+    }
+    if ($slashes -gt 0) { [void]$sb.Append([char]0x5C, ($slashes * 2)) }
+    [void]$sb.Append('"')
+    return $sb.ToString()
+}
+
+function ConvertTo-CommandLine {
+    param([string] $Exe, [string[]] $Args0)
+    $sb = New-Object System.Text.StringBuilder
+    [void]$sb.Append((ConvertTo-CrtArgument -Arg $Exe))
+    foreach ($a in $Args0) {
+        [void]$sb.Append(' ')
+        [void]$sb.Append((ConvertTo-CrtArgument -Arg ([string]$a)))
+    }
+    return $sb
+}
+
+# LS 13-5: the server child's environment is BUILT, not inherited.
+# Merge rule (frozen): the frozen 26-key OS bootstrap allowlist, read from this process, plus
+# $config.env; on a case-insensitive key collision $config.env wins, because that value is the
+# launcher's own computed decision. Keys are de-duplicated and ordered ordinal-ignore-case so the
+# block is byte-reproducible. The old ENV_DENY approach (strip a deny list, inherit the rest) is
+# deliberately NOT reused here: it leaves every unlisted ambient variable in place, and one of
+# those - NVIDIA_TF32_OVERRIDE - changes how FP32 is computed, which would break the premise that
+# $config.env is the complete semantic environment surface (WARMSTART A-4c).
+function New-ExplicitEnvironmentPairs {
+    param([hashtable] $EnvVars)
+    $merged = New-Object 'System.Collections.Generic.Dictionary[string,string]' ([StringComparer]::OrdinalIgnoreCase)
+    foreach ($k in $script:ENV_OS_BOOTSTRAP_ALLOWLIST) {
+        $v = [System.Environment]::GetEnvironmentVariable($k)
+        if ($null -ne $v) { $merged[$k] = [string]$v }
+    }
+    if ($null -ne $EnvVars) {
+        foreach ($k in $EnvVars.Keys) { $merged[[string]$k] = [string]$EnvVars[$k] }
+    }
+    $keys = [string[]]@($merged.Keys)
+    if ($keys.Count -gt 1) { [Array]::Sort($keys, [StringComparer]::OrdinalIgnoreCase) }
+    $pairs = @()
+    foreach ($k in $keys) { $pairs += @{ name = [string]$k; value = [string]$merged[$k] } }
+    return , $pairs
+}
+
+# UTF-16 "KEY=VALUE\0...\0\0" block. CREATE_UNICODE_ENVIRONMENT is mandatory with this shape, and
+# non-ASCII values are real here (Korean user paths reach TEMP / LOCALAPPDATA / MOE_DIRECT_DIR).
+function ConvertTo-EnvironmentBlockText {
+    param($Pairs)
+    $sb = New-Object System.Text.StringBuilder
+    foreach ($p in @($Pairs)) {
+        [void]$sb.Append([string]$p.name)
+        [void]$sb.Append('=')
+        [void]$sb.Append([string]$p.value)
+        [void]$sb.Append([char]0)
+    }
+    [void]$sb.Append([char]0)
+    return $sb.ToString()
+}
+
+# LS 1-8 spawn binding: ownership is taken at the instant CreateProcess returns; the job bind is
+# the mandatory safety net (bind failure kills the child and refuses to launch).
+function Start-OwnedChild {
+    param([string] $Exe, [string[]] $Args0, [hashtable] $EnvVars, [string] $WorkDir,
+          [string] $StdOutPath, [string] $StdErrPath, [bool] $NewProcessGroup, [string] $Role)
+
+    if (-not (Test-Path -LiteralPath $Exe -PathType Leaf)) {
+        return @{ ok = $false; reason = ('executable missing: ' + $Exe) }
+    }
+    $hOut = New-InheritableFile -Path $StdOutPath
+    $hErr = New-InheritableFile -Path $StdErrPath
+    # R1-8: STARTF_USESTDHANDLES requires all three handles to be valid. A NULL stdin makes the
+    # child's CRT see an invalid handle; give it an inheritable NUL device instead.
+    $hIn = New-InheritableNulRead
+    if ($hOut -eq [IntPtr]::Zero -or $hErr -eq [IntPtr]::Zero -or $hIn -eq [IntPtr]::Zero) {
+        foreach ($h in @($hOut, $hErr, $hIn)) { if ($h -ne [IntPtr]::Zero) { [void][MoeLauncher.Native]::CloseHandle($h) } }
+        return @{ ok = $false; reason = 'could not create redirected stdin/stdout/stderr handles' }
+    }
+
+    $si = New-Object 'MoeLauncher.Native+STARTUPINFO'
+    $si.cb = [System.Runtime.InteropServices.Marshal]::SizeOf($si)
+    $si.dwFlags = $script:STARTF_USESTDHANDLES
+    $si.hStdInput  = $hIn
+    $si.hStdOutput = $hOut
+    $si.hStdError  = $hErr
+    $pi = New-Object 'MoeLauncher.Native+PROCESS_INFORMATION'
+
+    $flags = [uint32]0
+    if ($NewProcessGroup) { $flags = [uint32]$script:CREATE_NEW_PROCESS_GROUP }
+
+    # LS 13-5: the server role gets an explicit environment block; every other role (the repacker)
+    # keeps the v0.4 contract - ambient inheritance with the deny list stripped - because changing
+    # the repacker's environment surface is out of this revision's scope.
+    $explicit = ($Role -ceq 'server')
+    $envPtr = [IntPtr]::Zero
+    $touch = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    $snap = @{}
+    if ($explicit) {
+        $pairs = New-ExplicitEnvironmentPairs -EnvVars $EnvVars
+        $flags = [uint32]($flags -bor $script:CREATE_UNICODE_ENVIRONMENT)
+        # StringToHGlobalUni appends its own terminator after the string, so the block already ends
+        # in the required double NUL and the extra unit past it is never read.
+        $envPtr = [System.Runtime.InteropServices.Marshal]::StringToHGlobalUni((ConvertTo-EnvironmentBlockText -Pairs $pairs))
+        Write-Diag -Kind 'ENV_BLOCK' -Data @{ role = $Role; mode = 'explicit'
+                                              keys = @($pairs | ForEach-Object { $_.name })
+                                              config_keys = @($EnvVars.Keys | ForEach-Object { [string]$_ }) }
+    } else {
+        # env is applied transiently to this process so the child inherits exactly the intended block
+        # (moe_serve.ps1:556-580 precedent), then restored in finally.
+        # R1-11: deny-by-default. Every ambient variable that can change engine behaviour or move the
+        # backend search path is stripped, not just MOE_*; otherwise GGML_BACKEND_PATH from a previous
+        # run or a user shell would bypass the bundle backend closure.
+        foreach ($e in [System.Environment]::GetEnvironmentVariables().GetEnumerator()) {
+            $k = [string]$e.Key
+            foreach ($pfx in $script:ENV_DENY_PREFIXES) {
+                if ($k.StartsWith($pfx, [System.StringComparison]::OrdinalIgnoreCase)) { [void]$touch.Add($k); break }
+            }
+        }
+        foreach ($n in $script:ENV_DENY_NAMES) { [void]$touch.Add($n) }
+        foreach ($k in $EnvVars.Keys) { [void]$touch.Add($k) }
+        $stripped = @()
+        foreach ($k in $touch) {
+            if ($EnvVars.ContainsKey($k)) { continue }
+            if ($null -ne [System.Environment]::GetEnvironmentVariable($k)) { $stripped += $k }
+        }
+        if ($stripped.Count -gt 0) { Write-Diag -Kind 'ENV_STRIPPED' -Data @{ role = $Role; names = $stripped } }
+        foreach ($k in $touch) { $snap[$k] = [System.Environment]::GetEnvironmentVariable($k) }
+    }
+
+    $created = $false
+    try {
+        if (-not $explicit) {
+            foreach ($k in $touch) { [System.Environment]::SetEnvironmentVariable($k, $null) }
+            foreach ($k in $EnvVars.Keys) { [System.Environment]::SetEnvironmentVariable($k, [string]$EnvVars[$k]) }
+        }
+        $cmd = ConvertTo-CommandLine -Exe $Exe -Args0 $Args0
+        $created = [MoeLauncher.Native]::CreateProcessW($Exe, $cmd, [IntPtr]::Zero, [IntPtr]::Zero, $true,
+                        $flags, $envPtr, $WorkDir, [ref]$si, [ref]$pi)
+        if ($created) {
+            # provisional ownership, before anything else can throw
+            $script:OwnedChild = @{ role = $Role; handle = $pi.hProcess; thread = $pi.hThread; pid = $pi.dwProcessId
+                                    job = [IntPtr]::Zero; out_log = $StdOutPath; err_log = $StdErrPath
+                                    new_group = $NewProcessGroup; taskkill_used = $false; exited = $false; exit_code = $null }
+        }
+    } finally {
+        if (-not $explicit) {
+            foreach ($k in $touch) { [System.Environment]::SetEnvironmentVariable($k, $snap[$k]) }
+        }
+        if ($envPtr -ne [IntPtr]::Zero) { [System.Runtime.InteropServices.Marshal]::FreeHGlobal($envPtr) }
+        [void][MoeLauncher.Native]::CloseHandle($hOut)
+        [void][MoeLauncher.Native]::CloseHandle($hErr)
+        [void][MoeLauncher.Native]::CloseHandle($hIn)
+    }
+    if (-not $created) {
+        return @{ ok = $false; reason = ('CreateProcess failed gle=' + [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()) }
+    }
+
+    # kill-on-close job object = mandatory safety net (moe_serve.ps1:582-607)
+    $job = [MoeLauncher.Native]::CreateJobObjectW([IntPtr]::Zero, [NullString]::Value)
+    $bound = $false
+    if ($job -ne [IntPtr]::Zero) {
+        $info = New-Object 'MoeLauncher.Native+JOBOBJECT_EXTENDED_LIMIT_INFORMATION'
+        $basic = $info.BasicLimitInformation
+        $basic.LimitFlags = $script:JOB_LIMIT_KILL_ON_JOB_CLOSE
+        $info.BasicLimitInformation = $basic
+        $len = [System.Runtime.InteropServices.Marshal]::SizeOf($info)
+        if ([MoeLauncher.Native]::SetInformationJobObject($job, $script:JOBOBJECTCLASS_EXTENDED, [ref]$info, $len)) {
+            $bound = [MoeLauncher.Native]::AssignProcessToJobObject($job, $script:OwnedChild.handle)
+        }
+    }
+    if (-not $bound) {
+        try { [void][MoeLauncher.Native]::TerminateProcess($script:OwnedChild.handle, 1) } catch { }
+        if ($job -ne [IntPtr]::Zero) { [void][MoeLauncher.Native]::CloseHandle($job) }
+        Close-OwnedChildHandles
+        return @{ ok = $false; reason = 'job object bind failed (KILL_ON_JOB_CLOSE unset or assign failed); child killed to avoid an orphan' }
+    }
+    $script:OwnedChild.job = $job
+    Write-Diag -Kind 'CHILD_START' -Data @{ role = $Role; pid = $script:OwnedChild.pid; exe = $Exe;
+                                            new_process_group = $NewProcessGroup; err_log = $StdErrPath }
+    return @{ ok = $true; child = $script:OwnedChild }
+}
+
+function Close-OwnedChildHandles {
+    if ($null -eq $script:OwnedChild) { return }
+    foreach ($k in @('thread', 'handle')) {
+        $h = $script:OwnedChild[$k]
+        if ($h -and $h -ne [IntPtr]::Zero) { [void][MoeLauncher.Native]::CloseHandle($h) }
+        $script:OwnedChild[$k] = [IntPtr]::Zero
+    }
+    if ($script:OwnedChild.job -and $script:OwnedChild.job -ne [IntPtr]::Zero) {
+        [void][MoeLauncher.Native]::CloseHandle($script:OwnedChild.job)
+        $script:OwnedChild.job = [IntPtr]::Zero
+    }
+    $script:OwnedChild = $null
+}
+
+# R1-5: a Windows crash code such as 0xC0000005 does not fit [int]; converting it in PS 5.1 throws
+# an overflow exception, which on the teardown path could swallow the final status line. The DWORD
+# is kept unsigned end to end and only ever rendered as hex/uint text.
+function Format-ExitCode {
+    param($Code)
+    if ($null -eq $Code) { return 'n/a' }
+    return ('{0} (0x{1:X8})' -f [uint32]$Code, [uint32]$Code)
+}
+
+function Test-ChildExited {
+    param($Child)
+    $code = [uint32]0
+    if (-not [MoeLauncher.Native]::GetExitCodeProcess($Child.handle, [ref]$code)) { return @{ exited = $false } }
+    if ([uint32]$code -eq $script:STILL_ACTIVE) { return @{ exited = $false } }
+    return @{ exited = $true; code = [uint32]$code }
+}
+
+function Wait-ChildExit {
+    param($Child, [int] $TimeoutMs)
+    $r = [MoeLauncher.Native]::WaitForSingleObject($Child.handle, [uint32]$TimeoutMs)
+    if ($r -ne $script:WAIT_OBJECT_0) { return @{ exited = $false } }
+    return (Test-ChildExited -Child $Child)
+}
+
+function Read-ChildStderrComplete {
+    param($Child)
+    # complete lines only: a partially written trailing line must never satisfy the exact-match anchor.
+    try {
+        $fs = [System.IO.File]::Open($Child.err_log, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+        try {
+            $sr = New-Object System.IO.StreamReader($fs, (New-Object System.Text.UTF8Encoding($false)), $false)
+            $raw = $sr.ReadToEnd()
+        } finally { $fs.Dispose() }
+    } catch { return , @() }
+    $idx = $raw.LastIndexOf("`n")
+    if ($idx -lt 0) { return , @() }
+    $complete = $raw.Substring(0, $idx + 1)
+    # $complete always ends with a newline by construction, so splitting on it yields one trailing
+    # empty element that is NOT a line. It must be dropped: callers use the array LENGTH as a
+    # baseline line index, and a phantom element makes that baseline one too high, which silently
+    # skips the first line written after the baseline was taken.
+    $parts = $complete -split "`n"
+    # Preallocated fill, never $out += $ln: append reallocates the whole array per line, which is
+    # O(N^2) over the capture. UI-9 re-reads the full capture every 10 s for the whole serving
+    # phase, so the quadratic cost would grow without bound on a long session (measured: 25 s for
+    # a 40k-line capture, under 1 s for this form on a 222k-line real log).
+    $out = New-Object string[] ($parts.Count - 1)
+    for ($i = 0; $i -lt ($parts.Count - 1); $i++) {
+        $ln = [string]$parts[$i]
+        if ($ln.EndsWith("`r")) { $ln = $ln.Substring(0, $ln.Length - 1) }
+        $out[$i] = $ln
+    }
+    return , $out
+}
+
+# LS 5 / LS 7: exact complete line, exactly once. Substring detection is forbidden.
+function Test-EnginePolicyAnchor {
+    param($Child)
+    $lines = Read-ChildStderrComplete -Child $Child
+    $n = 0
+    foreach ($ln in $lines) { if ($ln -ceq $script:ENGINE_POLICY_ANCHOR) { $n++ } }
+    return ($n -eq 1)
+}
+
+# R2-6: engine seal SUCCESS evidence. See the ENGINE_SEAL_MARKER comment for why this one is a
+# marker-inside-a-complete-line match instead of an exact whole-line literal.
+# Gate = the marker appears in a complete line EXACTLY ONCE and its slots=X/Y field is parsable.
+# The two slot numbers are recorded, never compared: X == Y is not an invariant (real passing run
+# emitted 648/128 - see the ENGINE_SEAL_SLOTS_REGEX comment for the captured counter-evidence).
+function Get-EngineSealAttestation {
+    param($Child)
+    $lines = Read-ChildStderrComplete -Child $Child
+    $hits = @()
+    foreach ($ln in $lines) { if ($ln.Contains($script:ENGINE_SEAL_MARKER)) { $hits += $ln } }
+    if ($hits.Count -eq 0) { return @{ ok = $false; count = 0; reason = 'no seal success line' } }
+    if ($hits.Count -ne 1) { return @{ ok = $false; count = $hits.Count; reason = ('seal success line seen ' + $hits.Count + ' times (expected exactly 1)') } }
+    $m = [regex]::Match($hits[0], $script:ENGINE_SEAL_SLOTS_REGEX)
+    if (-not $m.Success) { return @{ ok = $false; count = 1; reason = 'seal success line carries no parsable slots=X/Y'; line = $hits[0] } }
+    $res = @{ ok = $true; count = 1; slots_have = [long]$m.Groups[1].Value; slots_need = [long]$m.Groups[2].Value; line = $hits[0] }
+    $c = [regex]::Match($hits[0], $script:ENGINE_SEAL_COUNTS_REGEX)
+    if ($c.Success) {
+        $res['all'] = [long]$c.Groups[1].Value
+        $res['host'] = [long]$c.Groups[2].Value
+        $res['nonhost'] = [long]$c.Groups[3].Value
+    }
+    return $res
+}
+
+# Diagnostic only (NOT the cancel gate - see Find-BoundCancelRelease). Total number of complete
+# stderr lines carrying the release() marker, useful for the diagnostic log.
+function Get-SlotReleaseCount {
+    param($Child)
+    $lines = Read-ChildStderrComplete -Child $Child
+    $n = 0
+    foreach ($ln in $lines) { if ($ln.Contains($script:SLOT_RELEASE_MARKER)) { $n++ } }
+    return $n
+}
+
+# @($null).Count is 1 in PowerShell, so a null/empty list must be normalised before its length is
+# used as a signal. Returns a real array with the empty and null entries removed.
+function Get-NonEmptyList {
+    param($Value)
+    if ($null -eq $Value) { return , @() }
+    return , @(@($Value) | Where-Object { $null -ne $_ -and ([string]$_) -ne '' })
+}
+
+function Get-StderrLineCount {
+    param($Child)
+    # Plain assignment, never @(...): Read-ChildStderrComplete emits the whole array as ONE pipeline
+    # object, so @(...) would wrap it and report a count of 1.
+    $lines = Read-ChildStderrComplete -Child $Child
+    return @($lines).Count
+}
+
+# R3-1: task-ID-bound cancel evidence. Scans complete stderr lines from $FromLineIndex for a
+# "cancel task, id_task = N" warning, then requires a "| task N | stop processing:" release line
+# strictly AFTER that warning. A release belonging to any other task - including a previous
+# request's line that the async logger flushed late - can never satisfy this.
+function Find-BoundCancelRelease {
+    param($Child, [int] $FromLineIndex)
+    # Plain assignment, never @(...): the reader emits the whole array as ONE pipeline object.
+    $lines = Read-ChildStderrComplete -Child $Child
+    $lineCount = @($lines).Count
+    # A plain hashtable, NOT [ordered]: OrderedDictionary's indexer also has an [int index]
+    # overload, so $dict['7'] would be resolved as "element number 7" instead of "key 7".
+    # Insertion order is tracked separately so the earliest cancel is examined first.
+    $cancelAt = @{}
+    $cancelOrder = @()
+    for ($i = $FromLineIndex; $i -lt $lineCount; $i++) {
+        $m = [regex]::Match([string]$lines[$i], $script:CANCEL_TASK_REGEX)
+        if ($m.Success) {
+            $id = [string]$m.Groups[1].Value
+            if (-not $cancelAt.ContainsKey($id)) { $cancelAt[$id] = $i; $cancelOrder += $id }
+        }
+    }
+    if ($cancelAt.Count -eq 0) {
+        # cancel_task_ids is ALWAYS present, even empty: callers latch on its length, and
+        # @($null).Count is 1 in PowerShell, which would fake a warning sighting.
+        return @{ found = $false; reason = 'no "cancel task, id_task" warning yet'
+                  lines = $lineCount; cancel_task_ids = @() }
+    }
+    foreach ($id in $cancelOrder) {
+        for ($j = ([int]$cancelAt[$id] + 1); $j -lt $lineCount; $j++) {
+            $m2 = [regex]::Match([string]$lines[$j], $script:TASK_RELEASE_REGEX)
+            if ($m2.Success -and ([string]$m2.Groups[1].Value) -eq $id) {
+                return @{ found = $true; task_id = $id; cancel_index = [int]$cancelAt[$id]
+                          release_index = $j; lines = $lineCount; release_line = [string]$lines[$j]
+                          cancel_task_ids = $cancelOrder }
+            }
+        }
+    }
+    return @{ found = $false; lines = $lineCount; cancel_task_ids = $cancelOrder
+              reason = ('cancel warning seen for task(s) ' + ($cancelOrder -join ',') + ' but no matching release after it') }
+}
+
+# LS 1-8: ready = HTTP /health 200 AND the port listener PID == owned child PID.
+function Test-HealthPidBound {
+    param($Child, [string] $Address, [int] $PortNumber)
+    try {
+        $resp = Invoke-WebRequest -Uri ("http://{0}:{1}/health" -f $Address, $PortNumber) -TimeoutSec 5 -UseBasicParsing -ErrorAction Stop
+        if ($resp.StatusCode -ne 200) { return @{ ok = $false; reason = ('health status ' + $resp.StatusCode) } }
+    } catch { return @{ ok = $false; reason = ('health request failed: ' + $_.Exception.Message) } }
+    $owners = Get-PortOwnerPids -PortNumber $PortNumber
+    if ($null -eq $owners) { return @{ ok = $false; reason = 'listener owner not resolvable (fail-close)' } }
+    if ($owners -notcontains [int]$Child.pid) {
+        Write-Diag -Kind 'HEALTH_PID_MISMATCH' -Data @{ port = $PortNumber; owners = @($owners); child_pid = $Child.pid }
+        return @{ ok = $false; reason = ('listener PID mismatch: owners=' + ($owners -join ',') + ' child=' + $Child.pid); fatal = $true }
+    }
+    return @{ ok = $true }
+}
+
+# Returns an int[] of owning PIDs, an empty array when nothing listens, or $null when the query
+# itself failed (unknown -> callers must fail-close, never treat as "no listener").
+function Get-PortOwnerPids {
+    param([int] $PortNumber)
+    try {
+        $conns = @(Get-NetTCPConnection -State Listen -LocalPort $PortNumber -ErrorAction Stop)
+        return , @($conns | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { [int]$_ })
+    } catch {
+        # Get-NetTCPConnection reports "no matching listener" as ObjectNotFound; that is a real
+        # answer (empty set). Anything else is an unknown and must fail-close.
+        if ([string]$_.CategoryInfo.Category -eq 'ObjectNotFound') { return , @() }
+        return $null
+    }
+}
+
+function Test-PortListenerGone {
+    param([int] $PortNumber)
+    $owners = Get-PortOwnerPids -PortNumber $PortNumber
+    if ($null -eq $owners) { return $false }
+    return (@($owners).Count -eq 0)
+}
+
+function Test-LoopbackOnlyBinding {
+    param([int] $PortNumber)
+    try {
+        $conns = @(Get-NetTCPConnection -State Listen -LocalPort $PortNumber -ErrorAction Stop)
+        if ($conns.Count -eq 0) { return @{ ok = $false; reason = 'no listener found' } }
+        foreach ($c in $conns) {
+            if (-not (Test-LoopbackAddress -Address ([string]$c.LocalAddress))) {
+                return @{ ok = $false; reason = ('non-loopback listener: ' + $c.LocalAddress) }
+            }
+        }
+        return @{ ok = $true; addresses = @($conns | ForEach-Object { [string]$_.LocalAddress }) }
+    } catch {
+        return @{ ok = $false; reason = ('listener enumeration failed: ' + $_.Exception.Message) }
+    }
+}
+
+# LS 1-8 stop procedure (b)(c)(d): CTRL_BREAK -> graceful grace period -> taskkill fallback.
+# This function only reports facts; Complete-Teardown maps them to a status, because the
+# "exit 0 needs all four" rule (LS 1-8 d) applies to the requested-stop path, while a failure
+# path only has to prove the child and the listener are gone (LS 1-8 e).
+function Stop-OwnedChildGraceful {
+    param($Child, [int] $PortNumber)
+    $result = @{ ctrl_attempted = $false; ctrl_sent = $false; graceful = $false; exit_code = $null
+                 taskkill_used = $false; child_gone = $false; listener_gone = $false; pre_exited = $false
+                 grace_exceeded = $false; stop_nonzero = $false; reason = '' }
+
+    $pre = Test-ChildExited -Child $Child
+    if ($pre.exited) {
+        $result.child_gone = $true
+        $result.pre_exited = $true
+        $result.exit_code = $pre.code
+        $result.reason = 'child had already exited before stop was requested'
+    } else {
+        # LS 1-8 (b): CTRL_BREAK to the owned process group. Requires both a console on this side
+        # and a child created with CREATE_NEW_PROCESS_GROUP (R1-4).
+        if ($Child.new_group -and (Test-ConsoleAvailable)) {
+            $result.ctrl_attempted = $true
+            $result.ctrl_sent = [MoeLauncher.Native]::GenerateConsoleCtrlEvent([uint32]$script:CTRL_BREAK_EVENT, [uint32]$Child.pid)
+            if (-not $result.ctrl_sent) {
+                $result.reason = ('GenerateConsoleCtrlEvent failed gle=' + [System.Runtime.InteropServices.Marshal]::GetLastWin32Error())
+            }
+        } else {
+            $result.ctrl_attempted = $true
+            $result.ctrl_sent = $false
+            $result.reason = 'no console or child was not created with CREATE_NEW_PROCESS_GROUP'
+        }
+        if ($result.ctrl_sent) {
+            $w = Wait-ChildExit -Child $Child -TimeoutMs ($script:GRACEFUL_STOP_S * 1000)
+            if ($w.exited) {
+                $result.child_gone = $true
+                $result.exit_code = $w.code
+                if ([uint32]$w.code -eq [uint32]0) { $result.graceful = $true }
+                else { $result.stop_nonzero = $true; $result.reason = ('child exited non-zero during stop: ' + (Format-ExitCode $w.code)) }
+            } else {
+                $result.grace_exceeded = $true
+                $result.reason = 'graceful grace period exceeded'
+            }
+        }
+    }
+
+    if (-not $result.child_gone) {
+        $result.taskkill_used = $true
+        try { & taskkill.exe /PID $Child.pid /T /F | Out-Null } catch { }
+        try { [void][MoeLauncher.Native]::TerminateProcess($Child.handle, 1) } catch { }
+        $w = Wait-ChildExit -Child $Child -TimeoutMs 15000
+        if ($w.exited) { $result.child_gone = $true; $result.exit_code = $w.code }
+    }
+
+    $deadline = (Get-Date).AddSeconds($script:LISTENER_GONE_S)
+    while ((Get-Date) -lt $deadline) {
+        if (Test-PortListenerGone -PortNumber $PortNumber) { $result.listener_gone = $true; break }
+        Start-Sleep -Milliseconds 250
+    }
+    if (-not $result.listener_gone) { $result.listener_gone = (Test-PortListenerGone -PortNumber $PortNumber) }
+
+    if (-not $result.reason) {
+        if ($result.taskkill_used)          { $result.reason = 'taskkill fallback was used' }
+        elseif (-not $result.child_gone)    { $result.reason = 'child process still alive' }
+        elseif (-not $result.listener_gone) { $result.reason = 'port listener still present' }
+    }
+    if ($null -ne $result.exit_code) { $result.exit_code_text = (Format-ExitCode $result.exit_code) }
+    Write-Diag -Kind 'TEARDOWN' -Data $result
+    return $result
+}
+
+# The ready wait, factored out so the WS-1 recovery restart (LS 13-4b) runs the identical
+# admission - same policy anchor classification, same PID-bound health, same timeout - instead of a
+# second, subtly different copy.
+function Wait-ForServerReady {
+    param($Child, $Config, [string] $ErrLog)
+    $t0 = Get-Date
+    while ($true) {
+        # LS 1-8 (a): a console stop request before ready is a plain user cancellation. The child
+        # is torn down by Complete-Teardown on the way out.
+        Assert-NotCancelledPreReady
+        $ex = Test-ChildExited -Child $Child
+        if ($ex.exited) {
+            # LS 5 / LS 7: exact complete anchor line, exactly once -> policy rejection (exit 4).
+            # No anchor -> resource/startup failure (exit 5).
+            if (Test-EnginePolicyAnchor -Child $Child) {
+                Stop-Launcher 'fail_gate_engine_seal' ('engine refused startup by policy gate (see ' + $ErrLog + ')')
+            }
+            Stop-Launcher 'fail_server_start' ('server child exited before ready (code=' + (Format-ExitCode $ex.code) + '); see ' + $ErrLog)
+        }
+        if (((Get-Date) - $t0).TotalSeconds -gt $script:READY_TIMEOUT_S) {
+            Stop-Launcher 'fail_server_start' 'ready timeout'
+        }
+        $h = Test-HealthPidBound -Child $Child -Address $Config.host -PortNumber $Config.port
+        if ($h.ok) { return }
+        if ($h.fatal) { Stop-Launcher 'fail_server_start' $h.reason }
+        Start-Sleep -Milliseconds $script:HEALTH_POLL_MS
+    }
+}
+
+# ---------------------------------------------------------------------------------------------
+# UI-9 - prefill progress echo while serving.
+# A long prompt is processed 2048 tokens at a time and each chunk takes minutes on a large model,
+# so a serving console looks frozen with no output at all. The engine already reports every chunk
+# on its stderr; these two helpers only READ that capture and echo a human line. Display only:
+# no gate, no status, no exit code and no new failure path depend on anything below.
+# ---------------------------------------------------------------------------------------------
+
+# Pure function (selftest target): new stderr lines + carried state -> display strings.
+# $State = @{ next_line; prev_n; prev_p; prev_task; total_est } and is updated in place.
+function Convert-PrefillProgressLines {
+    param($Lines, $State)
+    # @($null).Count is 1 in PowerShell, so a null list must never reach the loop: it would advance
+    # next_line past a line that was never examined. The caller hands over the reader's array with a
+    # plain assignment, so normalising it here is enough.
+    if ($null -eq $Lines) { return , @() }
+    $arr = @($Lines)
+    $out = @()
+    for ($i = [int]$State.next_line; $i -lt $arr.Count; $i++) {
+        $m = [regex]::Match([string]$arr[$i], $script:PREFILL_PROGRESS_REGEX)
+        if (-not $m.Success) { continue }
+        $n    = [long]   $m.Groups[1].Value
+        $p    = [double] $m.Groups[2].Value
+        $rate = [double] $m.Groups[3].Value
+        # UI-9b: task id from the same line, used to tell requests apart. $null (no match) is
+        # fail-open - the line still displays, just without the task tag.
+        $tm = [regex]::Match([string]$arr[$i], $script:PREFILL_TASK_REGEX)
+        $taskId = if ($tm.Success) { $tm.Groups[1].Value } else { $null }
+        # The total prompt size is estimated from two CONSECUTIVE lines of the SAME task only
+        # (n_tokens exactly +2048, AND the same task id). A new task - a retry, or the next request
+        # reusing the cache - restarts n_tokens at 2048 while progress jumps to whatever the cache
+        # already covered (real capture: 2048/0.33 -> 4096/0.66 -> new task 2048/0.33, see
+        # PREFILL_PROGRESS_REGEX). Feeding that pair into the estimate would corrupt it; the +2048
+        # condition and the task id match exclude it by construction. Reference implementation:
+        # bench/moe-direct/watch_prefill.ps1.
+        if ($null -ne $State.prev_n -and $null -ne $State.prev_p -and
+            $n -eq ([long]$State.prev_n + 2048) -and $p -gt [double]$State.prev_p -and
+            $null -ne $taskId -and $taskId -eq $State.prev_task) {
+            $dp = $p - [double]$State.prev_p
+            if ($dp -gt 0.0001) { $State.total_est = [math]::Round(2048 / $dp) }
+        }
+        $State.prev_n = $n
+        $State.prev_p = $p
+        $State.prev_task = $taskId
+        # The rate is a double: "-f" would format it with the current culture (de-DE prints 6,35).
+        # The display contract is fixed ASCII with a period, so pin the invariant culture here.
+        $rateTxt = ([math]::Round($rate, 2)).ToString('0.##', [System.Globalization.CultureInfo]::InvariantCulture)
+        $pctTxt = if ($null -ne $taskId) { 'task {0}: {1}%' -f $taskId, [int][math]::Round($p * 100) } else { '{0}%' -f [int][math]::Round($p * 100) }
+        $txt = ('[prefill] {0} at {1} tok/s' -f $pctTxt, $rateTxt)
+        if ($null -ne $State.total_est -and $rate -gt 0) {
+            # Estimate, never a promise: the remaining tokens come from the estimated total and the
+            # rate is the one the engine reported for the chunk that just finished.
+            $etaMin = [int][math]::Round((1 - $p) * [double]$State.total_est / $rate / 60)
+            $txt = $txt + (' - about {0} min left (estimate)' -f $etaMin)
+        }
+        $out += $txt
+    }
+    $State.next_line = $arr.Count
+    return , $out
+}
+
+# Shell (one call per serving-loop iteration). Never throws: the serving loop owns the outcome.
+function Show-PrefillProgressTick {
+    param($Child, $State)
+    if ($State.disabled) { return }
+    try {
+        # 10 s throttle. A progress line lands about every 2048 tokens, which is minutes apart on a
+        # large model, so a faster poll would only re-read the same stderr capture.
+        $now = Get-Date
+        if (($now - $State.last_check).TotalSeconds -lt 10) { return }
+        $State.last_check = $now
+        # Plain assignment, never @(...): the reader emits the whole array as ONE pipeline object.
+        $lines = Read-ChildStderrComplete -Child $Child
+        foreach ($t in (Convert-PrefillProgressLines -Lines $lines -State $State)) { Write-Line $t }
+    } catch {
+        # Display only: an echo fault must never disturb serving. Record it once, switch the echo
+        # off for the rest of the run, and return quietly - rethrowing here would be misread as a
+        # runtime failure of the server.
+        $State.disabled = $true
+        Write-Diag -Kind 'PREFILL_ECHO_OFF' -Data @{ reason = $_.Exception.Message }
+    }
+}
+
+# endregion
+
+# ============================================================================
+# region 17. REPACK (LS 2 step 4/6)
+# ============================================================================
+
+# ---------------------------------------------------------------------------------------------
+# LS 11 (UI-2) - live progress tee.
+# A child's stdout is captured to a log file through an inherited handle (Start-OwnedChild); that
+# file stays the authoritative capture and every existing reader/parser of it is untouched. These
+# two helpers additionally echo COMPLETE lines to the console as they land, so a multi-minute
+# repack cannot look frozen. Nothing here is buffered until exit: each poll iteration emits what
+# has arrived since the previous one.
+# ---------------------------------------------------------------------------------------------
+function New-OutputTailState {
+    param([string] $Path)
+    # The decoder is stateful on purpose: a UTF-8 sequence split across two reads (a Korean
+    # progress line straddling the current end of file) must not be decoded as replacement chars.
+    return @{ path = $Path; offset = [long]0; partial = ''
+              decoder = ([System.Text.Encoding]::UTF8.GetDecoder()) }
+}
+
+function Write-OutputTail {
+    param($State, [switch] $Final)
+    if ($null -eq $State) { return }
+    # UI-2: non-interactive keeps the v0.4 behaviour exactly (the log file, nothing on the console).
+    if ($NonInteractive) { return }
+    try {
+        if (-not (Test-Path -LiteralPath $State.path -PathType Leaf)) { return }
+        $read = 0
+        $buf = $null
+        # Opened share-ReadWrite: the child still holds the same file open for writing.
+        $fs = [System.IO.File]::Open($State.path, 'Open', 'Read', 'ReadWrite')
+        try {
+            if ($fs.Length -gt $State.offset) {
+                $n = [int][Math]::Min([long]1048576, ($fs.Length - $State.offset))
+                [void]$fs.Seek($State.offset, 'Begin')
+                $buf = New-Object byte[] $n
+                $read = $fs.Read($buf, 0, $n)
+                $State.offset = [long]$State.offset + [long]$read
+            }
+        } finally { $fs.Dispose() }
+        if ($read -gt 0) {
+            $chars = New-Object char[] ($State.decoder.GetCharCount($buf, 0, $read, $false))
+            $cn = $State.decoder.GetChars($buf, 0, $read, $chars, 0, $false)
+            $State.partial = $State.partial + (New-Object string ($chars, 0, $cn))
+        }
+        while ($true) {
+            $nl = $State.partial.IndexOf("`n")
+            if ($nl -lt 0) { break }
+            Write-Line ($State.partial.Substring(0, $nl).TrimEnd("`r"))
+            $State.partial = $State.partial.Substring($nl + 1)
+        }
+        # A last line without a trailing newline is only worth printing once the child is gone.
+        if ($Final -and $State.partial.Length -gt 0) {
+            Write-Line $State.partial.TrimEnd("`r")
+            $State.partial = ''
+        }
+    } catch {
+        # Display only: a tee failure must never change the outcome of the repack.
+        Write-Diag -Kind 'TAIL_FAILED' -Data @{ path = $State.path; reason = $_.Exception.Message }
+    }
+}
+
+function Invoke-Repacker {
+    param($Catalog, [string] $Root, $Profile, [string] $ModelPath, [string] $OutputDir, [bool] $PlanOnly,
+          [bool] $ArchTemplate = $false, [string] $FailStatus = 'fail_repack')
+    $rt = Get-JsonValue -Obj $Catalog -Name 'runtime'
+    $exe = Join-Path $Root ([string](Get-JsonValue -Obj $rt -Name 'repacker_exe'))
+    $args0 = @()
+    foreach ($a in (Get-JsonArray -Obj $rt -Name 'repacker_argv')) {
+        $s = [string]$a
+        if ($s.StartsWith('./') -or $s.StartsWith('.\')) { $s = Join-Path $Root $s.Substring(2) }
+        $args0 += $s
+    }
+    if ($PlanOnly) { $args0 += '--plan' }
+    if ($ArchTemplate) {
+        # Two omissions, both required by the repacker's own CLI contract:
+        #   --profile  is REJECTED together with --experimental-arch-template (repack_experts.py:
+        #              3545-3551) - the derived expect replaces the catalog reference lock, and
+        #              accepting both would leave "which one is authoritative" ambiguous.
+        #   --scope    is not ours to state: the template decides it (a qwen35moe with
+        #              nextn_predict_layers > 0 defaults to execution, :883-894), and there is no
+        #              catalog profile here to take a routed_scope from.
+        $args0 += '--experimental-arch-template'
+        $args0 += @('--model', $ModelPath, '--out', $OutputDir)
+    } else {
+        $args0 += @('--profile', [string](Get-JsonValue -Obj $Profile -Name 'profile_id'),
+                    '--model', $ModelPath, '--out', $OutputDir,
+                    '--scope', [string](Get-JsonValue -Obj $Profile -Name 'routed_scope'))
+    }
+
+    $logDir = Join-Path (Get-LauncherStateDir) 'logs'
+    if (-not (Test-Path -LiteralPath $logDir -PathType Container)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
+    # RC-1: the repacker's append-only log defaults to the directory it lives in - which, inside a
+    # release bundle, is the bundle itself. The next launch then fails its own SHA manifest gate
+    # (fail_gate_bundle / exit 4, reproduced twice in rehearsal). Redirect it out of the bundle.
+    # Passed on every invocation: --plan writes no log, so the flag is simply unused there.
+    $args0 += @('--log-path', (Join-Path $logDir 'repack_log.jsonl'))
+    $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
+    $tag = 'repack'
+    if ($PlanOnly) { $tag = 'repack_plan' }
+    $outLog = Join-Path $logDir ("{0}_{1}_out.log" -f $tag, $stamp)
+    $errLog = Join-Path $logDir ("{0}_{1}_err.log" -f $tag, $stamp)
+
+    # LS 11 (UI-2): PYTHONUNBUFFERED is load-bearing, not a nicety. CPython block-buffers stdout
+    # whenever it is not a TTY, and the repacker's stdout IS a file handle here - without this the
+    # per-layer progress lines (repack_experts.py:1099) would sit in the child's buffer and only
+    # appear at exit, which is exactly the "buffer everything until the end" shape UI-2 forbids.
+    $env0 = @{ 'PYTHONIOENCODING' = 'utf-8'; 'PYTHONUNBUFFERED' = '1' }
+    $r = Start-OwnedChild -Exe $exe -Args0 $args0 -EnvVars $env0 -WorkDir $Root `
+             -StdOutPath $outLog -StdErrPath $errLog -NewProcessGroup $false -Role 'repacker'
+    if (-not $r.ok) { Stop-Launcher $FailStatus ('repacker spawn failed: ' + $r.reason) }
+    $child = $r.child
+    # R1-4: poll instead of blocking so a console stop request during a long repack is honoured.
+    # The repacker is a batch child, so cancellation kills it directly and reports cancelled_user;
+    # the interrupted output is left as a .partial for the next run to clean up.
+    # R2-1: --plan additionally gets an explicit deadline. A stuck plan child previously froze the
+    # launcher for ever; the confirmation step must never be reached in that case.
+    $code = $null
+    $planDeadline = $null
+    if ($PlanOnly) { $planDeadline = (Get-Date).AddSeconds($script:PLAN_TIMEOUT_S) }
+    # LS 11 (UI-2): only the real repack is teed. The --plan text is already printed in one piece
+    # by the caller after this returns, and echoing it live as well would print it twice.
+    $tail = $null
+    if (-not $PlanOnly) { $tail = New-OutputTailState -Path $outLog }
+    while ($true) {
+        $w = Wait-ChildExit -Child $child -TimeoutMs 500
+        Write-OutputTail -State $tail
+        if ($w.exited) { $code = $w.code; break }
+        if (Test-CancelRequested) {
+            try { [void][MoeLauncher.Native]::TerminateProcess($child.handle, 1) } catch { }
+            [void](Wait-ChildExit -Child $child -TimeoutMs 10000)
+            Close-OwnedChildHandles
+            Write-Diag -Kind 'REPACK_CANCELLED' -Data @{ plan_only = $PlanOnly }
+            Stop-Launcher 'cancelled_user' 'console stop request received during the repacker run'
+        }
+        if ($null -ne $planDeadline -and (Get-Date) -gt $planDeadline) {
+            try { [void][MoeLauncher.Native]::TerminateProcess($child.handle, 1) } catch { }
+            [void](Wait-ChildExit -Child $child -TimeoutMs 10000)
+            Close-OwnedChildHandles
+            Write-Diag -Kind 'REPACK_PLAN_TIMEOUT' -Data @{ timeout_s = $script:PLAN_TIMEOUT_S; err_log = $errLog }
+            Stop-Launcher $FailStatus ('repacker --plan exceeded the ' + $script:PLAN_TIMEOUT_S + ' s deadline and was terminated; see ' + $errLog)
+        }
+    }
+    Write-OutputTail -State $tail -Final
+    Close-OwnedChildHandles
+    Write-Diag -Kind 'REPACK_DONE' -Data @{ plan_only = $PlanOnly; exit_code = $code; out_log = $outLog; err_log = $errLog }
+
+    # R2-5b precedence: a real Ctrl+C reaches every process on the console, so the repacker child
+    # (which shares the launcher's process group by design - only the server child gets its own)
+    # dies from the same event. The user's stop request outranks "the repacker exited abnormally":
+    # classify by intent, not by which side was observed first.
+    if (Test-CancelRequested) {
+        Write-Diag -Kind 'REPACK_CANCELLED' -Data @{ plan_only = $PlanOnly; exit_code = $code; via = 'console stop request' }
+        Stop-Launcher 'cancelled_user' 'console stop request received during the repacker run'
+    }
+
+    $text = ''
+    try { $text = [System.IO.File]::ReadAllText($outLog) } catch { }
+    # R1-12: a --plan run that timed out, failed to spawn or exited non-zero must never reach the
+    # user confirmation step - an empty or partial plan would be confirmed as if it were complete.
+    if ($null -eq $code -or [uint32]$code -ne [uint32]0) {
+        $what = 'repacker'
+        if ($PlanOnly) { $what = 'repacker --plan' }
+        # LS OA-1: on the arch-template plan the caller maps this to fail_model_path instead. A
+        # template that fails closed (unsupported arch, an inventory that will not close) is a
+        # statement about the MODEL, not a repacker malfunction.
+        Stop-Launcher $FailStatus ($what + ' exited abnormally (code=' + (Format-ExitCode $code) + '); see ' + $errLog)
+    }
+    if ($PlanOnly) { return @{ exit_code = $code; text = $text; out_log = $outLog; err_log = $errLog } }
+    if (-not (Test-Path -LiteralPath (Join-Path $OutputDir 'verify_report.json') -PathType Leaf)) {
+        Stop-Launcher 'fail_repack' 'repacker finished but verify_report.json was not produced'
+    }
+    return @{ exit_code = $code; text = $text; out_log = $outLog; err_log = $errLog }
+}
+
+# endregion
+
+# ============================================================================
+# region 18. SMOKE (RS 8 checklist 1..7)
+# ============================================================================
+
+# Windows PowerShell 5.1's Invoke-WebRequest THROWS on any non-2xx instead of returning the
+# response, so "did the server answer at all" has to be recovered from the exception. A delivered
+# non-2xx carries the response object (WebException.Response); a timeout, a refused connection or a
+# dropped socket carries none. WARMSTART A-2 (8) branches on exactly this distinction: an answered
+# request means the server is no longer writing, so the failed generation's tmp can be deleted now,
+# while an unanswered one has to wait until the child has been joined.
+function Test-HttpResponseDelivered {
+    param($ErrorRecord)
+    try {
+        if ($null -eq $ErrorRecord) { return $false }
+        $ex = $ErrorRecord.Exception
+        $depth = 0
+        while ($null -ne $ex -and $depth -lt 8) {
+            $r = $null
+            try { $r = $ex.Response } catch { $r = $null }
+            if ($null -ne $r) { return $true }
+            $ex = $ex.InnerException
+            $depth = $depth + 1
+        }
+    } catch { }
+    return $false
+}
+
+function Invoke-HttpJson {
+    param([string] $Uri, [string] $Method = 'GET', [string] $Body = $null, [int] $TimeoutSec = 60)
+    try {
+        if ($Body) {
+            $resp = Invoke-WebRequest -Uri $Uri -Method $Method -Body $Body -ContentType 'application/json' `
+                        -TimeoutSec $TimeoutSec -UseBasicParsing -ErrorAction Stop
+        } else {
+            $resp = Invoke-WebRequest -Uri $Uri -Method $Method -TimeoutSec $TimeoutSec -UseBasicParsing -ErrorAction Stop
+        }
+        return @{ ok = $true; status = [int]$resp.StatusCode; body = [string]$resp.Content; response_received = $true }
+    } catch {
+        return @{ ok = $false; reason = $_.Exception.Message
+                  response_received = (Test-HttpResponseDelivered -ErrorRecord $_) }
+    }
+}
+
+function Invoke-SmokeChecklist {
+    param($Config, $Catalog, $Child, $GateInfo)
+    $base = ('http://{0}:{1}' -f $Config.host, $Config.port)
+    $fails = @()
+    Write-Line ''
+    Write-Line '=== first-run smoke (RELEASE_SPEC 8) ==='
+
+    # (1) /health 200
+    $r = Invoke-HttpJson -Uri ($base + '/health')
+    if ($r.ok -and $r.status -eq 200) { Write-Line '  [1] /health 200                      PASS' }
+    else { $fails += '1:/health'; Write-Line '  [1] /health 200                      FAIL' }
+
+    # (2) /v1/models
+    $r = Invoke-HttpJson -Uri ($base + '/v1/models')
+    $ok2 = $false
+    if ($r.ok -and $r.status -eq 200) {
+        $j = ConvertFrom-JsonStrict -Text $r.body
+        if ($j.ok -and (Test-JsonArray (Get-JsonValue -Obj $j.value -Name 'data'))) { $ok2 = $true }
+    }
+    if ($ok2) { Write-Line '  [2] /v1/models                       PASS' }
+    else { $fails += '2:/v1/models'; Write-Line '  [2] /v1/models                       FAIL' }
+
+    # Every stream-dependent item runs inside a guard: see the catch block for why.
+    $naturalMs = 0
+    $script:SmokeItemLabel = '3'
+    try {
+    # (3) chat completion: non-stream + stream, both must produce tokens and terminate normally.
+    # R1-7: the stream is parsed as SSE JSON and real generated content is counted; a stream that
+    # yields no token or never reaches [DONE] is a failure. The full run is also timed, because
+    # check (4) needs to know how long an uncancelled stream naturally takes.
+    $body = '{"model":"local","messages":[{"role":"user","content":"ping"}],"max_tokens":8,"stream":false}'
+    $r = Invoke-HttpJson -Uri ($base + '/v1/chat/completions') -Method 'POST' -Body $body
+    $ok3a = $false
+    if ($r.ok -and $r.status -eq 200) {
+        $j = ConvertFrom-JsonStrict -Text $r.body
+        if ($j.ok) {
+            $ch = Get-JsonValue -Obj $j.value -Name 'choices'
+            if ((Test-JsonArray $ch) -and @($ch).Count -gt 0) {
+                $msg = Get-JsonValue -Obj (@($ch)[0]) -Name 'message'
+                $content = [string](Get-JsonValue -Obj $msg -Name 'content')
+                if ($content.Length -gt 0) { $ok3a = $true }
+            }
+        }
+    }
+    $stream = Invoke-SmokeStream -Uri ($base + '/v1/chat/completions') -AbortAfterTokens 0
+    $ok3b = ($stream.ok -and $stream.tokens -gt 0 -and $stream.done)
+    if ($ok3a -and $ok3b) { Write-Line ('  [3] chat completion stream+non-stream PASS ({0} streamed tokens, [DONE] seen)' -f $stream.tokens) }
+    else {
+        $fails += '3:chat'
+        Write-Line ('  [3] chat completion stream+non-stream FAIL (non-stream={0} stream_tokens={1} done={2})' -f $ok3a, $stream.tokens, $stream.done)
+    }
+    $naturalMs = $stream.elapsed_ms
+    } catch {
+        $fails += $script:SmokeItemLabel + ':internal-fault'
+        Write-Line ('  [' + $script:SmokeItemLabel + '] item aborted                 FAIL (internal fault: ' + $_.Exception.Message + ')')
+        Write-Diag -Kind 'smoke_item_fault' -Data @{ item = $script:SmokeItemLabel; reason = $_.Exception.Message }
+    }
+
+    $script:SmokeItemLabel = '4'
+    try {
+    # (4) cancel mid-stream and prove the single slot really came back.
+    # R2-4: a total-elapsed-time comparison is NOT a proof - a warm cache or a shorter follow-up
+    # request can beat the reference time while the cancelled request still owns the slot. The
+    # proof used here is the server's own request-bound release() line (SLOT_RELEASE_MARKER):
+    #   1. note where stderr currently ends (a line index, not a release count)
+    #   2. cancel after at least one real token, and remember how much of the natural stream was
+    #      still outstanding at that instant
+    #   3. require the server's own "cancel task, id_task = N" warning and then THAT SAME task's
+    #      release line after it (Find-BoundCancelRelease), strictly BEFORE the cancelled stream
+    #      would naturally have ended - a server that ignores the disconnect and keeps the slot
+    #      until natural completion cannot satisfy this, and a late-flushed release belonging to the
+    #      PREVIOUS request cannot either, because its task id does not match
+    #   4. only then send a follow-up request and require it to be served
+    $lineBefore = Get-StderrLineCount -Child $Child
+    $relBefore = Get-SlotReleaseCount -Child $Child
+    $cancel = Invoke-SmokeStream -Uri ($base + '/v1/chat/completions') -AbortAfterTokens 1
+    $cancelAt = Get-Date
+    $outstandingMs = $naturalMs - $cancel.elapsed_ms
+    if ($outstandingMs -lt 0) { $outstandingMs = 0 }
+    $naturalEnd = $cancelAt.AddMilliseconds($outstandingMs)
+    # R3-2: the observation is STICKY. Polling only keeps the last sample, so under load the final
+    # sample could still read "no cancel warning yet" even though the warning had arrived - which
+    # made the reported failure reason timing dependent. The warning sighting is latched, and if it
+    # was never seen inside the natural window a bounded diagnostic-only wait is added: the launcher
+    # sent the abort, so the warning is owed to it. This cannot change the verdict - the verdict uses
+    # $releaseAtMs against the prompt budget, both measured from the abort instant.
+    $releaseSeen = $false
+    $releaseAtMs = -1
+    $warnSeen = $false
+    $warnTaskIds = @()
+    $bound = @{ found = $false; reason = 'not polled' }
+    while ((Get-Date) -lt $naturalEnd) {
+        $bound = Find-BoundCancelRelease -Child $Child -FromLineIndex $lineBefore
+        $ids = Get-NonEmptyList -Value $bound.cancel_task_ids
+        if ($ids.Count -gt 0) { $warnSeen = $true; $warnTaskIds = $ids }
+        if ($bound.found) {
+            $warnSeen = $true
+            $releaseSeen = $true
+            $releaseAtMs = ((Get-Date) - $cancelAt).TotalMilliseconds
+            break
+        }
+        Start-Sleep -Milliseconds 50
+    }
+    if (-not $warnSeen) {
+        $warnDeadline = (Get-Date).AddMilliseconds($script:CANCEL_WARN_DIAG_MS)
+        while ((Get-Date) -lt $warnDeadline) {
+            $probe = Find-BoundCancelRelease -Child $Child -FromLineIndex $lineBefore
+            $probeIds = Get-NonEmptyList -Value $probe.cancel_task_ids
+            if ($probeIds.Count -gt 0 -or $probe.found) {
+                $warnSeen = $true
+                $warnTaskIds = $probeIds
+                $bound = $probe
+                # R4-1: this wait can find the warning AND its bound release together - an async
+                # logger under load flushes both past the natural end, so the launcher first sees
+                # the pair here. Latching only the warning made the taxonomy below report "no
+                # matching release after it" while the very same record already carried the bound
+                # task id and the release line index. The release is therefore latched too, timed
+                # from the abort like every other sample. That instant is necessarily past the
+                # natural end and thus past the prompt budget (which is half the outstanding time),
+                # so $releasedPromptly stays false: the classification gets more accurate, the
+                # verdict can never turn into a PASS.
+                if ($probe.found) {
+                    $releaseSeen = $true
+                    $releaseAtMs = ((Get-Date) - $cancelAt).TotalMilliseconds
+                }
+                break
+            }
+            Start-Sleep -Milliseconds 50
+        }
+    }
+    # Discriminator, not a tuned threshold: a server that honours the disconnect releases the slot
+    # essentially at once (latency -> 0% of the time that was still outstanding), while a server
+    # that ignores it releases only when generation finishes naturally (latency -> 100%). Any split
+    # inside (0,1) separates the two populations; the midpoint is the most robust choice and leaves
+    # the widest margin on both sides. "Observed before the natural end" alone is NOT sufficient,
+    # because an ignoring server's release lands right at that boundary and can win the race.
+    $promptBudgetMs = $outstandingMs / 2.0
+    $releasedPromptly = ($releaseSeen -and $releaseAtMs -ge 0 -and $releaseAtMs -lt $promptBudgetMs)
+    # R3-3: complete, deterministic reason taxonomy. A server that ignores the disconnect has TWO
+    # legitimate failing outcomes and which one is observed depends only on where the poll boundary
+    # falls: the release may not be seen inside the window at all, or it may be seen having arrived
+    # at/after the natural end. Reporting both as one vague "bound release observed" made the reason
+    # look non-deterministic even though the verdict was always correct. Every branch below names the
+    # evidence that produced the verdict, and all of them are task-binding evidence.
+    $bindReason = ''
+    if ($releasedPromptly) {
+        $bindReason = ('bound release for task ' + $bound.task_id + ' observed ' + [int]$releaseAtMs +
+                       ' ms after the abort, inside the ' + [int]$promptBudgetMs + ' ms prompt budget')
+    } elseif ($releaseSeen) {
+        $bindReason = ('bound release for task ' + $bound.task_id + ' arrived at ' + [int]$releaseAtMs +
+                       ' ms, at or past the ' + [int]$promptBudgetMs + ' ms prompt budget')
+    } elseif ($warnSeen) {
+        $bindReason = ('cancel warning seen for task(s) ' + ($warnTaskIds -join ',') + ' but no matching release after it')
+    } else {
+        $bindReason = ('no "cancel task, id_task" warning within ' + $script:CANCEL_WARN_DIAG_MS + ' ms of the abort')
+    }
+    $after = @{ ok = $false }
+    if ($releasedPromptly) { $after = Invoke-HttpJson -Uri ($base + '/v1/chat/completions') -Method 'POST' -Body $body }
+    $ok4 = ($cancel.aborted -and $cancel.tokens -ge 1 -and $outstandingMs -gt 0 -and
+            $releasedPromptly -and $after.ok -and $after.status -eq 200)
+    if ($ok4) {
+        Write-Line ('  [4] cancel + slot reclaim            PASS (aborted after {0} token(s); task {1} cancel warning then its own release observed {2} ms later, well inside the {3} ms that were still outstanding; next request served)' -f
+            $cancel.tokens, $bound.task_id, [int]$releaseAtMs, [int]$outstandingMs)
+    } else {
+        $fails += '4:cancel'
+        Write-Line ('  [4] cancel + slot reclaim            FAIL (aborted={0} tokens={1} bound_release={2} cancel_warning_seen={3} release_at_ms={4} prompt_budget_ms={5} outstanding_ms={6} next_ok={7} reason={8})' -f
+            $cancel.aborted, $cancel.tokens, $releaseSeen, $warnSeen, [int]$releaseAtMs, [int]$promptBudgetMs, [int]$outstandingMs, $after.ok, $bindReason)
+    }
+    Write-Diag -Kind 'SMOKE_CANCEL' -Data @{ tokens = $cancel.tokens; aborted = $cancel.aborted
+        bound_release = $releaseSeen; bound_task_id = [string]$bound.task_id
+        cancel_warning_seen = $warnSeen; cancel_warning_task_ids = $warnTaskIds
+        cancel_line_index = $bound.cancel_index; release_line_index = $bound.release_index
+        bind_reason = $bindReason
+        release_at_ms = $releaseAtMs; prompt_budget_ms = $promptBudgetMs
+        outstanding_ms = $outstandingMs; natural_ms = $naturalMs; next_ok = $after.ok
+        release_lines_total_before = $relBefore; stderr_lines_before = $lineBefore }
+
+
+    } catch {
+        # R3-3: a fault inside one smoke item must become THAT ITEM'S stated failure, never a
+        # silent truncation of the checklist. Before this guard a load-induced exception aborted
+        # Invoke-SmokeChecklist, so every later item - including the cancel verdict - emitted
+        # nothing at all and the operator lost the per-item result they came for.
+        $fails += $script:SmokeItemLabel + ':internal-fault'
+        Write-Line ('  [' + $script:SmokeItemLabel + '] item aborted                 FAIL (internal fault: ' + $_.Exception.Message + ')')
+        Write-Diag -Kind 'smoke_item_fault' -Data @{ item = $script:SmokeItemLabel; reason = $_.Exception.Message }
+    }
+    # (5) verify PASS consumption evidence - gated, no longer deferred.
+    # NOTE Correction of an earlier 1st-source error: an earlier revision of this file claimed "there
+    # is no seal-success wire line". That was WRONG. moedirect-v2-b10057.patch:14681 emits
+    # LLAMA_LOG_INFO("%s: moe-direct: sealed all=... slots=X/Y ...") immediately after
+    # ggml_moe_direct_seal() succeeds, i.e. after the seal has consumed verify_report.json
+    # (read_verify_report_gate :3738, seal binding :7299) and fails closed on anything else.
+    # So the launcher gates item 5 on that line: present in a complete line exactly once with a
+    # parsable slots=X/Y field, together with the launcher's own gate having produced a
+    # manifest_sha256. The slot numbers are echoed, NOT compared - X == Y is not an invariant
+    # (a real passing run emitted slots=648/128; see ENGINE_SEAL_SLOTS_REGEX for the capture).
+    $seal = Get-EngineSealAttestation -Child $Child
+    $ok5 = ($seal.ok -and $null -ne $GateInfo -and $null -ne $GateInfo.manifest_sha256)
+    if ($ok5) {
+        Write-Line ('  [5] verify PASS consumption          PASS (engine seal line x1, slots {0}/{1}; launcher gate manifest {2})' -f
+            $seal.slots_have, $seal.slots_need, $GateInfo.manifest_sha256.Substring(0, 12))
+    } else {
+        $fails += '5:verify-consume'
+        Write-Line ('  [5] verify PASS consumption          FAIL ({0})' -f $seal.reason)
+    }
+    Write-Diag -Kind 'SMOKE_ITEM5' -Data @{ ok = $ok5; seal = $seal; manifest_sha256 = $GateInfo.manifest_sha256
+        note = 'gated on the engine post-seal INFO line (patch:14681); a stronger always-on identity echo carrying profile_id/expect_sha256/manifest_sha256 remains an engine-round item' }
+
+    # (6) loopback-only binding
+    $lb = Test-LoopbackOnlyBinding -PortNumber $Config.port
+    if ($lb.ok) { Write-Line ('  [6] loopback-only binding            PASS (' + ($lb.addresses -join ',') + ')') }
+    else { $fails += '6:loopback'; Write-Line ('  [6] loopback-only binding            FAIL (' + $lb.reason + ')') }
+
+    # (7) built-in web UI: load AND send. R1-7: a GET alone does not prove the UI can talk to the
+    # server, so the check also posts a completion through the same origin.
+    $webui = Test-JsonBooleanTrue (Get-JsonValue -Obj (Get-JsonValue -Obj $Catalog -Name 'runtime') -Name 'webui')
+    if ($webui) {
+        $rGet = Invoke-HttpJson -Uri ($base + '/')
+        $okLoad = ($rGet.ok -and $rGet.status -eq 200 -and $rGet.body.Length -gt 0)
+        $rSend = Invoke-HttpJson -Uri ($base + '/v1/chat/completions') -Method 'POST' -Body $body
+        $okSend = $false
+        if ($rSend.ok -and $rSend.status -eq 200) {
+            $j = ConvertFrom-JsonStrict -Text $rSend.body
+            if ($j.ok) {
+                $ch = Get-JsonValue -Obj $j.value -Name 'choices'
+                if ((Test-JsonArray $ch) -and @($ch).Count -gt 0) { $okSend = $true }
+            }
+        }
+        if ($okLoad -and $okSend) { Write-Line '  [7] built-in web UI load + send      PASS' }
+        else { $fails += '7:webui'; Write-Line ('  [7] built-in web UI load + send      FAIL (load={0} send={1})' -f $okLoad, $okSend) }
+    } else {
+        Write-Line '  [7] built-in web UI                  SKIP (API-only bundle)'
+    }
+
+    Write-Diag -Kind 'SMOKE' -Data @{ failures = $fails }
+    if ($fails.Count -gt 0) { return @{ ok = $false; failures = $fails } }
+    return @{ ok = $true }
+}
+
+# R1-7: SSE reader that counts REAL generated tokens (non-empty delta content) and requires the
+# terminating [DONE]. An abort is only reported as such when at least the requested number of
+# tokens was actually received first - a connection exception before any token is a failure.
+function Invoke-SmokeStream {
+    param([string] $Uri, [int] $AbortAfterTokens)
+    $body = '{"model":"local","messages":[{"role":"user","content":"ping"}],"max_tokens":64,"stream":true}'
+    $req = $null
+    $tokens = 0
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    try {
+        $req = [System.Net.HttpWebRequest]::Create($Uri)
+        $req.Method = 'POST'
+        $req.ContentType = 'application/json'
+        $req.Timeout = 60000
+        $req.ReadWriteTimeout = 60000
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($body)
+        $req.ContentLength = $bytes.Length
+        $rs = $req.GetRequestStream()
+        $rs.Write($bytes, 0, $bytes.Length)
+        $rs.Close()
+        $resp = $req.GetResponse()
+        $sr = New-Object System.IO.StreamReader($resp.GetResponseStream())
+        $done = $false
+        while (-not $sr.EndOfStream) {
+            $line = $sr.ReadLine()
+            if ($null -eq $line) { break }
+            if (-not $line.StartsWith('data:')) { continue }
+            $payload = $line.Substring(5).Trim()
+            if ($payload -eq '[DONE]') { $done = $true; break }
+            # count only chunks that carry real generated content
+            $pj = ConvertFrom-JsonStrict -Text $payload
+            if (-not $pj.ok) { continue }
+            $ch = Get-JsonValue -Obj $pj.value -Name 'choices'
+            if (-not (Test-JsonArray $ch) -or @($ch).Count -eq 0) { continue }
+            $delta = Get-JsonValue -Obj (@($ch)[0]) -Name 'delta'
+            $content = ''
+            if ($null -ne $delta) { $content = [string](Get-JsonValue -Obj $delta -Name 'content') }
+            if ($content.Length -eq 0) { continue }
+            $tokens++
+            if ($AbortAfterTokens -gt 0 -and $tokens -ge $AbortAfterTokens) {
+                $req.Abort()
+                try { $sr.Dispose() } catch { }
+                try { $resp.Close() } catch { }
+                $sw.Stop()
+                return @{ ok = $true; aborted = $true; tokens = $tokens; done = $false; elapsed_ms = $sw.Elapsed.TotalMilliseconds }
+            }
+        }
+        try { $sr.Dispose() } catch { }
+        try { $resp.Close() } catch { }
+        $sw.Stop()
+        return @{ ok = $true; aborted = $false; tokens = $tokens; done = $done; elapsed_ms = $sw.Elapsed.TotalMilliseconds }
+    } catch {
+        $sw.Stop()
+        # An exception before any token was received is NOT a proven cancel.
+        return @{ ok = $false; reason = $_.Exception.Message; aborted = ($AbortAfterTokens -gt 0 -and $tokens -ge $AbortAfterTokens)
+                  tokens = $tokens; done = $false; elapsed_ms = $sw.Elapsed.TotalMilliseconds }
+    }
+}
+
+# endregion
+
+# ============================================================================
+# region 19. MAIN
+# ============================================================================
+
+# R1-9: -Action / -RunSeconds are validated here, not by the parameter binder, so a bad value still
+# produces a status line instead of a bare exit 1 with zero wire output.
+$script:ActionResolved = 'start'
+$script:RunSecondsResolved = 0
+
+function Resolve-ExtraCliArgs {
+    $a = ([string]$Action).Trim().ToLowerInvariant()
+    if ($a.Length -eq 0) { $a = 'start' }
+    if (@('start', 'stop') -notcontains $a) {
+        Stop-Launcher 'fail_custom_args' ("invalid -Action '" + $Action + "': expected start or stop")
+    }
+    $script:ActionResolved = $a
+
+    $rsRaw = ([string]$RunSeconds).Trim()
+    if ($rsRaw.Length -eq 0) { $rsRaw = '0' }
+    $rs = [long]0
+    if (-not [long]::TryParse($rsRaw, [ref]$rs)) {
+        Stop-Launcher 'fail_custom_args' ("invalid -RunSeconds '" + $RunSeconds + "': not an integer")
+    }
+    if ($rs -lt 0) { Stop-Launcher 'fail_custom_args' ("invalid -RunSeconds '" + $RunSeconds + "': must not be negative") }
+    if ($rs -gt 86400) { Stop-Launcher 'fail_custom_args' ("invalid -RunSeconds '" + $RunSeconds + "': above the 86400 s ceiling") }
+    $script:RunSecondsResolved = [int]$rs
+}
+
+function Get-CliOverrides {
+    param($Bounds)
+    $ov = @{}
+    $pairs = @(@('port', $Port), @('ctx', $Ctx), @('threads', $Threads),
+               @('budget_mb', $BudgetMB), @('qd', $QD), @('warmup', $Warmup),
+               @('warmstart', $Warmstart), @('autosave', $Autosave))
+    foreach ($p in $pairs) {
+        $k = $p[0]; $v = $p[1]
+        if ($null -eq $v -or ([string]$v).Trim().Length -eq 0) { continue }
+        $r = Test-OverrideValue -Key $k -Value ([string]$v) -Bounds $Bounds
+        if (-not $r.ok) {
+            # LS 5: non-interactive (argument driven) type/bounds violations terminate.
+            if ($NonInteractive) { Stop-Launcher 'fail_custom_args' ('invalid -' + $k + ': ' + $r.reason) }
+            Write-Line ('[custom] ignoring invalid -' + $k + ': ' + $r.reason)
+            continue
+        }
+        $ov[$k] = $r.value
+    }
+    return $ov
+}
+
+# R1-8: every path the child will see is absolutised once against the launcher's own working
+# directory. The children run with the bundle root as workdir, so a relative -OutDir such as
+# ".\cache" would otherwise be checked here and resolved somewhere else there.
+# Pure path arithmetic - it creates nothing. That property is what lets the derived branch call it
+# early (the derive-plan needs the output VOLUME) while the catalog branch keeps calling it at the
+# v0.4 point, after the CLI overrides have been validated.
+function Resolve-OutputDirectory {
+    param([string] $ModelPath)
+    $outputDir = $OutDir
+    if (-not $outputDir) { $outputDir = Join-Path ([System.IO.Path]::GetDirectoryName($ModelPath)) 'repack' }
+    try {
+        if (-not [System.IO.Path]::IsPathRooted($outputDir)) {
+            $outputDir = Join-Path (Get-Location).ProviderPath $outputDir
+        }
+        $outputDir = [System.IO.Path]::GetFullPath($outputDir)
+        if ($outputDir.Length -gt 3) { $outputDir = $outputDir.TrimEnd('\') }
+    } catch { Stop-Launcher 'fail_model_path' ('output directory path is not valid: ' + $outputDir) }
+    return $outputDir
+}
+
+function Resolve-ModelPath {
+    if ($Model) { $p = $Model }
+    else {
+        # LS 11 (UI-1 3): the selection menu fills the SAME variable the text prompt fills, and
+        # returns $null whenever it is not applicable - menu mode unavailable, no candidate, or
+        # "enter path manually". Everything after this point is the v0.4 path, unchanged.
+        $p = Select-ModelPathInteractive
+        if ($null -eq $p) {
+            $p = Read-UserLine -Prompt 'Model GGUF path> '
+            if ($null -eq $p) { Stop-Launcher 'fail_model_path' 'no model path supplied' }
+        }
+    }
+    $p = ([string]$p).Trim().Trim('"')
+    if ($p.Length -eq 0) { Stop-Launcher 'fail_model_path' 'empty model path' }
+    if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { Stop-Launcher 'fail_model_path' ('model file not found: ' + $p) }
+    return (Resolve-Path -LiteralPath $p).ProviderPath
+}
+
+# R1-1: LS 1-7 step 7 "1-shot re-sizing". Runs the RAM/disk verdict against the effective budget
+# and ctx (not the catalog defaults), then reserves the effective port. Called once after the
+# preset+CLI binding and again after every custom edit.
+function Confirm-EffectiveSizing {
+    param([string] $OutputDir, [string] $ExpectPath, $Config, $Profile)
+    Set-FailureStage 'fail_resource'
+    $ctx = 0
+    $ctxTxt = Get-ArgvValue -Argv $Config.argv -Flag '-c'
+    if ($null -ne $ctxTxt) { [void][int]::TryParse([string]$ctxTxt, [ref]$ctx) }
+    Write-Line ''
+    Write-Line '=== effective sizing (after preset + CLI binding) ==='
+    $pre = Invoke-Preflight -OutputDir $OutputDir -ExpectPath $ExpectPath -BudgetMb ([long]$Config.budget_mb) `
+               -NeedsRepack $false -CtxTokens ([long]$ctx)
+    Set-FailureStage 'fail_instance_lock'
+    Set-EffectivePortLock -PortNumber ([int]$Config.port)
+    Write-Diag -Kind 'EFFECTIVE_SIZING' -Data @{ budget_mb = $Config.budget_mb; ctx = $ctx; port = $Config.port
+                                                 ram_verdict = $pre.ram.verdict }
+    return $pre
+}
+
+# LS 13-1 / LS 13-7 (8): A-1 confirmation #2 plus the EFFECTIVE record, as ONE step.
+# The three-choice loop can wait indefinitely, so the directory that existed at the first
+# confirmation may be gone by now; the re-check is performed by rebuilding the effective config
+# (the confirmation lives inside that function), which is what keeps argv, the kv verdict and the
+# EFFECTIVE diagnostic describing the same decision. A failure here latches the feature off instead
+# of terminating, and the latch record is therefore written BEFORE the EFFECTIVE record.
+# The rebuild and the record are one function precisely so that ordering cannot drift: the selftest
+# drives this same function rather than a copy of its two halves.
+function Complete-PreSpawnConfig {
+    param($Catalog, $Profile, [string] $Root, [string] $OutputDir, [string] $ModelPath,
+          $Overrides, $PrefetchDecision, [int] $Qd, $Sweep, [string] $QdSource, [bool] $Custom)
+    $kvBefore = [string]$script:WarmstartCtx.status_text
+    $config = Build-EffectiveConfig -Catalog $Catalog -Profile $Profile -Root $Root -OutputDir $OutputDir `
+                  -ModelPath $ModelPath -Overrides $Overrides -PrefetchDecision $PrefetchDecision -Qd $Qd
+    if ([string]$script:WarmstartCtx.status_text -cne $kvBefore) {
+        Write-Line ('  kv               : {0} (re-checked before start)' -f $script:WarmstartCtx.status_text)
+    }
+
+    Write-Diag -Kind 'EFFECTIVE' -Data @{ argv = $config.argv; env = $config.env; port = $config.port
+                                          budget_mb = $config.budget_mb; qd = $config.qd
+                                          qd_source = $QdSource
+                                          sweep_qd = $Sweep.qd; sweep_reason = $Sweep.reason
+                                          sweep_from_binding = $Sweep.from_binding
+                                          binding_persist = $(if ($Sweep.persist_failed) { 'failed' } else { 'ok' })
+                                          effective_prefetch = $config.prefetch.echo
+                                          warmstart_mode = $script:WarmstartCtx.mode
+                                          warmstart_override = $script:WarmstartCtx.override
+                                          warmstart_state = (Get-WarmstartState)
+                                          autosave = [string]$script:WarmstartCtx.autosave_setting
+                                          autosave_active = (Test-AutosaveActive)
+                                          autosave_minutes = [int]$script:WarmstartCtx.autosave_minutes
+                                          kv = $script:WarmstartCtx.status_text
+                                          kv_reason = $script:WarmstartCtx.reason
+                                          budget_source = $config.budget_source
+                                          provenance = $(if ($Custom) { 'custom' } elseif ($config.budget_unmeasured) { 'auto' } else { 'catalog defaults' })
+                                          format_gate = (Test-JsonBooleanTrue (Get-JsonValue -Obj (Get-JsonValue -Obj $Profile -Name 'gates') -Name 'format_validated'))
+                                          performance_gate = $(if ($Custom -or $config.budget_unmeasured) { 'unmeasured' } else { (Test-JsonBooleanTrue (Get-JsonValue -Obj (Get-JsonValue -Obj $Profile -Name 'gates') -Name 'performance_validated')) }) }
+    return $config
+}
+
+function Invoke-LauncherMain {
+    Initialize-DiagLog
+    # [void] is load-bearing: this function's return value IS the status, so any stray pipeline
+    # output would turn it into an array and lose the enum.
+    [void](Install-CtrlHandler)
+
+    # (0) launcher-owned CLI validation before anything else can fail without a status line
+    Set-FailureStage 'fail_custom_args'
+    Resolve-ExtraCliArgs
+
+    # (1) bundle integrity comes first (LS 2 "launcher first action")
+    Set-FailureStage 'fail_gate_bundle'
+    $root = Resolve-BundleRoot
+    Assert-BundleIntegrity -Root $root
+
+    # (2) catalog
+    Set-FailureStage 'fail_gate_catalog'
+    $catalog = Read-Catalog -Root $root
+    $sourceTag = [string](Get-JsonValue -Obj $catalog -Name 'source_tag')
+
+    # (3) model + identification
+    Set-FailureStage 'fail_model_path'
+    $modelPath = Resolve-ModelPath
+    $modelSet = Get-ModelShardSet -ModelPath $modelPath
+
+    # LS OA-1 (M1): the header fingerprint narrows the candidates, the source pin decides.
+    $selection = Resolve-ProfileSelection -Catalog $catalog -ModelSet $modelSet -Root $root `
+                     -TemplateAllowed ([bool]$ExperimentalArchTemplate)
+    $derived = $null
+    $profile = $selection.profile
+    $outputDir = $null
+
+    # LS OA-1 - Codex r1 F2: the reordering below is DERIVED-ONLY. That branch has to resolve the
+    # output path and take the instance + output locks before its plan runs (the plan reads the
+    # output volume, and it decides what the following repack will write there), and it cannot take
+    # the profile lock any earlier because the derived profile id does not exist until the plan has
+    # run. The catalog branch keeps the v0.4 order exactly - bounds, CLI overrides, PATHS, then
+    # locks - so a run with an out-of-bounds override still terminates as fail_custom_args without
+    # having created the output directory or the lock file.
+    if ($selection.kind -ceq 'template') {
+        $outputDir = Resolve-OutputDirectory -ModelPath $modelPath
+        Set-FailureStage 'fail_instance_lock'
+        Acquire-LauncherLocks -OutputDir $outputDir
+        Set-FailureStage 'fail_model_path'
+        # Steps 2..5 of the derive-plan. Writes nothing; the confirmation that gates the first write
+        # is the same one the catalog path uses, further down.
+        $derived = Invoke-DerivePlan -Catalog $catalog -Root $root -ModelPath $modelPath `
+                       -OutputDir $outputDir -ModelSet $modelSet -Shas $selection.shas
+        $profile = $derived.profile
+        Add-ProfileLock -ProfileId ([string](Get-JsonValue -Obj $profile -Name 'profile_id'))
+    }
+    $profileId = [string](Get-JsonValue -Obj $profile -Name 'profile_id')
+
+    # Two different digests, on purpose.
+    #   $expectDigest binds STATE to this model+expectation (preset, probe record, sweep target key).
+    #                 For a catalog profile that is the catalog's approved expect hash; for a derived
+    #                 one it is the inventory digest, which is known at plan time and binds the
+    #                 actual tensor set rather than a file's bytes.
+    #   $expectPath   is where the seven-item gate's expect lives - the bundle for a catalog profile,
+    #                 the repack output directory for a derived one (never the bundle expects dir).
+    #   $lockId       is what the repacker writes into reference_lock: the profile id, or the
+    #                 arch-template marker.
+    if ($null -ne $derived) {
+        $expectDigest = [string](Get-JsonValue -Obj (Get-JsonValue -Obj $profile -Name 'derivation') -Name 'inventory_sha256')
+        $expectPath   = Get-DerivedExpectPath -OutputDir $outputDir
+        $lockId       = [string]$derived.lock_id
+    } else {
+        $expectDigest = ([string](Get-JsonValue -Obj $profile -Name 'expect_sha256')).ToLowerInvariant()
+        $expectPath   = Get-ExpectPath -Root $root -Catalog $catalog -Profile $profile
+        $lockId       = $profileId
+    }
+    $expectSha = $expectDigest
+    Write-Line ('[identify] profile {0} ({1} shard(s), {2} bytes)' -f $profileId, $modelSet.shards.Count, $modelSet.total_bytes)
+    # LS 11 (UI-1 3-a): identify succeeded, so this path is worth offering next time. Cache only -
+    # it is never read back as a gate input and a failure to write it is silent.
+    Add-RecentModel -Path $modelPath
+
+    $bounds = Get-JsonValue -Obj $profile -Name 'allowlist_bounds'
+    Set-FailureStage 'fail_custom_args'
+    $cliOverrides = Get-CliOverrides -Bounds $bounds
+
+    if ($null -eq $outputDir) { $outputDir = Resolve-OutputDirectory -ModelPath $modelPath }
+    Write-Diag -Kind 'PATHS' -Data @{ model = $modelPath; out = $outputDir; bundle = $root; expect = $expectPath
+                                      selection = $selection.kind; lock_id = $lockId }
+
+    # (4) locks stage 1: instance + profile + output. The effective-port lock is deliberately NOT
+    # taken here - the port is not final until preset and CLI overrides have been bound (R1-1).
+    # The derived branch has already taken all three above (see the note there).
+    if ($selection.kind -cne 'template') {
+        Set-FailureStage 'fail_instance_lock'
+        Acquire-LauncherLocks -ProfileId $profileId -OutputDir $outputDir
+    }
+
+    # (4b) LS 13-1 startup insertion point: warmstart mode + kv GC, straight after the exclusive
+    # locks and before any eligibility decision. hard-OFF returns without touching the kv tree.
+    Initialize-Warmstart -ProfileId $profileId -DerivedProfile ($null -ne $derived)
+
+    if ($script:ActionResolved -eq 'stop' -and $NonInteractive) {
+        Stop-Launcher 'cancelled_user' 'stop requested before start'
+    }
+    Assert-NotCancelledPreReady
+
+    # (5) .partial handling (LS 2)
+    Set-FailureStage 'fail_gate_verify'
+    $pm = Get-PartialMarkerState -OutputDir $outputDir
+    if ($pm.state -eq 'unknown') { Stop-Launcher 'fail_gate_verify' ('experts.bin.partial absence not provable - ' + $pm.reason) }
+    $needRepack = $true
+    if ($pm.state -eq 'present') {
+        Set-FailureStage 'cancelled_user'
+        Invoke-PartialCleanup -OutputDir $outputDir
+        $needRepack = $true
+    } else {
+        $have = $true
+        foreach ($n in @('experts.bin', 'manifest.json', 'verify_report.json')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $outputDir $n) -PathType Leaf)) { $have = $false }
+        }
+        $needRepack = (-not $have)
+    }
+
+    $preliminaryBudget = [long](Get-JsonValue -Obj $profile -Name 'min_budget_mb')
+    if ($cliOverrides.ContainsKey('budget_mb')) { $preliminaryBudget = [long]$cliOverrides['budget_mb'] }
+
+    # (6) preflight pass 1 - the disk decision that gates the repack. The authoritative RAM/port
+    # sizing runs again in step (10) once the effective config exists (R1-1).
+    # LS OA-1 step 6: this is also the derived path's resource gate, and it runs against the derived
+    # minimum that the plan just produced.
+    Set-FailureStage 'fail_resource'
+    $expectedBytes = [long](-1)
+    if ($null -ne $derived) { $expectedBytes = [long]$derived.expected_bytes }
+    $pre = Invoke-Preflight -OutputDir $outputDir -ExpectPath $expectPath -BudgetMb $preliminaryBudget `
+               -NeedsRepack $needRepack -ExpectedBytes $expectedBytes
+
+    # (7) plan + explicit confirmation, then probe + repack (first run only)
+    $probe = $null
+    if ($needRepack -or $Plan) {
+        Set-FailureStage 'fail_repack'
+        Write-Line ''
+        Write-Line '=== repack plan (--plan) ==='
+        if ($null -ne $derived) {
+            # The derived path already ran this exact plan, in arch-template mode, to obtain the
+            # slot geometry. Running it a second time would re-parse every shard header for an
+            # answer already in hand (26 s on the six-shard 397B set), so the captured text is
+            # printed instead - the user sees the same plan the derivation was built from.
+            Write-Line $derived.plan_text
+        } else {
+            # LS 11-6-b (UI-4): stage start line. The child writes nothing until it has parsed the
+            # headers, so without this the section header alone would sit there looking stalled.
+            Write-Line '[plan] running the repacker in --plan mode (header analysis, writes 0 bytes)...'
+            # R1-12: Invoke-Repacker fails closed on a non-zero / timed-out / unspawnable plan run,
+            # so the confirmation below is only ever reached with a complete plan.
+            $planRes = Invoke-Repacker -Catalog $catalog -Root $root -Profile $profile -ModelPath $modelPath -OutputDir $outputDir -PlanOnly $true
+            if ($planRes.text) { Write-Line $planRes.text }
+        }
+        Write-Line ('  repack cache directory : {0}' -f $outputDir)
+        Write-Line ('  free space on volume   : {0} MB' -f $pre.disk.free_mb)
+        Write-Line '  v1 has no resume: an interrupted repack restarts from the beginning.'
+        if ($null -ne $derived) {
+            Write-Line ('  {0}' -f $script:TEMPLATE_COPY_SENTENCE)
+            Write-Line '  This model is EXPERIMENTAL: no published measurement covers it.'
+        }
+    }
+    if ($needRepack) {
+        Set-FailureStage 'cancelled_user'
+        Assert-NotCancelledPreReady
+        # LS 11-7 a: this y/N sits right after the longest pre-repack silence (identify + preflight
+        # + --plan, ~1 minute) - a stale 'y'+Enter typed into that silence must not approve a repack
+        # nobody confirmed. Same no-op contract with stdin redirected.
+        $null = Clear-ConsoleInputQueue
+        if (-not (Confirm-User -Question 'Proceed with the repack now? [y/N] ')) {
+            Stop-Launcher 'cancelled_user' 'user declined the repack plan'
+        }
+        Set-FailureStage 'fail_repack'
+        $probe = Invoke-StartupProbe -OutputDir $outputDir
+        Write-ProbeBinding -SourceTag $sourceTag -ProfileId $profileId -ExpectDigest $expectSha -OutputDir $outputDir -Result $probe
+        # LS OA-1 step 6: the derived expect is written HERE, atomically, by the repacker itself
+        # (repack_experts.py:1509-1512) - after the resource gate above and after the confirmation.
+        Invoke-Repacker -Catalog $catalog -Root $root -Profile $profile -ModelPath $modelPath `
+            -OutputDir $outputDir -PlanOnly $false -ArchTemplate ($null -ne $derived) | Out-Null
+    } else {
+        # LS 12-1: a later run skips ONLY the repack. The stored scratch record is still read, but
+        # from here it is a diagnostic: since LS 12 the QD authority is the sweep in step (8b), and
+        # LS 12-1 states explicitly that a failed scratch tier plus a successful sweep recovers.
+        $bound = Read-ProbeBinding -SourceTag $sourceTag -ProfileId $profileId -ExpectDigest $expectSha -OutputDir $outputDir
+        if ($bound.ok) {
+            $probe = @{ ok = $true; mibps = $bound.mibps; qd_source = $bound.qd_source; provisional = $true }
+            Write-Line ('[probe] scratch sanity record from an earlier run ({0} MiB/s, provisional)' -f $bound.mibps)
+        } else {
+            $probe = $null
+            Write-Line ('[probe] no scratch sanity record ({0}); the QD sweep below is the measurement authority.' -f $bound.reason)
+        }
+        Write-Diag -Kind 'PROBE_SCRATCH_RECORD' -Data $bound
+    }
+
+    # (8) 7-item verify gate
+    Set-FailureStage 'fail_gate_verify'
+    # Gate item 6 compares reference_lock three ways, so it needs the two values the REPACKER wrote:
+    # the lock id and the hash of the expect it locked against. For a catalog profile both come from
+    # the catalog. For a derived profile the lock id is the arch-template marker and the hash is the
+    # real bytes of derived.expect.json in the output directory - re-hashed here rather than trusted
+    # from the plan, so a file that changed after the repack cannot pass.
+    $gateExpectSha = $expectSha
+    if ($null -ne $derived) {
+        $dh = Get-FileSha256Lower -Path $expectPath
+        if (-not $dh.ok) { Stop-Launcher 'fail_gate_verify' ('the derived expect could not be hashed - ' + $dh.reason) }
+        $gateExpectSha = $dh.sha
+    }
+    $gateInfo = Assert-VerifyGate -OutputDir $outputDir -ProfileId $lockId -ExpectSha $gateExpectSha
+    # WARMSTART A-4: the sidecar binding axes. The repack axis comes from the gate that just ran
+    # (manifest.json's real bytes), the engine axis from the bundle manifest the integrity gate
+    # already verified, and the model axis from the identified shard set.
+    Set-WarmstartBindings -Root $root -ManifestSha $gateInfo.manifest_sha256 -ModelSet $modelSet
+
+    # (8b) LS 12 QD sweep - the single measurement authority for the automatic QD default. It runs
+    # after the verify gate, on the sealed experts.bin, read-only. Every failure inside is
+    # non-terminal (degraded QD1 / conservative default, RS 5).
+    Set-FailureStage 'fail_gate_verify'
+    $sweep = Resolve-QdSweep -OutputDir $outputDir -SourceTag $sourceTag -ProfileId $profileId `
+                 -ExpectDigest $expectSha -ManifestSha256 $gateInfo.manifest_sha256 `
+                 -CheckedAt $gateInfo.checked_at -Profile $profile
+
+    # (9) prefetch decision + preset + effective config
+    Set-FailureStage 'fail_gate_catalog'
+    $prefetch = Resolve-EffectivePrefetch -Profile $profile -ProbeOk ([bool]$sweep.ok)
+    $qd = [int]$sweep.qd
+    if (-not $sweep.ok) { $qd = [int]$script:QD_DEGRADED }
+
+    Set-FailureStage 'fail_custom_args'
+    if ($ResetPreset) { Remove-UserPreset }
+    $preset = Read-UserPreset -SourceTag $sourceTag -ProfileId $profileId -ExpectDigest $expectSha -Bounds $bounds
+    $overrides = @{}
+    foreach ($k in $preset.overrides.Keys) { $overrides[$k] = $preset.overrides[$k] }
+    foreach ($k in $cliOverrides.Keys) { $overrides[$k] = $cliOverrides[$k] }
+
+    $config = Build-EffectiveConfig -Catalog $catalog -Profile $profile -Root $root -OutputDir $outputDir `
+                  -ModelPath $modelPath -Overrides $overrides -PrefetchDecision $prefetch -Qd $qd
+    $custom = Test-CustomProvenance -Overrides $overrides
+    $qdSource = Get-QdSource -Overrides $overrides -Sweep $sweep
+
+    # (10) LS 1-7 step 7: re-run sizing against the EFFECTIVE values, then reserve the effective
+    # port. A stored preset carrying a larger budget, a larger ctx or a different port must not be
+    # able to bypass the sizing and the lock that ran on the catalog defaults (R1-1).
+    $pre = Confirm-EffectiveSizing -OutputDir $outputDir -ExpectPath $expectPath -Config $config -Profile $profile
+
+    # (11) status + 3-choice loop
+    # LS OA-1: the three surface axes are fixed for the whole loop - the verify gate above has
+    # already decided copy integrity, and neither the inventory authority nor the serving validation
+    # can be changed by a custom edit.
+    $axes = Get-SurfaceAxes -Kind ([string]$selection.kind) -Profile $profile -CopyVerified $true
+    Write-Diag -Kind 'SURFACE_AXES' -Data $axes
+    while ($true) {
+        Show-Status -Profile $profile -Config $config -ProbeResult $probe -Custom $custom -RamVerdict $pre.ram `
+                    -Sweep $sweep -QdSource $qdSource -SurfaceAxes $axes
+        $choice = Read-MenuChoice
+        if ($choice -eq 'stop') { Stop-Launcher 'cancelled_user' 'user selected stop before start' }
+        if ($choice -eq 'custom') {
+            $overrides = Invoke-CustomEditor -Overrides $overrides -Bounds $bounds
+            $custom = Test-CustomProvenance -Overrides $overrides
+            Set-FailureStage 'fail_custom_args'
+            $config = Build-EffectiveConfig -Catalog $catalog -Profile $profile -Root $root -OutputDir $outputDir `
+                          -ModelPath $modelPath -Overrides $overrides -PrefetchDecision $prefetch -Qd $qd
+            # LS 12-1: a custom edit can only move the QD priority between user-override and the
+            # measured default - it never re-runs the sweep (one sweep per process, LS 12-4).
+            $qdSource = Get-QdSource -Overrides $overrides -Sweep $sweep
+            # every custom edit re-runs the same effective sizing + port reservation
+            $pre = Confirm-EffectiveSizing -OutputDir $outputDir -ExpectPath $expectPath -Config $config -Profile $profile
+            [void](Save-UserPreset -SourceTag $sourceTag -ProfileId $profileId -ExpectDigest $expectSha -Overrides $overrides)
+            continue
+        }
+        break
+    }
+    Assert-NotCancelledPreReady
+
+    $config = Complete-PreSpawnConfig -Catalog $catalog -Profile $profile -Root $root -OutputDir $outputDir `
+                  -ModelPath $modelPath -Overrides $overrides -PrefetchDecision $prefetch -Qd $qd `
+                  -Sweep $sweep -QdSource $qdSource -Custom $custom
+
+    # (11) start the server child
+    Set-FailureStage 'fail_server_start'
+    $rt = Get-JsonValue -Obj $catalog -Name 'runtime'
+    $serverExe = Join-Path $root ([string](Get-JsonValue -Obj $rt -Name 'server_exe'))
+    $logDir = Join-Path (Get-LauncherStateDir) 'logs'
+    if (-not (Test-Path -LiteralPath $logDir -PathType Container)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
+    $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
+    $srvOut = Join-Path $logDir ("server_{0}_out.log" -f $stamp)
+    $srvErr = Join-Path $logDir ("server_{0}_err.log" -f $stamp)
+
+    $script:LastServerPort = [int]$config.port
+    $script:LastServerConfig = $config
+    $sr = Start-OwnedChild -Exe $serverExe -Args0 $config.argv -EnvVars $config.env -WorkDir $root `
+              -StdOutPath $srvOut -StdErrPath $srvErr -NewProcessGroup $true -Role 'server'
+    if (-not $sr.ok) { Stop-Launcher 'fail_server_start' ('server start failed: ' + $sr.reason) }
+    $child = $sr.child
+    Write-Line ''
+    Write-Line ('[start] server pid {0}; waiting for health on http://{1}:{2}/health' -f $child.pid, $config.host, $config.port)
+
+    Wait-ForServerReady -Child $child -Config $config -ErrLog $srvErr
+    $script:ChildWasReady = $true
+    Write-Line ('[ready] server is ready on http://{0}:{1}' -f $config.host, $config.port)
+    Write-Diag -Kind 'READY' -Data @{ pid = $child.pid; port = $config.port }
+
+    # (11b) LS 13-1 ready-side insertion point: restore, then the A-4b ladder. A successful restore
+    # takes warmup ownership away from the launcher (A-3) - the generic warmup request would
+    # otherwise overwrite the prefix that was just restored into slot 0.
+    $wsRestore = Invoke-WarmstartRestore -Config $config
+    if ($wsRestore.recovery) {
+        $rec = Invoke-WarmstartRecoveryRestart -Config $config -ServerExe $serverExe -Root $root `
+                   -StdOutPath $srvOut -StdErrPath $srvErr
+        $child = $rec.child
+        $config = $rec.config
+        $srvErr = $rec.err_log
+        $script:LastServerConfig = $config
+        $wsRestore = @{ restored = $false; recovery = $true; n_restored = 0 }
+    }
+
+    # (12) RS 5 degraded branches: warmup and browser open are both best-effort and never terminal.
+    if ($wsRestore.restored) {
+        Write-Diag -Kind 'WARMUP_SKIPPED' -Data @{ reason = 'slot state restored (WARMSTART A-3): a launcher warmup would overwrite the restored prefix' }
+    } else {
+        Invoke-LauncherWarmup -Config $config
+    }
+    Open-BrowserBestEffort -Config $config -Catalog $catalog
+
+    # (13) smoke or interactive serve
+    if ($Smoke) {
+        Set-FailureStage 'fail_smoke'
+        $sm = Invoke-SmokeChecklist -Config $config -Catalog $catalog -Child $child -GateInfo $gateInfo
+        if (-not $sm.ok) { Stop-Launcher 'fail_smoke' ('smoke assertions failed: ' + ($sm.failures -join ', ')) }
+        return 'ok_smoke'
+    }
+
+    Set-FailureStage 'fail_runtime_exit'
+    Write-Line ''
+    Write-Line 'Server is running. Press Ctrl+C or Ctrl+Break, or type "stop" + Enter, to stop it.'
+    # UI-9: one echo state for the whole serving phase, shared by both loops below (only one of
+    # them ever runs). disabled=$true after a fault is the permanent off switch for this run.
+    $pfState = @{ next_line = 0; prev_n = $null; prev_p = $null; prev_task = $null; total_est = $null
+                  disabled = $false; last_check = [datetime]::MinValue }
+    if ($NonInteractive) {
+        $until = (Get-Date).AddSeconds($script:RunSecondsResolved)
+        while ((Get-Date) -lt $until) {
+            # LS 1-8 (b): after ready a console stop request means "run the graceful stop", not
+            # "cancel" - leaving the loop takes us into Complete-Teardown.
+            if (Test-CancelRequested) { Write-Line '[stop] console stop request received.'; break }
+            $ex = Test-ChildExited -Child $child
+            if ($ex.exited) { Stop-Launcher 'fail_runtime_exit' ('server exited unexpectedly (code=' + (Format-ExitCode $ex.code) + ')') }
+            Show-PrefillProgressTick -Child $child -State $pfState
+            # LS 13-8: the autosave tick. Self-contained and below its deadline it is a cheap return.
+            Invoke-AutosaveTick -Config $config
+            Start-Sleep -Milliseconds 250
+        }
+        return 'ok'
+    }
+    while ($true) {
+        if (Test-CancelRequested) { Write-Line '[stop] console stop request received.'; break }
+        $ex = Test-ChildExited -Child $child
+        if ($ex.exited) { Stop-Launcher 'fail_runtime_exit' ('server exited unexpectedly (code=' + (Format-ExitCode $ex.code) + ')') }
+        Show-PrefillProgressTick -Child $child -State $pfState
+        # LS 13-8: the same tick on the interactive path - one insertion per serving loop, no third
+        # copy of the condition table.
+        Invoke-AutosaveTick -Config $config
+        # V-2: this poll must not block, or none of the three checks above it ever runs again on a
+        # real console. See Get-ServeInputGate for the measurement and the branch table.
+        $ri = Read-ServeCommandLine
+        if ($ri.fault) { Start-Sleep -Milliseconds 500; continue }
+        $line = $ri.line
+        if ($null -ne $line) {
+            if ($line -eq 'stop' -or $line -eq 'q' -or $line -eq 'quit') { break }
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    return 'ok'
+}
+
+# ---- R1-10 degraded branches (RS 5: both are non-terminal, reason echoed) -------------------
+# R2-2: engine-side warmup is off in EVERY configuration ('--no-warmup' is unconditionally forced
+# into the effective argv by Build-EffectiveConfig). warmup=on therefore only turns on this
+# post-ready launcher request, which is the only warmup that can fail non-terminally.
+function Invoke-LauncherWarmup {
+    param($Config)
+    if ($Config.warmup -ne 'on') {
+        Write-Diag -Kind 'WARMUP_SKIPPED' -Data @{ reason = 'warmup off (RELEASE_SPEC 8 default)' }
+        return
+    }
+    $uri = ('http://{0}:{1}/v1/chat/completions' -f $Config.host, $Config.port)
+    $body = '{"model":"local","messages":[{"role":"user","content":"warmup"}],"max_tokens":1,"stream":false}'
+    $r = Invoke-HttpJson -Uri $uri -Method 'POST' -Body $body -TimeoutSec 300
+    if ($r.ok -and $r.status -eq 200) {
+        Write-Line '[warmup] launcher warmup request completed.'
+        Write-Diag -Kind 'WARMUP_OK' -Data @{ status = $r.status }
+        return
+    }
+    $reason = $r.reason
+    if (-not $reason) { $reason = ('status ' + $r.status) }
+    Write-Line ('[warmup] WARNING: warmup request failed (' + $reason + '); continuing without warmup (degraded, non-terminal).')
+    Write-Diag -Kind 'warmup_failed' -Data @{ reason = $reason }
+}
+
+function Open-BrowserBestEffort {
+    param($Config, $Catalog)
+    $webui = Test-JsonBooleanTrue (Get-JsonValue -Obj (Get-JsonValue -Obj $Catalog -Name 'runtime') -Name 'webui')
+    if (-not $webui) {
+        Write-Diag -Kind 'BROWSER_SKIPPED' -Data @{ reason = 'API-only bundle (runtime.webui=false)' }
+        return
+    }
+    if ($Smoke -or $NonInteractive) {
+        Write-Diag -Kind 'BROWSER_SKIPPED' -Data @{ reason = 'non-interactive or smoke run' }
+        return
+    }
+    $url = ('http://{0}:{1}/' -f $Config.host, $Config.port)
+    try {
+        Start-Process -FilePath $url -ErrorAction Stop | Out-Null
+        Write-Line ('[ui] opened ' + $url)
+        Write-Diag -Kind 'BROWSER_OPENED' -Data @{ url = $url }
+    } catch {
+        Write-Line ('[ui] WARNING: could not open a browser (' + $_.Exception.Message + '); the API stays available at ' + $url)
+        Write-Diag -Kind 'browser_open_failed' -Data @{ url = $url; reason = $_.Exception.Message }
+    }
+}
+
+function Complete-Teardown {
+    param([string] $PendingStatus)
+    $status = $PendingStatus
+    # R1-5: teardown itself must never be able to lose the final status line. Everything here is
+    # inside a guard; an internal teardown fault fails closed to fail_teardown.
+    try {
+        if ($null -ne $script:OwnedChild) {
+            $child = $script:OwnedChild
+            # LS 13-1 teardown insertion point: the save POST has to be answered BEFORE the stop
+            # signal goes out (A-2 (2)), so it sits immediately ahead of Stop-OwnedChildGraceful.
+            # The helper is fully self-contained - it never throws and never touches $status - so a
+            # save problem stays degraded and cannot be promoted into fail_teardown by the catch
+            # below. The teardown verdict further down is decided on its own facts only.
+            Invoke-WarmstartSave -Child $child -PendingStatus $PendingStatus -Config $script:LastServerConfig
+            $res = Stop-OwnedChildGraceful -Child $child -PortNumber ([int]$script:LastServerPort)
+            Close-OwnedChildHandles
+            # A-2 (8) recovery timing (2): a save whose response never arrived may still have had
+            # its .tmp written; now that the child is joined it can go.
+            Complete-WarmstartTeardownCleanup
+
+            # R1-6 / judgement (b): LS 5 makes teardown failure unconditional and top priority.
+            # Using the taskkill fallback, a failed CTRL_BREAK send, an exceeded grace period or a
+            # non-zero child exit during stop is a teardown failure no matter what the pending
+            # status was - the fallback never restores 'ok' and never preserves fail_smoke either.
+            $teardownFailed = $false
+            $why = ''
+            if ($res.taskkill_used)      { $teardownFailed = $true; $why = 'taskkill fallback was used' }
+            elseif ($res.ctrl_attempted -and -not $res.ctrl_sent) { $teardownFailed = $true; $why = 'CTRL_BREAK could not be delivered' }
+            elseif ($res.grace_exceeded) { $teardownFailed = $true; $why = 'graceful grace period exceeded' }
+            elseif ($res.stop_nonzero)   { $teardownFailed = $true; $why = 'child exited non-zero during stop' }
+            elseif (-not $res.child_gone) { $teardownFailed = $true; $why = 'child process still alive' }
+
+            if (-not $teardownFailed) {
+                # The listener condition only applies to a child that actually owned the port; a
+                # foreign listener the child never owned must not be attributed to our teardown.
+                $requestedStop = ($PendingStatus -eq 'ok' -or $PendingStatus -eq 'ok_smoke')
+                if ($script:ChildWasReady -and -not $res.listener_gone) {
+                    $teardownFailed = $true; $why = 'port listener still present'
+                }
+                # LS 1-8 (d): exit 0 additionally requires a graceful exit code 0.
+                if ((-not $teardownFailed) -and $requestedStop -and -not $res.graceful) {
+                    $teardownFailed = $true; $why = 'stop did not end in a graceful exit 0'
+                }
+            }
+
+            if ($teardownFailed) {
+                Write-Line ('[teardown] FAILED: ' + $why)
+                Write-Diag -Kind 'TEARDOWN_PROMOTED' -Data @{ from = $PendingStatus; reason = $why }
+                $status = 'fail_teardown'
+            } elseif ($res.pre_exited) {
+                Write-Line '[teardown] child had already exited; no cleanup action required.'
+            } else {
+                Write-Line '[teardown] child stopped gracefully; port released.'
+            }
+        }
+    } catch {
+        Write-Line ('[teardown] FAILED: internal teardown fault - ' + $_.Exception.Message)
+        Write-Diag -Kind 'TEARDOWN_FAULT' -Data @{ reason = $_.Exception.Message }
+        $status = 'fail_teardown'
+    }
+    # A-4b (5) recovery timing (3): this transaction's superseded generations, at the very end.
+    # Also covers the case where the teardown above faulted before the first cleanup call.
+    Complete-WarmstartTeardownCleanup
+    try { Release-AllLocks } catch { }
+    return $status
+}
+
+function Invoke-Launcher {
+    $status = $null
+    try {
+        $status = Invoke-LauncherMain
+    } catch {
+        $ex = $_.Exception
+        if ($null -ne $ex -and $ex.GetType().FullName -eq 'MoeLauncher.LauncherExit') {
+            $status = [string]$ex.Status
+            if ($ex.Message) { Write-Line ('[error] ' + $ex.Message) }
+        } else {
+            $msg = 'internal error'
+            if ($null -ne $ex) { $msg = $ex.Message }
+            Write-Line ('[error] ' + $msg)
+            Write-Diag -Kind 'INTERNAL_ERROR' -Data @{ message = $msg; stage = $script:FailureStage
+                                                       trace = [string]$_.ScriptStackTrace }
+            $status = $script:FailureStage
+        }
+    }
+    # R1-5: teardown runs inside its own guard. Complete-Teardown already fails closed internally;
+    # this second guard makes sure that even a fault in that guard still yields an enum, so the
+    # single "[moe-launcher] status=" line can never be lost.
+    try {
+        $status = Complete-Teardown -PendingStatus $status
+    } catch {
+        Write-Diag -Kind 'TEARDOWN_FAULT_OUTER' -Data @{ reason = $_.Exception.Message }
+        $status = 'fail_teardown'
+    }
+    # Defence in depth: if anything ever leaks extra pipeline output into the status, take the last
+    # emitted value rather than silently degrading a good run to fail_teardown.
+    if ($status -is [System.Array]) {
+        Write-Diag -Kind 'STATUS_MULTIVALUE' -Data @{ values = @($status | ForEach-Object { [string]$_ }) }
+        $status = @($status)[@($status).Count - 1]
+    }
+    if ($null -eq $status -or -not $script:STATUS_EXIT.Contains($status)) { $status = 'fail_teardown' }
+    return $status
+}
+
+# endregion
+
+# ============================================================================
+# region 20. ENTRY POINT
+# ============================================================================
+
+if (-not $LibraryMode) {
+    $final = Invoke-Launcher
+    Write-StatusHint -Status $final
+    Write-StatusLine -Status $final
+    exit (Get-StatusExitCode -Status $final)
+}
+
+# endregion

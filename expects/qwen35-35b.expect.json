@@ -1,0 +1,16 @@
+{
+ "expect_schema_version": "1.0",
+ "profile_id": "qwen35-35b",
+ "arch": "qwen35moe",
+ "n_layer": 40,
+ "n_expert": 256,
+ "n_expert_used": 8,
+ "routed_tensors": 120,
+ "expert_bytes_total": 19461570560,
+ "sources": [
+  {
+   "file_bytes": 22016023168,
+   "data_start": 10989696
+  }
+ ]
+}

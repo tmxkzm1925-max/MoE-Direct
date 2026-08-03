@@ -1,0 +1,36 @@
+{
+ "expect_schema_version": "1.0",
+ "profile_id": "qwen35-397b",
+ "arch": "qwen35moe",
+ "n_layer": 60,
+ "n_expert": 512,
+ "n_expert_used": 10,
+ "routed_tensors": 180,
+ "expert_bytes_total": 233538846720,
+ "sources": [
+  {
+   "file_bytes": 10943552,
+   "data_start": 10943537
+  },
+  {
+   "file_bytes": 49136153056,
+   "data_start": 13792
+  },
+  {
+   "file_bytes": 49735103552,
+   "data_start": 14400
+  },
+  {
+   "file_bytes": 49914377024,
+   "data_start": 14144
+  },
+  {
+   "file_bytes": 49654346688,
+   "data_start": 14272
+  },
+  {
+   "file_bytes": 45642707040,
+   "data_start": 13408
+  }
+ ]
+}

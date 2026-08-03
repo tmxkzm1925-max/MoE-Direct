@@ -1,0 +1,16 @@
+{
+ "expect_schema_version": "1.0",
+ "profile_id": "deepseek-v4-flash",
+ "arch": "deepseek4",
+ "n_layer": 43,
+ "n_expert": 256,
+ "n_expert_used": 6,
+ "routed_tensors": 129,
+ "expert_bytes_total": 147169738752,
+ "sources": [
+  {
+   "file_bytes": 156378344992,
+   "data_start": 5334496
+  }
+ ]
+}

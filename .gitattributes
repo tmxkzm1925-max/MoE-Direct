@@ -1,0 +1,3 @@
+launcher/** -text
+repacker/** -text
+expects/*.expect.json -text
