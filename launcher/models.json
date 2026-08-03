@@ -1,0 +1,356 @@
+{
+  "catalog_schema_version": 1,
+  "source_tag": "moe-direct-v0.2.1-src-32a97db0",
+  "runtime": {
+    "server_exe": "llama-server.exe",
+    "repacker_exe": "repacker/python/python.exe",
+    "repacker_argv": ["./repacker/repack_experts.py"],
+    "expects_dir": "expects",
+    "webui": false
+  },
+  "profiles": [
+    {
+      "profile_id": "qwen35-122b-nonextn",
+      "display_name": "Qwen3.5-122B-A10B Q4_K_M (execution scope, NextN excluded)",
+      "hf_repo": "bartowski/Qwen_Qwen3.5-122B-A10B-GGUF",
+      "hf_revision": "fec8b222a2eddc3346d6b6d7f7c85efea93cd6bf",
+      "routed_scope": "execution",
+      "expect_file": "qwen35-122b-nonextn.expect.json",
+      "expect_sha256": "882fdac06cf7d75c5d9944f6eb373a204667186cb96929dff605e5f7f9f9a800",
+      "identify": {
+        "arch": "qwen35moe",
+        "n_layer": 49,
+        "n_expert": 256,
+        "n_expert_used": 8
+      },
+      "min_budget_mb": 8192,
+      "prefetch_state": "validated",
+      "prefetch": { "k": 8, "n": 4 },
+      "gates": {
+        "format_validated": true,
+        "performance_validated": true
+      },
+      "reference_measurements": [
+        {
+          "model": "Qwen3.5-122B-A10B Q4_K_M (qwen35-122b-nonextn)",
+          "tier": "official",
+          "machine_storage": "reference host: Ryzen 7 7800X3D / DDR5 32GB / RTX 5080 16GB / Kioxia EXCERIA PLUS G4 PCIe Gen5 NVMe / Windows 11",
+          "budget_qd_prefetch": "budget 8192 MB / QD 8 / prefetch on (K=8 N=4)",
+          "workload_window": "GATE1_SERVE sustained decode, ctx 12288, 4 measured reps across 2 ON arms (warmup rep excluded)",
+          "observed_tok_s": "5.59-5.69"
+        }
+      ],
+      "allowlist_bounds": {
+        "port":      { "min": 1024, "max": 65535 },
+        "ctx":       { "min": 2048, "max": 262144 },
+        "threads":   { "min": 1,    "max": 64 },
+        "budget_mb": { "min": 8192, "max": 65536 },
+        "qd":        { "min": 1,    "max": 63 }
+      },
+      "defaults": {
+        "argv": [
+          "-ngl", "99",
+          "--n-cpu-moe", "49",
+          "-c", "12288",
+          "-t", "8",
+          "-b", "2048",
+          "-ub", "512",
+          "-fa", "on",
+          "-np", "1",
+          "--host", "127.0.0.1",
+          "--port", "8093",
+          "--no-webui",
+          "--no-warmup"
+        ],
+        "env": {}
+      }
+    },
+    {
+      "profile_id": "gpt-oss-120b",
+      "display_name": "gpt-oss-120b MXFP4",
+      "hf_repo": "ggml-org/gpt-oss-120b-GGUF",
+      "hf_revision": "8d158cefb5f175c6f8842bbd8f68eca54d951ab4",
+      "routed_scope": "all",
+      "expect_file": "gpt-oss-120b.expect.json",
+      "expect_sha256": "be127b3e27454eb369eeca253decf7eab1ac4964849a731d352ffe72d5be828e",
+      "identify": {
+        "arch": "gpt-oss",
+        "n_layer": 36,
+        "n_expert": 128,
+        "n_expert_used": 4
+      },
+      "min_budget_mb": 8192,
+      "prefetch_state": "reference-only",
+      "prefetch": null,
+      "gates": {
+        "format_validated": true,
+        "performance_validated": false
+      },
+      "reference_measurements": [],
+      "allowlist_bounds": {
+        "port":      { "min": 1024, "max": 65535 },
+        "ctx":       { "min": 2048, "max": 131072 },
+        "threads":   { "min": 1,    "max": 64 },
+        "budget_mb": { "min": 8192, "max": 65536 },
+        "qd":        { "min": 1,    "max": 63 }
+      },
+      "defaults": {
+        "argv": [
+          "-ngl", "99",
+          "--n-cpu-moe", "36",
+          "-c", "12288",
+          "-t", "8",
+          "-b", "2048",
+          "-ub", "512",
+          "-fa", "on",
+          "-np", "1",
+          "--host", "127.0.0.1",
+          "--port", "8093",
+          "--no-webui",
+          "--no-warmup"
+        ],
+        "env": {}
+      }
+    },
+    {
+      "profile_id": "qwen35-35b",
+      "display_name": "Qwen3.5-35B-A3B Q4_K_M",
+      "hf_repo": "unsloth/Qwen3.5-35B-A3B-GGUF",
+      "hf_revision": "bc014a17be43adabd7066b7a86075ff935c6a4e2",
+      "routed_scope": "all",
+      "expect_file": "qwen35-35b.expect.json",
+      "expect_sha256": "616eb096c272ecdc299166afea9c47ebf84f93ae10363c462c84c6c358262d83",
+      "identify": {
+        "arch": "qwen35moe",
+        "n_layer": 40,
+        "n_expert": 256,
+        "n_expert_used": 8
+      },
+      "min_budget_mb": 4096,
+      "prefetch_state": "disabled",
+      "prefetch": null,
+      "gates": {
+        "format_validated": true,
+        "performance_validated": false
+      },
+      "reference_measurements": [
+        {
+          "model": "Qwen3.5-35B-A3B Q4_K_M (qwen35-35b)",
+          "tier": "unofficial (function smoke)",
+          "machine_storage": "laptop: Acer Aspire Lite 16, Core i7-1355U / 16GB DDR5-4800 / HOGE H8A1 512GB NVMe / Windows 11",
+          "budget_qd_prefetch": "budget 4096 MB / QD 2 / prefetch off",
+          "workload_window": "CPU-only smoke (-ngl 0), ctx 4096, cold, first 48 generated tokens",
+          "observed_tok_s": "4.40"
+        }
+      ],
+      "allowlist_bounds": {
+        "port":      { "min": 1024, "max": 65535 },
+        "ctx":       { "min": 2048, "max": 262144 },
+        "threads":   { "min": 1,    "max": 64 },
+        "budget_mb": { "min": 4096, "max": 65536 },
+        "qd":        { "min": 1,    "max": 63 }
+      },
+      "defaults": {
+        "argv": [
+          "-ngl", "99",
+          "--n-cpu-moe", "40",
+          "-c", "4096",
+          "-t", "8",
+          "-b", "2048",
+          "-ub", "512",
+          "-fa", "on",
+          "-np", "1",
+          "--host", "127.0.0.1",
+          "--port", "8093",
+          "--no-webui",
+          "--no-warmup"
+        ],
+        "env": {}
+      }
+    },
+    {
+      "profile_id": "qwen35-397b",
+      "display_name": "Qwen3.5-397B-A17B Q4_K_M (6-shard)",
+      "hf_repo": "unsloth/Qwen3.5-397B-A17B-GGUF",
+      "hf_revision": "da33c16fa4440f831149fcf53b98a22bc07785e5",
+      "routed_scope": "all",
+      "expect_file": "qwen35-397b.expect.json",
+      "expect_sha256": "21b698ca0267724ceebbeb4255585dcb24eef9ad7d9d3bad6480833ef3d77f14",
+      "identify": {
+        "arch": "qwen35moe",
+        "n_layer": 60,
+        "n_expert": 512,
+        "n_expert_used": 10
+      },
+      "min_budget_mb": 8192,
+      "prefetch_state": "disabled",
+      "prefetch": null,
+      "gates": {
+        "format_validated": true,
+        "performance_validated": false
+      },
+      "reference_measurements": [
+        {
+          "model": "Qwen3.5-397B-A17B Q4_K_M (qwen35-397b)",
+          "tier": "unofficial (function smoke)",
+          "machine_storage": "reference host: Ryzen 7 7800X3D / DDR5 32GB / RTX 5080 16GB / Kioxia EXCERIA PLUS G4 PCIe Gen5 NVMe / Windows 11",
+          "budget_qd_prefetch": "budget 8192 MB / QD 8 / prefetch off",
+          "workload_window": "smoke sustained decode, ctx 12288, cold (page cache pre-cleared), 96 generated tokens",
+          "observed_tok_s": "1.99"
+        }
+      ],
+      "allowlist_bounds": {
+        "port":      { "min": 1024, "max": 65535 },
+        "ctx":       { "min": 2048, "max": 262144 },
+        "threads":   { "min": 1,    "max": 64 },
+        "budget_mb": { "min": 8192, "max": 65536 },
+        "qd":        { "min": 1,    "max": 63 }
+      },
+      "defaults": {
+        "argv": [
+          "-ngl", "99",
+          "--n-cpu-moe", "60",
+          "-c", "12288",
+          "-t", "8",
+          "-b", "2048",
+          "-ub", "512",
+          "-fa", "on",
+          "-np", "1",
+          "--host", "127.0.0.1",
+          "--port", "8093",
+          "--no-webui",
+          "--no-warmup"
+        ],
+        "env": {}
+      }
+    },
+    {
+      "profile_id": "kimi-k2.6-ram-447gb",
+      "display_name": "Kimi K2.6 447GB mixed-quant (deepseek2)",
+      "hf_repo": "baa-ai/Kimi-K2.6-RAM-447GB-GGUF",
+      "hf_revision": "1e8bc2c2c759db5b4bb783965129d4e1e9182bc6",
+      "routed_scope": "all",
+      "expect_file": "kimi-k2.6-ram-447gb.expect.json",
+      "expect_sha256": "fee9902ca2ed77b4b0c06be49ceb4463fe0ff1d5d42750ed43cae82f162681f6",
+      "identify": {
+        "arch": "deepseek2",
+        "n_layer": 61,
+        "n_expert": 384,
+        "n_expert_used": 8
+      },
+      "min_budget_mb": 10240,
+      "prefetch_state": "validated",
+      "prefetch": { "k": 8, "n": 4 },
+      "gates": {
+        "format_validated": true,
+        "performance_validated": false
+      },
+      "reference_measurements": [
+        {
+          "model": "Kimi K2.6 447GB mixed-quant (kimi-k2.6-ram-447gb)",
+          "tier": "unofficial (curiosity run, older staging binaries)",
+          "machine_storage": "reference host: Ryzen 7 7800X3D / DDR5 32GB / RTX 5080 16GB / Kioxia EXCERIA PLUS G4 PCIe Gen5 NVMe / Windows 11",
+          "budget_qd_prefetch": "budget 10240 MB / QD 8 / prefetch off",
+          "workload_window": "curiosity run, coherent English completion, decode steady state",
+          "observed_tok_s": "1.03"
+        },
+        {
+          "model": "Kimi K2.6 447GB mixed-quant (kimi-k2.6-ram-447gb)",
+          "tier": "live probe A (single run, 4-arm paired-cold, prefetch via env; not an official ABBA tier)",
+          "machine_storage": "reference host: Ryzen 7 7800X3D / DDR5 32GB / RTX 5080 16GB / Kioxia EXCERIA PLUS G4 PCIe Gen5 NVMe / Windows 11",
+          "budget_qd_prefetch": "budget 10240 MB / QD 8 / prefetch off vs K8/N4 vs K10/N4 vs K12/N7; -ngl 99 --n-cpu-moe 61 (dense on CUDA, VRAM 14886 / 16303 MiB, no OOM)",
+          "workload_window": "2026-07-31 run k26liveA_20260731T092057, 4 probes per arm, decode = mean of three 256-token evals",
+          "observed_tok_s": "off 0.96 / K8-N4 1.04 (x1.078) / K10-N4 1.03 / K12-N7 0.95 (slower than off); outputs byte-identical across all four arms"
+        },
+        {
+          "model": "Kimi K2.6 447GB mixed-quant (kimi-k2.6-ram-447gb)",
+          "tier": "live B ABBA (official pairing for the prefetch promotion; basis of prefetch_state=validated)",
+          "machine_storage": "reference host: Ryzen 7 7800X3D / DDR5 32GB / RTX 5080 16GB / Kioxia EXCERIA PLUS G4 PCIe Gen5 NVMe / Windows 11",
+          "budget_qd_prefetch": "budget 10240 MB / QD 8 / prefetch ON K8/N4 vs OFF, A-B-B-A arms, RAMMap before every arm, ISLC off; -ngl 99 --n-cpu-moe 61 (dense on CUDA)",
+          "workload_window": "2026-07-31 run k26liveB_20260731T213127, 4 probes x 800 predicted tokens per arm, adjacent-pair readout frozen before the run",
+          "observed_tok_s": "pair1 ON 991.3 vs OFF 1058.9 ms/tok (x1.068), pair2 ON 997.1 vs OFF 1052.5 ms/tok (x1.056); both pairs ON-favorable, outputs byte-identical across all four arms; prefetch relative gain only - NOT an official G sustained pass (gates.performance_validated stays false)"
+        }
+      ],
+      "allowlist_bounds": {
+        "port":      { "min": 1024,  "max": 65535 },
+        "ctx":       { "min": 2048,  "max": 262144 },
+        "threads":   { "min": 1,     "max": 64 },
+        "budget_mb": { "min": 10240, "max": 65536 },
+        "qd":        { "min": 1,     "max": 63 }
+      },
+      "defaults": {
+        "argv": [
+          "-ngl", "99",
+          "--n-cpu-moe", "61",
+          "-c", "12288",
+          "-t", "8",
+          "-b", "2048",
+          "-ub", "512",
+          "-fa", "on",
+          "-np", "1",
+          "--host", "127.0.0.1",
+          "--port", "8093",
+          "--no-webui",
+          "--no-warmup"
+        ],
+        "env": {}
+      }
+    },
+    {
+      "profile_id": "deepseek-v4-flash",
+      "display_name": "DeepSeek-V4-Flash-0731 MXFP4/Q8_0 (284B, 43L x 256E top-6)",
+      "hf_repo": "bullerwins/DeepSeek-V4-Flash-0731-GGUF",
+      "hf_revision": "ed48c7a2df419aaa01e325521cd6f93464969641",
+      "routed_scope": "all",
+      "expect_file": "deepseek-v4-flash.expect.json",
+      "expect_sha256": "b2be25b3d3739cdbf97aca583fc993070e8a98a75f1d4b1d7714eb6b6af1ab9b",
+      "identify": {
+        "arch": "deepseek4",
+        "n_layer": 43,
+        "n_expert": 256,
+        "n_expert_used": 6
+      },
+      "min_budget_mb": 8192,
+      "prefetch_state": "disabled",
+      "prefetch": null,
+      "gates": {
+        "format_validated": true,
+        "performance_validated": false
+      },
+      "reference_measurements": [
+        {
+          "model": "DeepSeek-V4-Flash-0731 MXFP4_MOE-Q8_0 (deepseek-v4-flash)",
+          "tier": "probe",
+          "machine_storage": "reference host: Ryzen 7 7800X3D / DDR5 32GB / RTX 5080 16GB / Kioxia EXCERIA PLUS G4 PCIe Gen5 NVMe / Windows 11",
+          "budget_qd_prefetch": "budget 8192 MB / QD 8 / prefetch disabled (observe requalified; replay/policy not run)",
+          "workload_window": "smoke, ctx 8192, 4 probes (1x32 + 3x256 tokens), sustained decode; boot-to-listening 8.07 s; byte-hit 51.5% (decode read 1.673 GB/token vs 3.449 GB cold demand)",
+          "observed_tok_s": "3.13-3.28"
+        }
+      ],
+      "allowlist_bounds": {
+        "port":      { "min": 1024, "max": 65535 },
+        "ctx":       { "min": 2048, "max": 131072 },
+        "threads":   { "min": 1,    "max": 64 },
+        "budget_mb": { "min": 8192, "max": 65536 },
+        "qd":        { "min": 1,    "max": 63 }
+      },
+      "defaults": {
+        "argv": [
+          "-ngl", "99",
+          "--n-cpu-moe", "43",
+          "-c", "8192",
+          "-t", "8",
+          "-b", "2048",
+          "-ub", "512",
+          "-fa", "on",
+          "-np", "1",
+          "--host", "127.0.0.1",
+          "--port", "8093",
+          "--no-webui",
+          "--no-warmup"
+        ],
+        "env": {}
+      }
+    }
+  ]
+}

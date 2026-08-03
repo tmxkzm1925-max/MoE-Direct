@@ -639,7 +639,10 @@ The launcher, its self-test suite, the repacker and the expectation files are pu
 repository, and the shipped copies are the same bytes: `launcher/Start-MoeDirect.ps1`,
 `launcher/Start-MoeDirect.cmd`, `repacker/repack_experts.py` and the eight `expects/*.expect.json`
 files are byte-identical to the copies inside the release zip (verified by SHA-256 at publish
-time). The launcher's own test suite (925 checks as of v0.2.1) is not yet published: it depends
+time). `launcher/models.json` is the catalog the launcher consumes, exactly as the zip resolves
+it - it is where each profile's `expect_sha256` pin lives, so the binding between the launcher and
+the expectation files can be audited end to end. The launcher's own test suite (925 checks as of
+v0.2.1) is not yet published: it depends
 on fixture files that need to be packaged for standalone use, and it will follow in a later
 release. The engine is a patched llama.cpp build and currently ships as
 binaries sealed by the bundle's SHA manifest; the patch series against the pinned upstream commit
