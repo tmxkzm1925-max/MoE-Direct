@@ -757,16 +757,16 @@ Uninstalling completely = delete all four. Your GGUFs are yours and are never to
 
 The launcher, the repacker and the expectation files are published in this
 repository, and the shipped copies are the same bytes: `launcher/Start-MoeDirect.ps1`,
-`launcher/Start-MoeDirect.cmd`, `repacker/repack_experts.py` and the eight `expects/*.expect.json`
+`launcher/Start-MoeDirect.cmd`, `repacker/repack_experts.py` and the nine `expects/*.expect.json`
 files are byte-identical to the copies inside the release zip (verified by SHA-256 at publish
-time); a ninth expectation file (`minimax-m27`) ships in this repository only, so the repacker's
-self-test passes from a checkout - see [repacker/README.md](repacker/README.md) for why the zip
-differs. `launcher/models.json` is the catalog the launcher consumes, exactly as the zip resolves
+time). As of v0.2.2 the zip carries all nine, so the repacker's self-test passes from a checkout
+and from the zip alike - 65/65, measured on the assembled bundle; the v0.2.1 zip's 63/64 was a
+known issue of that bundle and this closes it - see [repacker/README.md](repacker/README.md). `launcher/models.json` is the catalog the launcher consumes, exactly as the zip resolves
 it - it is where each profile's `expect_sha256` pin lives, so the binding between the launcher and
 the expectation files can be audited end to end. What runs from a plain checkout: the repacker
 does (its `repacker/expects/` catalog ships in place - see [repacker/README.md](repacker/README.md));
-the launcher does not, since it needs the engine binaries and bundle manifest from the zip. The launcher's own test suite (925 checks as of
-v0.2.1) is not yet published: it depends
+the launcher does not, since it needs the engine binaries and bundle manifest from the zip. The launcher's own test suite (978 checks as of
+v0.2.2, all passing on the shipped launcher) is not yet published: it depends
 on fixture files that need to be packaged for standalone use, and it will follow in a later
 release. The engine is a patched llama.cpp build; the binaries are sealed by
 the bundle's SHA manifest, and the full engine delta is published in [`patches/`](patches/) as a
