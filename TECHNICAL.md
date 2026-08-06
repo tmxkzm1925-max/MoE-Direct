@@ -398,8 +398,8 @@ separate thing and is reported in its own section above.
 
 `GATE`, and measured ahead of its own release. Quantizing the KV cache to `q8_0` buys memory back,
 and it is worth nothing if it quietly degrades the model, so it went behind a measured gate
-instead of behind a switch. The gate passed. The switch that would let you turn it on is v0.2.2
-work and is **not** in the v0.2.1 bundle, so what follows is a published measurement rather than a
+instead of behind a switch. The gate passed. The switch that would let you turn it on is queued
+for v0.2.3 and is **not** in this bundle, so what follows is a published measurement rather than a
 feature you can use yet.
 
 | Statistic | `q8_0` KV against the f16 arm |
@@ -507,7 +507,9 @@ checkpoints. The change gate compares reported token count, not a content hash.
 
 Two things, and both are written the way the techniques at the top of this file are: the problem
 each exists to solve, what it does about it, how that behaves while you are using it, and what was
-actually measured. `GATE` keeps the meaning it has in the section above.
+actually measured. `GATE` keeps the meaning it has in the section above. One attribution to be
+exact about: the official paired measurement in the table above was taken on the v0.2.1 engine
+binary, and no new pair has been run on the v0.2.2 binary.
 
 ### Warm-up file precompute
 
