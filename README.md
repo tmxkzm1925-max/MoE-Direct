@@ -36,7 +36,7 @@ and the experimental arch-template path that serves a GGUF the catalog does not 
 `q8_0` opt-in switch and the DeepSeek-V4 prefetch depth search moved to the next release; the
 working queue lives in [Model support roadmap](#model-support-roadmap).
 
-> ### Where this is going: v1.0
+> ### Where this is going: v0.3
 > **Four workstreams are already running toward it, and none of them is "more catalog entries".**
 > A prefill path that reads each expert **once per request instead of once per token** - the
 > cheapest form of it, with zero engine changes, already measured about **3x** in an internal
