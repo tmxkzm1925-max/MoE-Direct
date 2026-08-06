@@ -200,6 +200,22 @@ $script:PRESET_ALLOWLIST_KEYS  = @('port', 'ctx', 'threads', 'warmup', 'budget_m
 # Transparency for these keys is carried by their own status line instead (the 'kv :' line).
 $script:PERF_NEUTRAL_OVERRIDE_KEYS = @('warmstart')
 
+# ---------------------------------------------------------------------------
+# WARMFILE_DESIGN v0.2 section 1 - the third value the single 'warmup' key accepts.
+# No new setting key: 'off' / 'on' / 'file:<path>' are three modes of the one key that already
+# travels the CLI / stored preset / interactive custom layers, with the priority rule unchanged.
+# Only the PREFIX is case-insensitive; the path after it is kept exactly as the user wrote it.
+# ---------------------------------------------------------------------------
+$script:WARMUP_FILE_PREFIX = 'file:'
+# The warmfile request is a full cold prefill of the whole file, so it is bounded far above the
+# generic one-token warmup's 300 s. Measured anchor, 1st source
+# bench_results/g2/g2_3/srv_err_20260719-063645.log:21 - a real run reported
+# "prompt processing, n_tokens = 2048, progress = 0.33, t = 277.07 s / 7.39 tokens per second",
+# i.e. an ordinary few-thousand-token file alone reaches 300 s. Still bounded: a server that never
+# answers cannot hold the launcher for ever, and a timeout is a degraded, non-terminal branch like
+# every other warmup failure (RS 5).
+$script:WARMFILE_TIMEOUT_SEC = 1800
+
 # LS 2 : the four artifacts deleted when a .partial marker is found.
 $script:PARTIAL_DELETE_SET = @('experts.bin.partial', 'experts.bin', 'manifest.json', 'verify_report.json')
 
@@ -4457,8 +4473,39 @@ function Get-BoundPair {
     return @{ min = [long](Get-JsonValue -Obj $b -Name 'min'); max = [long](Get-JsonValue -Obj $b -Name 'max') }
 }
 
+# WARMFILE_DESIGN v0.2 section 1. Returns the path when a warmup value selects the warmfile mode,
+# $null otherwise. ONE rule serves both users of it - the allowlist validator below and the
+# post-ready dispatcher - so a value that validated as a warmfile can never dispatch as a generic
+# warmup. The prefix is matched case-insensitively; nothing else about the value is touched, because
+# the remainder is a path: lower-casing it would corrupt a case-sensitive share path and would stop
+# the stored preset from round-tripping what the user typed.
+function Get-WarmupFilePath {
+    param([string] $Value)
+    $v = [string]$Value
+    $p = $script:WARMUP_FILE_PREFIX
+    if ($v.Length -le $p.Length) { return $null }
+    if ($v.Substring(0, $p.Length).ToLowerInvariant() -cne $p) { return $null }
+    return $v.Substring($p.Length)
+}
+
 function Test-OverrideValue {
     param([string] $Key, [string] $Value, $Bounds)
+    # WARMFILE_DESIGN v0.2 section 1: the warmfile mode is decided BEFORE the on/off branch, because
+    # that branch lower-cases and trims its input, and neither may be done to a path. A bare 'file:'
+    # with nothing after it is not a mode - it falls through and is rejected as a bad value exactly
+    # like 'maybe' (a value-shape violation on the settings surface, not a runtime warmup failure).
+    # r1 F1: leading whitespace is skipped ONLY to find the prefix. Everything after 'file:' is taken
+    # byte for byte - a full Trim() would also eat TRAILING whitespace, and whitespace (including
+    # U+00A0, which Char.IsWhiteSpace accepts) is legal in a Windows file name and is in neither
+    # GetInvalidFileNameChars() nor GetInvalidPathChars(). Trimming it would silently point the run
+    # at a different file, or degrade it to warmup_failed, on all three layers at once.
+    if ($Key -eq 'warmup') {
+        $raw = [string]$Value
+        $lead = 0
+        while ($lead -lt $raw.Length -and [char]::IsWhiteSpace($raw[$lead])) { $lead = $lead + 1 }
+        $wf = Get-WarmupFilePath -Value $raw.Substring($lead)
+        if ($null -ne $wf) { return @{ ok = $true; value = ($script:WARMUP_FILE_PREFIX + $wf) } }
+    }
     # LS 13-8: 'autosave' is on | off | <minutes>, so it deliberately does NOT reuse the warmup
     # on/true/1 spellings: '1' has to mean one minute, not "on". Everything else about the discipline
     # is identical (raw string in, normalised value out, rejection = fail_custom_args or an
@@ -4484,6 +4531,7 @@ function Test-OverrideValue {
         $v = ([string]$Value).Trim().ToLowerInvariant()
         if ($v -eq 'on' -or $v -eq 'true' -or $v -eq '1')  { return @{ ok = $true; value = 'on' } }
         if ($v -eq 'off' -or $v -eq 'false' -or $v -eq '0') { return @{ ok = $true; value = 'off' } }
+        if ($Key -eq 'warmup') { return @{ ok = $false; reason = "warmup must be 'on', 'off' or 'file:<path>'" } }
         return @{ ok = $false; reason = ($Key + " must be 'on' or 'off'") }
     }
     $n = [long]0
@@ -6603,9 +6651,12 @@ function Invoke-CustomEditor {
         if ($Overrides.ContainsKey($k)) { $cur = [string]$Overrides[$k] }
         $ans = Read-UserLine -Prompt ('  ' + $k + ' [' + $cur + ']: ')
         if ($null -eq $ans) { continue }
-        $ans = $ans.Trim()
-        if ($ans.Length -eq 0) { continue }
-        $v = Test-OverrideValue -Key $k -Value $ans -Bounds $Bounds
+        # r1 F1: "was anything typed at all" is decided on a TRIMMED COPY, but the value handed to
+        # the validator stays the raw line. Trailing whitespace is legal in a Windows path, so
+        # trimming here would corrupt a warmup 'file:<path>' value before it is ever parsed. Nothing
+        # else changes: every branch of Test-OverrideValue already trims its own input.
+        if (([string]$ans).Trim().Length -eq 0) { continue }
+        $v = Test-OverrideValue -Key $k -Value ([string]$ans) -Bounds $Bounds
         if (-not $v.ok) {
             # LS 5: interactive violations re-loop, they never terminate.
             Write-Line ('    rejected: ' + $v.reason)
@@ -8676,11 +8727,7 @@ function Invoke-LauncherMain {
     }
 
     # (12) RS 5 degraded branches: warmup and browser open are both best-effort and never terminal.
-    if ($wsRestore.restored) {
-        Write-Diag -Kind 'WARMUP_SKIPPED' -Data @{ reason = 'slot state restored (WARMSTART A-3): a launcher warmup would overwrite the restored prefix' }
-    } else {
-        Invoke-LauncherWarmup -Config $config
-    }
+    Invoke-ReadyWarmup -Config $config -Restore $wsRestore
     Open-BrowserBestEffort -Config $config -Catalog $catalog
 
     # (13) smoke or interactive serve
@@ -8735,11 +8782,30 @@ function Invoke-LauncherMain {
 }
 
 # ---- R1-10 degraded branches (RS 5: both are non-terminal, reason echoed) -------------------
+# LS 13-1 / WARMSTART A-3: the ready-side warmup decision. It is a function of its own so that the
+# rule "a successful restore owns the prefix, therefore the launcher does not warm up" is executed
+# by the selftest instead of by a second copy of the condition (WARMFILE_DESIGN gate 1: restore
+# success -> 0 POSTs, recovery-cold -> exactly 1 POST). Behaviour and the skip reason string are
+# the v0.4 ones, unchanged.
+function Invoke-ReadyWarmup {
+    param($Config, $Restore)
+    if ($Restore.restored) {
+        Write-Diag -Kind 'WARMUP_SKIPPED' -Data @{ reason = 'slot state restored (WARMSTART A-3): a launcher warmup would overwrite the restored prefix' }
+        return
+    }
+    Invoke-LauncherWarmup -Config $Config
+}
+
 # R2-2: engine-side warmup is off in EVERY configuration ('--no-warmup' is unconditionally forced
 # into the effective argv by Build-EffectiveConfig). warmup=on therefore only turns on this
 # post-ready launcher request, which is the only warmup that can fail non-terminally.
+# WARMFILE_DESIGN v0.2 section 1: 'file:<path>' is a THIRD mode of the same key and takes a separate
+# branch - it must not be re-wrapped by the chat template, so it never reaches the generic request
+# built below.
 function Invoke-LauncherWarmup {
     param($Config)
+    $wf = Get-WarmupFilePath -Value ([string]$Config.warmup)
+    if ($null -ne $wf) { Invoke-LauncherWarmfile -Config $Config -RawPath $wf; return }
     if ($Config.warmup -ne 'on') {
         Write-Diag -Kind 'WARMUP_SKIPPED' -Data @{ reason = 'warmup off (RELEASE_SPEC 8 default)' }
         return
@@ -8756,6 +8822,130 @@ function Invoke-LauncherWarmup {
     if (-not $reason) { $reason = ('status ' + $r.status) }
     Write-Line ('[warmup] WARNING: warmup request failed (' + $reason + '); continuing without warmup (degraded, non-terminal).')
     Write-Diag -Kind 'warmup_failed' -Data @{ reason = $reason }
+}
+
+# WARMFILE_DESIGN v0.2 section 1 - every warmfile failure is degraded and non-terminal (RS 5
+# lineage): missing file, empty file, context overflow, timeout and HTTP error all land here and
+# none of them may end the run. The path lives in the diagnostic record only; the console line
+# carries the reason.
+function Write-WarmfileFailed {
+    param([string] $Reason, [string] $File = $null, $Bytes = $null)
+    Write-Line ('[warmup] WARNING: warmup file precompute failed (' + $Reason + '); continuing without warmup (degraded, non-terminal).')
+    $data = [ordered]@{ reason = $Reason }
+    if ($File) { $data['file'] = $File }
+    if ($null -ne $Bytes) { $data['bytes'] = [long]$Bytes }
+    Write-Diag -Kind 'warmup_failed' -Data $data
+}
+
+# JSON string serialiser for the warmfile request body. Deliberately NOT ConvertTo-KvJsonString:
+# that one is the input to a stored binding hash, so the two must stay free to change independently.
+# The escape rule is the same and is chosen for a second reason here - every character above ASCII
+# 126 becomes \uXXXX, so the request body is pure ASCII and cannot be altered by whatever encoding
+# Invoke-WebRequest picks for a string body on PS 5.1. Newlines, tabs and CR are covered by the same
+# rule, which is what keeps a multi-line prompt file byte-exact on the wire.
+function ConvertTo-WarmfileJsonString {
+    param([string] $Value)
+    $sb = New-Object System.Text.StringBuilder
+    [void]$sb.Append('"')
+    foreach ($ch in ([string]$Value).ToCharArray()) {
+        $c = [int][char]$ch
+        if ($ch -eq '"')  { [void]$sb.Append('\"'); continue }
+        if ($ch -eq '\')  { [void]$sb.Append('\\'); continue }
+        if ($c -lt 32 -or $c -gt 126) { [void]$sb.Append('\u'); [void]$sb.Append($c.ToString('x4')); continue }
+        [void]$sb.Append($ch)
+    }
+    [void]$sb.Append('"')
+    return $sb.ToString()
+}
+
+# N is the SERVER's own count and is never estimated (WARMFILE_DESIGN v0.2 section 1).
+# 1st sources, llama.cpp b10057:
+#   tools/server/server.cpp:233            POST /completion -> routes.post_completions
+#   tools/server/server-context.cpp:4731-4740  post_completions passes TASK_RESPONSE_TYPE_NONE,
+#                                          i.e. the non-OAI result shape below
+#   tools/server/server-task.cpp:364,373   to_json_non_oaicompat emits {"tokens_evaluated", n_prompt_tokens}
+#   tools/server/server-context.cpp:2150   res->n_prompt_tokens = slot.task->n_tokens()
+#                                          = the token count this prompt rendered into (cached + new)
+#   tools/server/server-task.cpp:240-244   timings carry {"cache_n", cache_n} and {"prompt_n", prompt_n}
+#   tools/server/server-context.cpp:555,557 cache_n = n_prompt_tokens_cache (reused),
+#                                          prompt_n = n_prompt_tokens_processed (newly evaluated)
+#   tools/server/tests/unit/test_completion.py:659  the engine's own test asserts
+#                                          timings["prompt_n"] + timings["cache_n"] == n_prompt
+# so tokens_evaluated is the primary field and prompt_n + cache_n is the same number.
+# NOTE 'tokens_cached' is NOT part of any sum here (r1 F2 corrects the earlier N+1 wording):
+#   server-context.cpp:2152  res->n_tokens_cached = slot.prompt.n_tokens()
+# is the slot's WHOLE prompt residency, not a disjoint half of the prompt - only prompt_n / cache_n
+# partition it. For this request shape it is exactly N, not N+1: with n_predict=1 the first sampled
+# token trips the budget stop (server-context.cpp:400 has_budget, :1918 STOP_TYPE_LIMIT), so
+# process_token returns false and send_final_response runs immediately (:3853-3856). The sampled
+# token is only appended to slot.prompt by handle_last_sampled_token (:456, push_back at :488),
+# which belongs to the NEXT decode iteration and is never reached. Adding tokens_cached to
+# tokens_evaluated would therefore count the same N tokens twice.
+function Get-WarmfileTokenCount {
+    param([string] $Body)
+    $j = ConvertFrom-JsonStrict -Text $Body
+    if (-not $j.ok) { return $null }
+    $te = Get-JsonValue -Obj $j.value -Name 'tokens_evaluated'
+    if (Test-JsonNonNegativeInteger $te) { return [long]$te }
+    $tm = Get-JsonValue -Obj $j.value -Name 'timings'
+    $pn = Get-JsonValue -Obj $tm -Name 'prompt_n'
+    $cn = Get-JsonValue -Obj $tm -Name 'cache_n'
+    if ((Test-JsonNonNegativeInteger $pn) -and (Test-JsonNonNegativeInteger $cn)) { return ([long]$pn + [long]$cn) }
+    return $null
+}
+
+# WARMFILE_DESIGN v0.2 section 1: one synchronous request, sent to /completion so the server
+# tokenises the file text as given. The chat endpoint would wrap it in the model's chat template and
+# the precomputed tokens would then not be a prefix of what the client's first request renders.
+function Invoke-LauncherWarmfile {
+    param($Config, [string] $RawPath)
+    # R1-8 rule: the child runs with the bundle root as its working directory, so a relative path
+    # given to the launcher is resolved HERE, against the launcher's own working directory.
+    $file = [string]$RawPath
+    try {
+        if (-not [System.IO.Path]::IsPathRooted($file)) { $file = Join-Path (Get-Location).ProviderPath $file }
+        $file = [System.IO.Path]::GetFullPath($file)
+    } catch {
+        Write-WarmfileFailed -Reason ('warmup file path is not usable: ' + $_.Exception.Message)
+        return
+    }
+    $b = Read-FileBytesStrict -Path $file
+    if (-not $b.ok) { Write-WarmfileFailed -Reason ('warmup file could not be read: ' + $b.reason) -File $file; return }
+    $t = ConvertFrom-Utf8Strict -Bytes $b.bytes
+    if (-not $t.ok) { Write-WarmfileFailed -Reason ('warmup file is not valid UTF-8: ' + $t.reason) -File $file -Bytes $b.bytes.Length; return }
+    $text = [string]$t.text
+    if ($text.Length -eq 0) {
+        Write-WarmfileFailed -Reason 'warmup file has no text to precompute' -File $file -Bytes $b.bytes.Length
+        return
+    }
+
+    $body = '{"prompt":' + (ConvertTo-WarmfileJsonString -Value $text) +
+            ',"cache_prompt":true,"n_predict":1,"stream":false}'
+    $uri = ('http://{0}:{1}/completion' -f $Config.host, $Config.port)
+    # LS 11 UI-4 lineage (no silent window): this is a full cold prefill and can run for minutes, so
+    # the stage announces itself before it blocks. Display only - the path is not on this line.
+    Write-Line ('[warmup] precomputing the warmup file prefix ({0} bytes); this runs once and can take minutes.' -f $b.bytes.Length)
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    $r = Invoke-HttpJson -Uri $uri -Method 'POST' -Body $body -TimeoutSec $script:WARMFILE_TIMEOUT_SEC
+    $sw.Stop()
+    if (-not ($r.ok -and $r.status -eq 200)) {
+        $reason = $r.reason
+        if (-not $reason) { $reason = ('status ' + $r.status) }
+        Write-WarmfileFailed -Reason ('warmup file request failed: ' + $reason) -File $file -Bytes $b.bytes.Length
+        return
+    }
+    $n = Get-WarmfileTokenCount -Body $r.body
+    if ($null -eq $n) {
+        Write-WarmfileFailed -Reason 'warmup file response carried no server token count (no value is estimated)' `
+            -File $file -Bytes $b.bytes.Length
+        return
+    }
+    # WARMFILE_DESIGN v0.2 section 1, fixed wording. The launcher is not a proxy and never sees the
+    # client's own request, so it states what it precomputed and hands the verification to the user.
+    # The path is deliberately absent from this line; it lives in the WARMFILE_OK record.
+    Write-Line ('[warmup] Precomputed {0} tokens. The launcher cannot observe client reuse; check the first response timings.cache_n (expected close to {0} (tokenizer boundaries and cache checkpoints may re-evaluate a small tail)).' -f $n)
+    Write-Diag -Kind 'WARMFILE_OK' -Data @{ n_tokens = [long]$n; elapsed_ms = [long]$sw.Elapsed.TotalMilliseconds
+                                            file = $file; bytes = [long]$b.bytes.Length }
 }
 
 function Open-BrowserBestEffort {
