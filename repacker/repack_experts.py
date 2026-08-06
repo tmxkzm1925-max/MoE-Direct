@@ -149,6 +149,16 @@ EXPECTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'expects'
 #   deepseek2 : `leading_dense_block_count..block_count-1` separate 3 weight · bias 없음 ·
 #               mixed-quant 는 텐서별 동결 QUANT_TRAITS 검사로만
 # 규칙 개정 = version 증가(= derived_from 문자열 변경 = 소비자 재승인 대상).
+#
+# ★M5 원자 활성화 토큰(OPEN_ARCH_DESIGN.md v0.2 §4 · OPENARCH_B_SPEC_DRAFT v0.2 §2-5 D2).
+# 리패커·엔진·런처가 **같은 문자열**을 지녀야 v0.2.1 번들이 조립된다(셋 중 하나라도 부재/불일치
+# = 조립 실패). 다른 두 축의 실물: 엔진 `ggml-moe-direct.cpp` OPEN_ARCH_TEMPLATE_ABI_STR ·
+# 런처 `Start-MoeDirect.ps1` $script:OPEN_ARCH_TEMPLATE_ABI.
+# ★이 상수는 **선언뿐**이다 — 이 파일의 어떤 동작도 참조하지 않는다(대조 주체는 M5 조립기
+# make_bundle.ps1). ARCH_TEMPLATES 행에는 넣지 않는다(B스펙 r2 소비자 분리: catalog 행은
+# Gate G 전용 · ABI 필드는 M5 조립기 전용).
+OPEN_ARCH_TEMPLATE_ABI = 'open-arch-template/1'
+
 ARCH_TEMPLATES = {
     'gpt-oss':   {'version': '1', 'weight_kinds': ('gate', 'up', 'down'),
                   'bias': 'required',  'layer_rule': 'all',           'nextn': 'forbidden'},
@@ -174,9 +184,11 @@ _EXPERT_LIKE_RE = re.compile(r'exps|shexp|expert|exp_probs|gate_inp', re.I)
 # 동결 비-routed expert 관련 텐서 허용표(§0 상주 유지 대상). ★**실측 관측형만** 등재한다 —
 # 실물 헤더 전수 대조(26-08-02 · bench_results/g5/gguf_map_{dsv4flash,k26,minimax_m27,
 # mistral4_s1,s2,qwen122_s1,s2,qwen397_s2..s6}.json + bench/laptop_kit/qwen35b_map.json)에서
-# 관측된 전체 집합은 다음 4형태뿐이다(gpt-oss 는 이 계열 0종):
+# 관측된 전체 집합은 다음 5형태다(★26-08-03 정정: gpt-oss 실물 20B[24층]·120B[36층] 헤더
+# 전수에서 ffn_gate_inp.bias[n_expert] F32 관측 — 구 "gpt-oss 는 이 계열 0종" 문구 반증.
+# M5 preflight fail-close 가 설계 의도대로 적발·심의 후 등재[사용자 승인 26-08-03]):
 #   ffn_{gate,up,down}_shexp.weight · ffn_gate_inp.weight · ffn_gate_inp_shexp.weight ·
-#   exp_probs_b.bias
+#   exp_probs_b.bias · ffn_gate_inp.bias
 # ★D6 수리(26-08-02): 구 표는 미관측인 `ffn_gate_up_shexp.*` 와 모든 shexp `.bias` 까지 허용해
 # `blk.0.ffn_gate_shexp.bias` 같은 새 명명이 known resident 로 조용히 통과했다(조용한 통과 1건
 # 실재). 미관측 형태는 등재하지 않는다 — 실물에서 나오면 미분류로 중단시켜 심의 대상으로 올린다.
@@ -185,6 +197,7 @@ _NONROUTED_EXPERT_RE = re.compile(
     r'ffn_(gate|up|down)_shexp\.weight'
     r'|ffn_gate_inp_shexp\.weight'
     r'|ffn_gate_inp\.weight'
+    r'|ffn_gate_inp\.bias'
     r'|exp_probs_b\.bias'
     r')$')
 # NextN/MTP 표식 텐서(qwen35moe 122B 실물: blk.48.nextn.{eh_proj,enorm,hnorm,shared_head_norm}.weight).
@@ -3141,6 +3154,35 @@ def cmd_selftest():
         checks.append(('OPEN_ARCH-ⓒ inventory_sha256 결정론(동일 입력 2회 동일) + 집합 민감도(텐서 1개 type 변경=digest 변경)', ok_det))
         print('[selftest] OPEN_ARCH-ⓒ digest: run1=%s run2=%s variant=%s -> %s'
               % (det_a[:16], det_b[:16], det_c[:16], 'PASS' if ok_det else 'FAIL'))
+
+        # ---- ⓒ-2 실물 router 계열 동반(★26-08-03 신설 — 교차검증 B④ 처방) ----
+        # 구 합성 GPTOSS 는 routed 3W+3B 만 만들고 **실제 router 텐서를 생성하지 않았다**. 그래서
+        # 실물 gpt-oss(20B/120B)에 전 층 존재하는 `ffn_gate_inp.{weight,bias}` 가 허용표 밖으로
+        # 새어 fail-close 하는 것을 selftest 가 잡을 수 없었다(M5 preflight 가 실물에서 처음 적발).
+        # 이 픽스처는 실물 형상을 합성에 반영하고, **router 동반이 routed 수·inventory digest·
+        # expert_bytes_total 을 바꾸지 않는다**(= trunk 상주·재팩 무관)는 것을 동시에 못 박는다.
+        _router_extra = tuple(
+            t for L in (0, 1, 2) for t in (
+                {'name': 'blk.%d.ffn_gate_inp.weight' % L, 'dims': [8, 4], 'type': 'F32'},
+                {'name': 'blk.%d.ffn_gate_inp.bias' % L,   'dims': [4],    'type': 'F32'},
+            ))
+        rtr_p = _tpl_fixture('tpl_gptoss_router.gguf', **dict(GPTOSS, extra_tensors=_router_extra))
+        base_der = derive_arch_template(load_model_shards(tpl_model))
+        try:
+            rtr_der = derive_arch_template(load_model_shards(rtr_p))
+            rtr_err = None
+        except RepackAbort as e:
+            rtr_der, rtr_err = None, str(e)
+        ok_rtr = (rtr_der is not None
+                  and rtr_der['routed_tensors'] == base_der['routed_tensors']
+                  and rtr_der['inventory_sha256'] == base_der['inventory_sha256']
+                  and rtr_der['expert_bytes_total'] == base_der['expert_bytes_total'])
+        checks.append(('OPEN_ARCH-ⓒ2 실물 router 동반(전 층 ffn_gate_inp.weight+bias) 유도 성공 + '
+                       'routed 수·inventory digest·expert_bytes_total 추가 전과 동일(trunk 상주·재팩 무관)', ok_rtr))
+        print('[selftest] OPEN_ARCH-ⓒ2 router 동반: routed %s->%s digest %s->%s %s'
+              % (base_der['routed_tensors'], (rtr_der or {}).get('routed_tensors'),
+                 base_der['inventory_sha256'][:16], ((rtr_der or {}).get('inventory_sha256') or '(abort)')[:16],
+                 'PASS' if ok_rtr else ('FAIL - ' + (rtr_err or 'mismatch'))))
 
         # ---- ⓓ 음성 mutant(누락·추가·개명·bias 뒤집기·NextN 범위·shard 충돌) ----
         mut_split = [os.path.join(scratch, 'tpl_mut_conflict-%05d-of-00002.gguf' % i) for i in (1, 2)]

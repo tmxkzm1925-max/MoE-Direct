@@ -25811,10 +25811,10 @@ index 0000000..c7babe4
 +}
 diff --git a/tools/moe-direct-selftest/openarch_gate_c.py b/tools/moe-direct-selftest/openarch_gate_c.py
 new file mode 100644
-index 0000000..26401cc
+index 0000000..07d5b92
 --- /dev/null
 +++ b/tools/moe-direct-selftest/openarch_gate_c.py
-@@ -0,0 +1,173 @@
+@@ -0,0 +1,179 @@
 +# -*- coding: utf-8 -*-
 +"""OPEN_ARCH B축 Gate C/G 러너 — 크로스랭귀지 inventory digest 실행 계약.
 +
@@ -25836,7 +25836,8 @@ index 0000000..26401cc
 +
 +사용:
 +  python openarch_gate_c.py --selftest-exe <...\\moe-direct-selftest.exe>
-+                            --repo <moe-expert-stream 리포 루트> [--scratch <dir>] [--keep]
++                            --repo <repo root: dev tree(bench/repack/) 또는 공개 checkout(repacker/)>
++                            [--scratch <dir>] [--keep]
 +"""
 +import argparse
 +import hashlib
@@ -25853,9 +25854,14 @@ index 0000000..26401cc
 +
 +
 +def load_repacker(repo_root):
-+    path = os.path.join(repo_root, 'bench', 'repack', 'repack_experts.py')
-+    if not os.path.isfile(path):
-+        raise SystemExit('repack_experts.py not found: %s' % path)
++    # Two layouts are accepted: the development repository keeps the script under
++    # bench/repack/, the public repository ships it under repacker/. First match wins.
++    candidates = [os.path.join(repo_root, 'bench', 'repack', 'repack_experts.py'),
++                  os.path.join(repo_root, 'repacker', 'repack_experts.py')]
++    path = next((p for p in candidates if os.path.isfile(p)), None)
++    if path is None:
++        raise SystemExit('repack_experts.py not found under --repo; tried: %s'
++                         % '; '.join(candidates))
 +    spec = importlib.util.spec_from_file_location('repack_experts_gatec', path)
 +    mod = importlib.util.module_from_spec(spec)
 +    sys.modules['repack_experts_gatec'] = mod
