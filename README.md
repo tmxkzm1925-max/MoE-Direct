@@ -63,6 +63,7 @@ architecture as an `experimental` tier. The working queue lives in
 - [Quick start](#quick-start)
 - [What success looks like](#what-success-looks-like)
 - [Supported models](#supported-models)
+- [Running an unlisted model (experimental)](#running-an-unlisted-model-experimental)
 - [How it works](#how-it-works)
 - [Measured results](#measured-results)
 - [Connecting a client](#connecting-a-client)
@@ -334,6 +335,62 @@ Notes on this table:
   have no recorded size yet. The launcher computes the exact size for *your* model and shows it in
   the repack plan before it writes.
 
+## Running an unlisted model (experimental)
+
+The table above is a list of six models, and until v0.2.2 it was also the list of models that would
+run at all: a GGUF the catalog did not carry was refused even when its architecture was one the
+engine already serves. That default is defensible and it is also frustrating, so v0.2.2 opens the
+half of it that can be opened honestly. Start the launcher with `-ExperimentalArchTemplate` and a
+GGUF of a **known architecture** that is not in the catalog is derived, repacked, verified and
+served, labelled `experimental`:
+
+```powershell
+.\Start-MoeDirect.ps1 -ExperimentalArchTemplate
+```
+
+**Known architecture is the whole of the opening.** Known today means one: `gpt-oss`. A GGUF of an
+architecture there is no template for is still refused, before any repack output is written, exactly
+as it was - the switch does not turn any check off, it adds a second way of passing the same ones. It
+changes nothing for the six models in the table either: a model the catalog identifies takes the
+route it always took, and an identified model that then fails a later check is a hard failure, not a
+quiet demotion onto the experimental path.
+
+**What is verified here, stated exactly.** Before anything is written, the launcher runs a plan that
+writes nothing: it parses every shard header, decides whether your file is one the catalog knows,
+closes the routed-expert inventory the architecture template selects, sizes the cache from the slot
+geometry it derives, and shows you the result for approval. The repack then hashes every record it
+writes against your file, all of them, as it does for any model. The engine does not take the
+repacker's word for which tensors that inventory should have contained: it holds its own frozen
+table of approved templates, regenerates the expected tensor set from the architecture and layer
+formula it reads live, and only then runs the same seals a catalog model goes through. What this
+path is allowed to claim is narrower than what a catalog entry claims, and the launcher prints it in
+those words - *the template-selected routed-expert inventory was copied byte-for-byte from your
+file*. Three questions are reported separately on the status screen and never folded into one badge:
+`copy integrity` (did every selected routed slice verify byte for byte), `inventory authority` (who
+decided which tensors the inventory contains - a model entry, or the architecture template) and
+`serving validation` (has this configuration been validated for serving). They are three different
+questions, and none of them is an answer to another.
+
+**What you do not get.** No performance work. Prefetch stays off on a derived profile and the levers
+that were tuned per profile are not offered here, which is a large part of why the label is
+`experimental` rather than a tier. No published number covers your model, and the launcher says so
+before the repack rather than after.
+
+**What was run before this shipped.** gpt-oss-20b - 24 layers, 32 experts, MXFP4, about 12.1 GB, a
+different shape from the 120B in the catalog and picked for that reason - was taken end to end
+through 25 frozen gates and passed all 25. That covered the repack verifying every record part, the
+engine's template seal attesting the derived inventory, zero touch and zero fallback events while
+serving, and the check that matters most on a path that decides which tensors get read: five greedy
+prompts served through the direct-read path returned token-identical output to the same engine
+binary reading the same weights through plain mmap. Four deliberate mutations - of the derived
+expectation file, the template, the manifest and the model binding - were each refused at the gate
+that owns them, and the three existing profile regressions (the 512-expert 397B, the NextN layers on
+Qwen3.5-122B, the 384-expert K2.6) were re-run unchanged. What that evidence does not do is make
+your model a measured one. It says the path is sound on one model of one architecture, which is
+exactly what `experimental` is here to mean. How the two catalog tiers work, and what each of the
+three checks actually does, is in
+[TECHNICAL.md](TECHNICAL.md#serving-a-model-the-catalog-does-not-pin).
+
 ## How it works
 
 Your GGUF's expert tensors are rewritten once into a layout built for reading. After that the model
@@ -522,6 +579,65 @@ number of minutes between 1 and 1440 to change the interval. Turning it off stop
 not delete what is already there. Delete `%LOCALAPPDATA%\MoE-Direct\kv\` yourself when you want it
 gone.
 
+### Precomputing a prompt file at start
+
+Warm start only helps a start that has something to restore. The ones that do not - a first run with
+a new model, a start after you deleted the saved state, a session that begins on a different prompt -
+still pay the full cold prefill on the first turn, and on an agent-style system prompt that is
+minutes of silence before the first token appears. Those tokens have to be evaluated once and no
+setting makes that free. What you can change is *when* it happens, and whether you are the one
+sitting in front of it. Point the launcher at the file your client sends as its system prompt and
+that prefix is computed right after the server comes up, before you ask anything:
+
+```powershell
+.\Start-MoeDirect.ps1 -Warmup file:C:\path\to\systemprompt.txt
+```
+
+On the custom path, or in a saved preset, the same thing is the `warmup` key set to
+`file:C:\path\to\systemprompt.txt`. That key now takes three values: `off` (the default), `on` (the
+one-token warm-up request that was already there) and `file:<path>`. Quote the whole value if your
+path contains spaces; the part after `file:` is taken exactly as you wrote it.
+
+It is one request, sent once, and you watch it happen: the launcher reads the file as UTF-8 and
+sends the text to the server exactly as the file holds it, with prompt caching on and one token of
+output asked for. It is deliberately not passed through the model's chat template on the way,
+because tokens computed from a re-wrapped copy would not be a prefix of what your client's first
+request renders, and being that prefix is the entire point. When it finishes, the launcher prints
+what the server counted (one line, wrapped here to fit):
+
+```
+[warmup] Precomputed 282 tokens. The launcher cannot observe client reuse; check the first
+response timings.cache_n (expected close to 282 (tokenizer boundaries and cache checkpoints may
+re-evaluate a small tail)).
+```
+
+**The verification is handed to you because the launcher cannot do it itself.** It is not a proxy
+and never sees your client's request, so it states what it precomputed and stops there. Look at
+`timings.cache_n` in the first response you get back: close to N means the precompute was reused, and
+a shortfall of a few tokens is normal rather than a failure - the tokenizer boundary where your file
+meets whatever your client appends can move a token, and a model that keeps cache checkpoints
+re-evaluates a short tail. A `cache_n` near zero is the answer that means it did not work. Reuse
+needs your client's rendered token sequence to begin with all N precomputed tokens, so a system
+prompt differing by one character, role marker or line ending is a different prefix even when the
+file looks the same.
+
+**Warm start wins when both could apply.** If a saved state is restored, the precompute is skipped
+and says so: the restored prefix is already in the slot, and overwriting it would cost you more than
+the precompute buys. If you want the file precomputed for a new conversation that will diverge from
+the restored one, start with `-Warmstart off`.
+
+**Nothing here can fail your run.** A missing file, an empty file, a file that is not valid UTF-8, an
+HTTP failure, a timeout: each of those prints a warning, records the reason and carries on serving
+without the precompute. The request is bounded at 30 minutes, because a genuine cold prefill of a
+large file takes minutes and a server that never answers must not hold the launcher for ever.
+
+One measurement, from this machine and claimed no wider: on Qwen3.5-122B a system prompt file
+precomputed to 282 tokens in 12.0 s, and the first real request after it reported `cache_n` 278 of
+its 299 prompt tokens - 93 % of the precomputed prefix reused, 21 tokens of genuinely new text
+evaluated. The 4-token difference is the two effects named above, one token at the tokenizer seam
+and three from the checkpoint tail this model family keeps. The mechanism and the full conditions
+are in [TECHNICAL.md](TECHNICAL.md#warm-up-file-precompute).
+
 ### Starting the server yourself
 
 The save and restore calls are upstream llama.cpp, and this project changes nothing about them, so
@@ -680,6 +796,12 @@ mainline PR series is in preparation.
 - **Prefetch only on validated profiles.** Of the six shipped profiles two are `validated`, one is
   `reference-only` and three are `disabled`; only the `validated` ones serve with prefetch on, and
   an override is refused on the other four.
+- **The experimental arch-template path is one architecture deep.**
+  `-ExperimentalArchTemplate` accepts a GGUF of a known architecture the catalog does not carry, and
+  `gpt-oss` is the only template that exists, so every other architecture is still refused. A
+  derived profile serves with prefetch off and none of the per-profile tuning, no published number
+  covers it, and the end-to-end evidence behind the path is one model - see
+  [Running an unlisted model (experimental)](#running-an-unlisted-model-experimental).
 - **Warm start reuse needs an exact prefix.** A restored session is reused by a request that
   extends the saved prompt exactly. A request that diverges from it is reprocessed in full on
   hybrid-attention models, because a slot file carries no server checkpoints. Warm start also does

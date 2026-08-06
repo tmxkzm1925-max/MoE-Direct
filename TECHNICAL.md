@@ -503,6 +503,124 @@ after 1,334 tokens and the hybrid model correctly reprocessed all 1,409 prompt t
 Qwen3.5 hybrid requests are fully reprocessed because slot files do not contain server
 checkpoints. The change gate compares reported token count, not a content hash.
 
+## What v0.2.2 adds
+
+Two things, and both are written the way the techniques at the top of this file are: the problem
+each exists to solve, what it does about it, how that behaves while you are using it, and what was
+actually measured. `GATE` keeps the meaning it has in the section above.
+
+### Warm-up file precompute
+
+**The problem.** Warm start covers the sessions that have something to restore. The ones that do
+not - a first run on a new model, a start after the saved state was deleted, a session that begins
+on a different prompt - still pay the full cold prefill on their first turn, and on an agent-style
+system prompt that is minutes of silence before the first token. Prefill speed is not where the remaining
+headroom is: the cold long-context prefill on the reference machine measures 45.6-45.9 tok/s, the
+tokens have to be evaluated once, and no setting makes that work disappear. What is still movable is
+*when* it happens and who is waiting for it.
+
+**What it does.** The single `warmup` setting gains a third value rather than a new key, so the same
+value travels the command line, a stored preset and the interactive custom path under the priority
+rule those three already had. `off` remains the default and `on` remains the one-token warm-up
+request; `file:<path>` makes the launcher, once the server reports ready, read that file as UTF-8
+and send its text to the server as one synchronous request, then wait for it. The request goes to
+`/completion` with `cache_prompt` on and `n_predict` 1, carrying the text exactly as the file holds
+it. `/completion` rather than the chat endpoint is the load-bearing choice: the chat route wraps
+what it is given in the model's chat template, and tokens computed from a wrapped copy would not be
+a prefix of what the client's own first request renders, which is the only property that makes the
+precompute reusable at all. If warm start restored a slot, the precompute is skipped with the reason
+recorded - the restored prefix already occupies the slot, and a warm-up request would overwrite it.
+
+**How it behaves.** The stage announces itself before it blocks, because a full cold prefill can run
+for minutes and a silent window looks like a hang. On completion the launcher prints the token count
+the server reported and nothing it inferred: the count is read from `tokens_evaluated`, or from
+`timings.prompt_n + timings.cache_n`, which the engine's own test asserts is the same number, and a
+response carrying neither is a failure rather than an estimate. Verification is then handed to the
+user, because the launcher is not a proxy and never sees the client's request: it says what it
+precomputed and asks for `timings.cache_n` on the first real response. Reuse is a property of the
+server-rendered token sequence, not of the bytes - it requires that sequence to begin with all N
+precomputed tokens, including role markers, separators, whitespace and line endings - so byte
+equality of a prompt does not prove token-prefix equality at the tokenizer boundary. Every failure
+path is degraded and non-terminal, and that is the complete list of them: a missing file, an empty
+file, text that is not valid UTF-8, an HTTP failure, a context overflow, a timeout. The request is bounded at
+1,800 s, high enough that an ordinary multi-thousand-token file cannot trip it and low enough that a
+server which never answers cannot hold the launcher for ever.
+
+**What was measured.** `PROBE` - one live start on the reference machine, Qwen3.5-122B, warm start
+not restoring. The file precomputed to a server-reported 282 tokens in 12.0 s. The first real
+request that followed reported `cache_n` 278 of its 299 prompt tokens, i.e. 93.0 % of the
+precomputed prefix reused with 21 tokens of genuinely new text evaluated, and the response was
+normal. The 4-token gap is understood rather than tolerated, and it is the contract's own false
+negative rather than a reuse failure: one token at the tokenizer seam, and three from a checkpoint
+rollback. Qwen3.5 is a hybrid-attention model, so the server keeps its prompt checkpoint a short
+distance back from the end and cannot rewind to an arbitrary position; that is why the console
+wording asks for `cache_n` *close to* N instead of at least N. One run, one model, this machine.
+
+### Serving a model the catalog does not pin
+
+**The problem.** The catalog is what makes a tier label mean anything: each entry names a repository
+and revision, binds an expectation file, and carries the gates that entry passed. The cost of that
+is that everything else was refused, including a GGUF of an architecture the engine already serves
+and understands. Loosening the refusal by simply trusting an unknown file is not an option here -
+the whole lossless chain is built out of things that are checked rather than assumed - so the
+question is how to admit an unlisted model without admitting an unchecked one.
+
+**What it does.** The catalog becomes two tiers. A model entry is the existing thing and is unchanged.
+An **architecture template** is the new one: a rule set that, for an architecture that has a
+template, closes exactly which tensors form the routed-expert inventory. The rules are per
+architecture and deliberately not a generic name pattern - for `gpt-oss` the inventory is the gate,
+up and down projections of every layer, weight and bias, separate rather than fused, which on a
+24-layer model is 144 routed tensors. From those rules the repacker produces a **derived expectation
+file** in the repack output folder, not in the bundle, carrying the template id and version it came
+from and a sorted `inventory_sha256` over the tensor set itself, so what is bound is the actual set
+rather than a summary count. The launcher reaches that point through a plan that writes nothing: it
+parses every shard header and decides whether the file matches a catalog entry, closes the template
+inventory, queries the output volume's alignment to compute the slot stride, derives the minimum
+cache budget from it, completes an in-memory derived profile, and only after the resource gate and
+your confirmation does the expectation file get written atomically and the repack begin. The engine
+is the third, independent check and is the reason this is not circular: it carries its own frozen
+table of approved templates and versions, and it regenerates the expected tensor-name set from the
+architecture and layer formula it reads out of the model itself rather than reusing the repacker's
+rules. Only if that regeneration agrees does the derived expectation get approved, and then the
+model goes through the same seals a catalog model does. Activation is atomic across the three
+components: repacker, engine and launcher each carry the same template ABI token, and a bundle in
+which one of them is missing or disagrees fails to assemble.
+
+**How it behaves.** It is off unless you ask for it with `-ExperimentalArchTemplate`. A file that
+matches a catalog entry takes the catalog path, and a match that then fails a catalog, expectation
+or seal check is a hard failure rather than a demotion onto the template path - a silent downgrade
+there would be exactly the way a misconfiguration hides itself. An architecture with no template
+still stops before any repack output is written. A derived profile is identified as
+`derived-<arch>-<digest>` from the inventory digest, so the same model derives to the same id on
+every machine, and it serves with prefetch disabled: the depth constants are a per-family measured
+thing and none exist for a model nobody has measured. Three axes are reported separately on the
+status screen rather than collapsed into one badge - copy integrity, meaning whether every selected
+routed slice verified byte for byte; inventory authority, meaning who decided which tensors the
+inventory contains; and serving validation, meaning whether this configuration has been validated
+for serving. The sentence the template path is allowed to use is fixed and says what was copied and
+from where: *the template-selected routed-expert inventory was copied byte-for-byte from your
+file*. It deliberately does not say that your file is byte-verified, which would claim an authority
+nobody established.
+
+**What was measured.** `GATE` - the M5 end-to-end run, on gpt-oss-20b: 24 layers, 32 experts, top-4,
+MXFP4, about 12.1 GB, 144 routed expert tensors. It was chosen because its shape differs from the
+gpt-oss-120b already in the catalog, which is what makes it a test of the template rather than of a
+memorised model. The frozen criteria were 25 gates and all 25 passed under contract v5, covering the
+file's own hashes and headers, the inventory digest, the repack verifying every record part, the
+engine's template seal attestation, zero touch and zero fallback events, prefetch reported off, and
+a coherence watch over factual, reasoning, code and multilingual prompts rather than a single short
+answer. The one that carries the most weight for a path whose job is to decide which tensors get
+read is output parity: five greedy prompts, direct-read on against the same engine binary reading
+the same weights through plain mmap, token ids identical on all five. That is the first parity
+evidence for an arch-template model against an external reference, and it is the same kind of
+statement the catalog profiles carry - scoped to greedy decoding, on this model. Four deliberate
+mutations, one each to the derived expectation file, the template, the manifest and the model
+binding, were each refused at the gate that owns them, so the negative half is evidence too. Three
+existing profile regressions were re-run unchanged: the 512-expert 397B, the NextN layers on
+Qwen3.5-122B, and the 384-expert K2.6. What none of this establishes is a measurement of *your*
+model, and two limits keep the label `experimental` rather than a tier: the performance levers are
+not offered on this path, and one architecture has been through it.
+
 ## Non-official observations
 
 `PROBE` / `LIVE` - real measurements, no gate. Never mixed into the official table.

@@ -1,11 +1,53 @@
-# Engine patch: MoE-Direct v0.2.1 on llama.cpp b10057
+# Engine patches: MoE-Direct on llama.cpp b10057
 
-This directory publishes the engine delta that produced the binaries in the
-`moe-direct-v0.2.1-win-x64.zip` release. The launcher, repacker, catalog and
-expectation files are published at the repository root; this is the remaining
-piece: what was changed inside the engine.
+This directory publishes the engine delta that produced the binaries in each
+release zip. The launcher, repacker, catalog and expectation files are published
+at the repository root; this is the remaining piece: what was changed inside the
+engine. The current release comes first; the earlier one is kept below because
+its zip is still downloadable.
 
-## What exactly this is
+## v0.2.2 - what exactly this is
+
+- **Base**: llama.cpp release `b10057`, commit `0bd0ec60998d0f71ec45471b633bf2403ac81956` -
+  the same base commit v0.2.1 was built on.
+- **Patch**: `moedirect-v0.2.2-b10057.patch` - one reviewed patch, 26 files,
+  SHA-256 `7e7570a12e06a8c289b741d181003e77eeb461fd0f77e7fc400c978a6d5be9d0`.
+- **What moved since v0.2.1**: the engine side of the arch-template path - the frozen
+  table of approved architecture templates, and the independent regeneration of the
+  expected tensor set that has to agree with a derived expectation file before the
+  existing seals run - lands in `ggml/include/ggml-moe-direct.h`,
+  `ggml/src/ggml-moe-direct.cpp` and `src/llama-model.cpp`, with the matching work in
+  `tools/moe-direct-selftest/`. The pinned-catalog seal path is updated in those same
+  files rather than duplicated, so a model the catalog pins takes the route it took in
+  v0.2.1. One file is new - `tools/moe-direct-selftest/openarch_gate_c.py`, the gate
+  script for that path - and it is what takes the count from 25 files to 26.
+- **Binding to the shipped binaries**: applying this patch to the base commit
+  reproduces the source tree with git tree id
+  `aa5d9fdf1a76d286162cfc24cb3230a7d5d9e47d`, byte for byte - the same tree id
+  recorded for the source state that built the v0.2.2 engine binaries. The proof
+  is mechanical and does not need our machine:
+
+  ```bash
+  # keep the patch OUTSIDE the clone - if it sits inside, `git add -A` would
+  # stage the patch file itself and the tree id would not match
+  curl -LO https://raw.githubusercontent.com/tmxkzm1925-max/moe-direct/main/patches/moedirect-v0.2.2-b10057.patch
+  git clone https://github.com/ggml-org/llama.cpp
+  cd llama.cpp
+  git checkout 0bd0ec60998d0f71ec45471b633bf2403ac81956
+  git apply --check ../moedirect-v0.2.2-b10057.patch   # applies cleanly
+  git apply ../moedirect-v0.2.2-b10057.patch
+  git add -A
+  git write-tree    # prints aa5d9fdf1a76d286162cfc24cb3230a7d5d9e47d
+  ```
+
+Patch to tree is the whole of that claim, and it is worth being exact about where it
+stops: nothing above binds that tree to the bytes of the shipped executables. What
+seals the shipped set is the SHA manifest inside the zip, and a build receipt that
+machine-binds base commit, tree id and patch hash in one record is planned for a
+future release. The boundaries stated under **Building** below apply to this patch
+unchanged.
+
+## v0.2.1 - what exactly this is
 
 - **Base**: llama.cpp release `b10057`, commit `0bd0ec60998d0f71ec45471b633bf2403ac81956`.
 - **Patch**: `moedirect-v0.2.1-b10057.patch` - one reviewed patch, 25 files,
