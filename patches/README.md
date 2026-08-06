@@ -11,7 +11,7 @@ its zip is still downloadable.
 - **Base**: llama.cpp release `b10057`, commit `0bd0ec60998d0f71ec45471b633bf2403ac81956` -
   the same base commit v0.2.1 was built on.
 - **Patch**: `moedirect-v0.2.2-b10057.patch` - one reviewed patch, 26 files,
-  SHA-256 `11421cd2356b967a97f347ea29beb7fc9cd118a86ab0acfcd583f25bc604b2cf`.
+  SHA-256 `dc4d6a31bedd13195705b02ad9942e2938f080d8d401040547408da223e8b2c3`.
 - **What moved since v0.2.1**: the engine side of the arch-template path - the frozen
   table of approved architecture templates, and the independent regeneration of the
   expected tensor set that has to agree with a derived expectation file before the
@@ -23,7 +23,7 @@ its zip is still downloadable.
   script for that path - and it is what takes the count from 25 files to 26.
 - **Binding to the shipped binaries**: applying this patch to the base commit
   reproduces the source tree with git tree id
-  `ededbf7ee203d7d604a9323faf52ac8eb91b11b3`, byte for byte - the same tree id
+  `38df4497b8dbe62528ec5d2839d4dd7e2c82a2f0`, byte for byte - the same tree id
   recorded for the source state that built the v0.2.2 engine binaries. The proof
   is mechanical and does not need our machine:
 
@@ -37,7 +37,7 @@ its zip is still downloadable.
   git apply --check ../moedirect-v0.2.2-b10057.patch   # applies cleanly
   git apply ../moedirect-v0.2.2-b10057.patch
   git add -A
-  git write-tree    # prints ededbf7ee203d7d604a9323faf52ac8eb91b11b3
+  git write-tree    # prints 38df4497b8dbe62528ec5d2839d4dd7e2c82a2f0
   ```
 
 Patch to tree is the whole of that claim, and it is worth being exact about where it
@@ -111,7 +111,7 @@ pushed as a branch on a fork, one release branch each, one commit on top of
 the pinned base, carrying exactly the tree that release's patch reproduces.
 The patch and the branch are cross-evidence for each other:
 [`tmxkzm1925-max/llama.cpp`, branch `moe-direct-v0.2.2`](https://github.com/tmxkzm1925-max/llama.cpp/tree/moe-direct-v0.2.2)
-(tree `ededbf7e...`) for the current release, and branch
+(tree `38df4497...`) for the current release, and branch
 [`moe-direct-v0.2.1`](https://github.com/tmxkzm1925-max/llama.cpp/tree/moe-direct-v0.2.1)
 (tree `32a97db0...`) for the previous one.
 

@@ -229,8 +229,8 @@ $script:BUNDLE_MANIFEST_VERSION = 1
 # OPEN_ARCH C axis (OPEN_ARCH_DESIGN.md v0.2 sections 0/3, LAUNCHER_SPEC OA-1).
 # ---------------------------------------------------------------------------
 # M5 atomic activation token. The repacker, the engine and this launcher must all carry the SAME
-# string or the v0.2.1 bundle assembly fails. The other two adopt it in their own rounds; the value
-# is frozen here and quoted by LS OA-1.
+# string or the bundle assembly fails - a standing assembler gate, not tied to one release. The
+# other two adopt it in their own rounds; the value is frozen here and quoted by LS OA-1.
 $script:OPEN_ARCH_TEMPLATE_ABI = 'open-arch-template/1'
 # The derived profile is a schema of its own, NOT a catalog profile with invented fields. Its
 # validator rejects hf_repo / hf_revision outright: there is no upstream repository for a model the

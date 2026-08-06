@@ -151,8 +151,8 @@ EXPECTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'expects'
 # 규칙 개정 = version 증가(= derived_from 문자열 변경 = 소비자 재승인 대상).
 #
 # ★M5 원자 활성화 토큰(OPEN_ARCH_DESIGN.md v0.2 §4 · OPENARCH_B_SPEC_DRAFT v0.2 §2-5 D2).
-# 리패커·엔진·런처가 **같은 문자열**을 지녀야 v0.2.1 번들이 조립된다(셋 중 하나라도 부재/불일치
-# = 조립 실패). 다른 두 축의 실물: 엔진 `ggml-moe-direct.cpp` OPEN_ARCH_TEMPLATE_ABI_STR ·
+# 리패커·엔진·런처가 **같은 문자열**을 지녀야 번들이 조립된다(셋 중 하나라도 부재/불일치
+# = 조립 실패 — 버전 무관·조립기 상시 관문). 다른 두 축의 실물: 엔진 `ggml-moe-direct.cpp` OPEN_ARCH_TEMPLATE_ABI_STR ·
 # 런처 `Start-MoeDirect.ps1` $script:OPEN_ARCH_TEMPLATE_ABI.
 # ★이 상수는 **선언뿐**이다 — 이 파일의 어떤 동작도 참조하지 않는다(대조 주체는 M5 조립기
 # make_bundle.ps1). ARCH_TEMPLATES 행에는 넣지 않는다(B스펙 r2 소비자 분리: catalog 행은

@@ -25811,10 +25811,10 @@ index 0000000..c7babe4
 +}
 diff --git a/tools/moe-direct-selftest/openarch_gate_c.py b/tools/moe-direct-selftest/openarch_gate_c.py
 new file mode 100644
-index 0000000..07d5b92
+index 0000000..69480f8
 --- /dev/null
 +++ b/tools/moe-direct-selftest/openarch_gate_c.py
-@@ -0,0 +1,179 @@
+@@ -0,0 +1,180 @@
 +# -*- coding: utf-8 -*-
 +"""OPEN_ARCH B축 Gate C/G 러너 — 크로스랭귀지 inventory digest 실행 계약.
 +
@@ -25917,7 +25917,8 @@ index 0000000..07d5b92
 +    ap = argparse.ArgumentParser()
 +    ap.add_argument('--selftest-exe', required=True)
 +    ap.add_argument('--repo', required=True,
-+                    help='moe-expert-stream repository root (no default - machine specific)')
++                    help='repository root carrying repack_experts.py - dev tree (bench/repack/) '
++                         'or public checkout (repacker/); no default, machine specific')
 +    ap.add_argument('--scratch', default=None)
 +    ap.add_argument('--keep', action='store_true')
 +    args = ap.parse_args()
