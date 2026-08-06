@@ -42,8 +42,9 @@ working queue lives in [Model support roadmap](#model-support-roadmap).
 > cheapest form of it, with zero engine changes, already measured about **3x** in an internal
 > probe. Prefetch that **derives its own starting point for any model family** instead of being
 > hand-measured one model at a time. A hunt of the same kind on the **decode** side. And the
-> serving-runtime work to carry all three. Dates are not promised and numbers ship only when they
-> are measured - but know that what you are holding is the floor, not the ceiling.
+> one-time repack that today costs your disk **the model's size again** is being reworked to stop
+> doing that - space first, read performance with it. Dates are not promised and numbers ship
+> only when they are measured - but know that what you are holding is the floor, not the ceiling.
 
 [^same]: **What was compared, and under what conditions.** The paired protocol runs the same
     engine build as four fresh-process arms in A-B-B-A order - direct-read off and on - with greedy
