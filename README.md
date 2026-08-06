@@ -36,6 +36,15 @@ and the experimental arch-template path that serves a GGUF the catalog does not 
 `q8_0` opt-in switch and the DeepSeek-V4 prefetch depth search moved to the next release; the
 working queue lives in [Model support roadmap](#model-support-roadmap).
 
+> ### Where this is going: v1.0
+> **Four workstreams are already running toward it, and none of them is "more catalog entries".**
+> A prefill path that reads each expert **once per request instead of once per token** - the
+> cheapest form of it, with zero engine changes, already measured about **3x** in an internal
+> probe. Prefetch that **derives its own starting point for any model family** instead of being
+> hand-measured one model at a time. A hunt of the same kind on the **decode** side. And the
+> serving-runtime work to carry all three. Dates are not promised and numbers ship only when they
+> are measured - but know that what you are holding is the floor, not the ceiling.
+
 [^same]: **What was compared, and under what conditions.** The paired protocol runs the same
     engine build as four fresh-process arms in A-B-B-A order - direct-read off and on - with greedy
     decoding (temperature 0), the same prompts, the same seed and sampling parameters, and one
