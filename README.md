@@ -36,15 +36,22 @@ and the experimental arch-template path that serves a GGUF the catalog does not 
 `q8_0` opt-in switch and the DeepSeek-V4 prefetch depth search moved to the next release; the
 working queue lives in [Model support roadmap](#model-support-roadmap).
 
-> ### Where this is going: v0.3
-> **Four workstreams are already running toward it, and none of them is "more catalog entries".**
-> A prefill path that reads each expert **once per request instead of once per token** - the
-> cheapest form of it, with zero engine changes, already measured about **3x** in an internal
-> probe. Prefetch that **derives its own starting point for any model family** instead of being
-> hand-measured one model at a time. A hunt of the same kind on the **decode** side. And the
-> one-time repack that today costs your disk **the model's size again** is being reworked to stop
-> doing that - space first, read performance with it. Dates are not promised and numbers ship
-> only when they are measured - but know that what you are holding is the floor, not the ceiling.
+> ### Where this is going
+> **Four workstreams are already running, and none of them is "more catalog entries".** They ship
+> one per release rather than all at once, so each lands when it is done instead of waiting for the
+> slowest.
+>
+> - **v0.3 - the repack rework.** The one-time repack today costs your disk **the model's size
+>   again**. The rework stops doing that: no second copy, the original file left untouched and read
+>   in place. Space first, read performance with it. This is the one being finished now.
+> - **v0.4 and the releases after it - the speed work**, ordered by what is ready rather than by a
+>   schedule: a prefill path that reads each expert **once per request instead of once per token**
+>   (the cheapest form of it, zero engine changes, about **3x** in an internal probe); prefetch that
+>   **derives its own starting point for any model family** instead of being hand-measured one model
+>   at a time; and a hunt of the same kind on the **decode** side.
+>
+> Dates are not promised and numbers ship only when they are measured - but know that what you are
+> holding is the floor, not the ceiling.
 
 [^same]: **What was compared, and under what conditions.** The paired protocol runs the same
     engine build as four fresh-process arms in A-B-B-A order - direct-read off and on - with greedy
@@ -228,6 +235,14 @@ first-release warnings disappear immediately.
    `<drive>:\moe-models` are listed for arrow-key selection. The menu lists whatever it finds -
    whether a file is actually supported is decided later, by the catalog and the integrity gates.*
 
+   Since v0.2.3 each entry also carries a short label read from that file's own header, so you can
+   see before you pick which route the file is likely to take: `[catalog]` for a model the catalog
+   describes, `[template: <arch>]` for an unlisted GGUF of an architecture there is a template for,
+   `[unsupported]` for one there is not, and `[identify pending]` when the header did not give up
+   all four identification fields. The screen says it too: **the labels are provisional.** They come
+   from one header read per file, and the real decision at start also weighs the shard count, the
+   file sizes and the source pin, so a `[catalog]` label is a good guess and not a verdict.
+
 6. **Approve the one-time repack.** The launcher identifies your model, checks RAM and disk, then
    stops and shows you the exact cost - output size, free space left afterwards, expected time -
    and no model or repack output is created until you answer. This is the long step: minutes to
@@ -351,22 +366,43 @@ Notes on this table:
 
 The table above is a list of six models, and until v0.2.2 it was also the list of models that would
 run at all: a GGUF the catalog did not carry was refused even when its architecture was one the
-engine already serves. That default is defensible and it is also frustrating, so v0.2.2 opens the
-half of it that can be opened honestly. Start the launcher with `-ExperimentalArchTemplate` and a
+engine already serves. That default is defensible and it is also frustrating, so v0.2.2 opened the
+half of it that can be opened honestly, behind a switch. In v0.2.2 you had to know the switch
+existed to find it, which meant almost nobody did, so **in v0.2.3 the path is on by default**: a
 GGUF of a **known architecture** that is not in the catalog is derived, repacked, verified and
-served, labelled `experimental`:
+served, labelled `experimental`, with no flag at all.
+
+Nothing about the checks changed with the default. If you want it off, for one run or for good:
 
 ```powershell
-.\Start-MoeDirect.ps1 -ExperimentalArchTemplate
+.\Start-MoeDirect.ps1 -ArchTemplate off
 ```
+
+The flag applies to that run and is not written down, so it behaves like every other command-line
+override here. To make the choice stick, flip it from the **model selection menu**, on the
+`arch template:` row - that is stored, and later starts follow it with no flag. If you start with
+`-Model` and skip the menu, the launcher asks you once, the first time a run would actually take the
+template path, and remembers your answer. The custom screen has the same item, but it says
+`applies from the next start` there and means it: by that point your model is already identified,
+and pretending otherwise would be a lie.
+
+The setting is stored machine-wide, next to your saved preset rather than inside it, because the
+launcher has to know the answer *before* it has identified your model, and a preset is bound to a
+model it has not identified yet.
+
+`-ArchTemplate on` turns it back on the same way. The old `-ExperimentalArchTemplate` still works
+and still means "on", so scripts written against v0.2.2 keep running; it is now the older spelling
+of the same thing, and if you somehow pass both, the explicit `-ArchTemplate off` wins.
 
 **Known architecture is the whole of the opening.** Templates exist for three architectures today -
 `gpt-oss`, `qwen35moe` and `deepseek2` - and the end-to-end gate evidence below was run on one of
 them, `gpt-oss`; a GGUF of the other two takes the same checked path, but no model of theirs has
 been taken through the full gate run yet, so treat them with the stronger caution the label already
 implies. A GGUF of an architecture there is no template for is still refused, before any repack
-output is written, exactly as it was - the switch does not turn any check off, it adds a second way
-of passing the same ones. It
+output is written, exactly as it was - the default does not turn any check off, it adds a second way
+of passing the same ones. **The repack still stops and asks.** Turning this on by default did not
+turn the y/N approval into a formality: nothing is derived, written or served until you answer that
+prompt, and the plan you approve is the same plan v0.2.2 showed you. It
 changes nothing for the six models in the table either: a model the catalog identifies takes the
 route it always took, and an identified model that then fails a later check is a hard failure, not a
 quiet demotion onto the experimental path.
@@ -610,9 +646,25 @@ that prefix is computed right after the server comes up, before you ask anything
 ```
 
 On the custom path, or in a saved preset, the same thing is the `warmup` key set to
-`file:C:\path\to\systemprompt.txt`. That key now takes three values: `off` (the default), `on` (the
-one-token warm-up request that was already there) and `file:<path>`. Quote the whole value if your
-path contains spaces; the part after `file:` is taken exactly as you wrote it.
+`file:C:\path\to\systemprompt.txt`. That key takes three values: `on`, `off` and `file:<path>`.
+Quote the whole value if your path contains spaces; the part after `file:` is taken exactly as you
+wrote it.
+
+**The default changed in v0.2.3: `warmup` is now `on`, where v0.2.2 and earlier had it `off`.** `on`
+is the one-token warm-up request that has been in the launcher all along, sent once after the server
+reports ready. It is one small request, and it means the first thing you type is not also the thing
+that pays for the very first token of the run. If you preferred the old behaviour, `-Warmup off` or
+the `warmup` key set to `off` restores it exactly.
+
+That default has one honest consequence, and it is worth stating plainly because it changes what
+the status screen tells you. **Every published number in this README was measured on a cold cache,
+and a warmed-up run is not that condition.** So a default start now reports its performance gate as
+`[unmeasured] (product warm-path baseline; official measurements are cold-cache)` rather than
+claiming a measured result it is not entitled to. This is a labelling change, not a slower run -
+warming up does not make anything worse, it just puts the machine in a state the official figures
+did not measure. `-Repro` and `-Smoke` force `warmup` back off for exactly this reason, so a
+reproduction or benchmark run stands on the same cold-cache footing as the published pairs; the
+status screen names the force on the warmup line when it happens.
 
 It is one request, sent once, and you watch it happen: the launcher reads the file as UTF-8 and
 sends the text to the server exactly as the file holds it, with prompt caching on and one token of
@@ -682,19 +734,21 @@ configuration you saved from.
 
 ## Model support roadmap
 
-This is an actively developed project, and v0.2.2 is a preview, not a finished product. The table
-below is the working queue, not a wish list.
+This is an actively developed project, and v0.2.3 is a preview, not a finished product. The table
+below is the working queue, not a wish list. Feature work ships one workstream per release - see
+[Where this is going](#where-this-is-going) for the order.
 
 | Where we are | Status |
 |---|---|
+| The repack that costs your disk the model's size a second time | **Being finished now, targeted at v0.3.** Instead of writing a second copy of the expert data, the launcher reads the experts out of your original file in place, so the space cost is the model and nothing more, and onboarding stops moving hundreds of gigabytes around. Nothing of it is in this build, and it ships only if it holds read performance - the rule this project works under is that space is never bought with speed. |
 | Serving a 1T-class MoE (Kimi K2.6, deepseek2 architecture) from a 32 GB machine | **Done and shown** - unedited single-take demo below. Format gate passed; performance gate not passed (1.03 tok/s, honestly labelled `PROBE`). |
 | Prefetch for the deepseek2 family, which is what Kimi K2.6 needs | **Landed and promoted.** The signal adapter for that family exists, a first live four-arm run on K2.6 selected K=8 / N=4, and the paired A-B-B-A run that one run could not stand in for has since been done: both adjacent pairs favoured the ON arm and all four arms produced byte-identical output. `prefetch_state` for that profile is `validated` in the v0.2.1 catalog, so a bundle shipping that catalog enables prefetch for it by itself; a v0.2 bundle still carries `reference-only` and serves it with prefetch off. Both runs, and the exact protocol, are under [Non-official observations](TECHNICAL.md#non-official-observations). None of this touches the performance gate, which K2.6 still has not passed. |
 | DeepSeek-V4-Flash-0731 (284B, `deepseek4`) | **In the catalog since v0.2.1.** The architecture is native to the base commit this release is built on, its expert tensors are MXFP4, which is a layout the repacker already handles, and the repack verified 33,024 of 33,024 record-part pairs. A direct-read smoke run held 3.13-3.28 tok/s across four probes with zero fallback events (`PROBE`: reference machine, budget 8192 MB, QD 8, prefetch off, ctx 8192). It ships with the format gate passed, the performance gate unpassed and prefetch disabled, which is where the evidence actually stands; the prefetch depth search for this family is queued for a later release. |
-| Any model of an already-supported architecture (`experimental` tier) | **Shipped in v0.2.2 behind `-ExperimentalArchTemplate`.** The catalog still runs its six pinned models the way it always did; the switch adds a second way of passing the same checks for a GGUF of a known architecture, derived, repacked, verified and served labelled `experimental` with prefetch off - an honest warning, not a block and not a promise. Templates exist for three architectures (`gpt-oss`, `qwen35moe`, `deepseek2`); the end-to-end evidence is one model of one of them (`gpt-oss`), which is what keeps the label. See [Running an unlisted model (experimental)](#running-an-unlisted-model-experimental). |
+| Any model of an already-supported architecture (`experimental` tier) | **Shipped in v0.2.2 behind `-ExperimentalArchTemplate`; on by default since v0.2.3.** The catalog still runs its six pinned models the way it always did; this adds a second way of passing the same checks for a GGUF of a known architecture, derived, repacked, verified and served labelled `experimental` with prefetch off - an honest warning, not a block and not a promise. Templates exist for three architectures (`gpt-oss`, `qwen35moe`, `deepseek2`); the end-to-end evidence is one model of one of them (`gpt-oss`), which is what keeps the label. The default moved because behind a switch nobody found it, not because the evidence grew: an architecture with no template is still refused, and the repack still stops for your approval. `-ArchTemplate off` turns it off for a run, and the model menu's `arch template:` row stores the choice. See [Running an unlisted model (experimental)](#running-an-unlisted-model-experimental). |
 | Warm start: saving and restoring slot state across restarts | **Shipped in v0.2.1.** Stopping the server in v0.2 cleared both the prefix cache and the expert slot cache, so the next start began cold. v0.2.1 saves the slot on a clean stop, saves again on a timer while serving, and restores on the next start, measured at **8.1x** faster time to first token on a strict same-prompt pair. The protocol and the caveats are in [TECHNICAL.md](TECHNICAL.md#warm-start), and the user-facing description is under [Warm start](#warm-start). |
 | Warm-up file precompute (`warmup` gains a `file:<path>` mode) | **Shipped in v0.2.2.** A fresh session's first turn still pays the full cold prefill; this lets you point the launcher at your actual system-prompt file so that prefix is precomputed right after start, once, while you watch. Usage and the one measurement behind it are under [Precomputing a prompt file at start](#precomputing-a-prompt-file-at-start). |
 | Expert-cache warmer | **Designed, targeted at a later release.** Filling expert slots ahead of the first turn instead of letting them fill as you chat. The design is written and reviewed; nothing of it is in this build. |
-| KV cache quantized to `q8_0` | **Measured and gated, switch targeted at v0.2.3.** The quality gate passed on Qwen3.5-122B, with the divergence and perplexity figures in [TECHNICAL.md](TECHNICAL.md#kv-cache-q8). What is not in this build is the opt-in switch that would let you turn it on, so the measurement is published ahead of the feature rather than the other way round. |
+| KV cache quantized to `q8_0` | **Measured and gated; the switch is still queued.** The quality gate passed on Qwen3.5-122B, with the divergence and perplexity figures in [TECHNICAL.md](TECHNICAL.md#kv-cache-q8). What is not in this build is the opt-in switch that would let you turn it on, so the measurement is published ahead of the feature rather than the other way round. It was named for v0.2.3 and did not make it - that release turned out to be a convenience patch, and this is a feature. |
 | Kimi K3 (2.8T class) | **Top of the queue the moment llama.cpp upstream supports the architecture.** Its architecture is outside the base commit this release is built on, so support is gated on upstream, and the timing is upstream's, not ours. No promise is made about when. |
 | Wider hardware, wider OS | Windows only today. A Vulkan build of the same engine has been measured off-bundle - RTX 5080 at CUDA-parity decode, and a first AMD run (RX 9070 XT, RDNA4) at about 89 percent of that, its arms character-identical among themselves - so cross-vendor GPU support is now a hardening-and-tooling queue item rather than an open question; the numbers are under [Non-official observations](TECHNICAL.md#non-official-observations). OS expansion is genuinely hard in the current test environment and will take time. Community ports are welcome. |
 
@@ -812,12 +866,20 @@ per release. A rebased mainline PR series is in preparation.
 - **Prefetch only on validated profiles.** Of the six shipped profiles two are `validated`, one is
   `reference-only` and three are `disabled`; only the `validated` ones serve with prefetch on, and
   an override is refused on the other four.
-- **The experimental arch-template path has been proven end to end on one architecture.**
-  `-ExperimentalArchTemplate` accepts a GGUF of a known architecture the catalog does not carry;
-  templates exist for `gpt-oss`, `qwen35moe` and `deepseek2`, every other architecture is still
-  refused, and the full gate evidence covers a `gpt-oss` model only. A derived profile serves with
-  prefetch off and none of the per-profile tuning, no published number covers it - see
+- **The experimental arch-template path has been proven end to end on one architecture, and it is
+  on by default since v0.2.3.** It accepts a GGUF of a known architecture the catalog does not
+  carry; templates exist for `gpt-oss`, `qwen35moe` and `deepseek2`, every other architecture is
+  still refused, and the full gate evidence covers a `gpt-oss` model only. A derived profile serves
+  with prefetch off and none of the per-profile tuning, no published number covers it. The default
+  changed, the evidence did not. `-ArchTemplate off` turns it off for one run; the menu row or the
+  one-time question is what stores the choice - see
   [Running an unlisted model (experimental)](#running-an-unlisted-model-experimental).
+- **A default start is labelled `[unmeasured]`, on purpose.** `warmup` defaults to `on` since
+  v0.2.3 and every published figure here was measured cold, so the status screen reports
+  `[unmeasured] (product warm-path baseline; official measurements are cold-cache)` instead of
+  claiming a gate the run did not sit for. `-Repro` and `-Smoke` force warm-up off and restore the
+  published condition on that axis; the other gate requirements are unchanged and still have to be
+  met on their own.
 - **Warm start reuse needs an exact prefix.** A restored session is reused by a request that
   extends the saved prompt exactly. A request that diverges from it is reprocessed in full on
   hybrid-attention models, because a slot file carries no server checkpoints. Warm start also does

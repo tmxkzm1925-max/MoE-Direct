@@ -523,8 +523,13 @@ tokens have to be evaluated once, and no setting makes that work disappear. What
 
 **What it does.** The single `warmup` setting gains a third value rather than a new key, so the same
 value travels the command line, a stored preset and the interactive custom path under the priority
-rule those three already had. `off` remains the default and `on` remains the one-token warm-up
-request; `file:<path>` makes the launcher, once the server reports ready, read that file as UTF-8
+rule those three already had. `on` is the one-token warm-up request and has been the default since
+v0.2.3, where v0.2.2 and earlier defaulted to `off`; `off` is still available and unchanged in
+behaviour. Because every published figure in this document was measured on a cold cache, a run left
+on the new default reports its performance gate as `[unmeasured] (product warm-path baseline;
+official measurements are cold-cache)`, and `-Repro` and `-Smoke` force the value back to `off` so
+a reproduction run sits on the measured condition on that axis. `file:<path>` makes the launcher,
+once the server reports ready, read that file as UTF-8
 and send its text to the server as one synchronous request, then wait for it. The request goes to
 `/completion` with `cache_prompt` on and `n_predict` 1, carrying the text exactly as the file holds
 it. `/completion` rather than the chat endpoint is the load-bearing choice: the chat route wraps
@@ -588,7 +593,17 @@ model goes through the same seals a catalog model does. Activation is atomic acr
 components: repacker, engine and launcher each carry the same template ABI token, and a bundle in
 which one of them is missing or disagrees fails to assemble.
 
-**How it behaves.** It is off unless you ask for it with `-ExperimentalArchTemplate`. A file that
+**How it behaves.** It shipped in v0.2.2 behind `-ExperimentalArchTemplate` and is on by default
+since v0.2.3, where the canonical control is `-ArchTemplate on|off` and the older switch remains as
+a compatible spelling of `on`. The answer is resolved before the model is identified, which is why
+the stored form is a machine-wide launcher preference rather than a per-model preset entry: a preset
+is bound to a profile that does not exist yet at that point in the run. The command-line flag itself
+is per-run and is not written down; the two pre-identification controls are what store a choice -
+the model menu's toggle row, and a single question on the `-Model` path asked only when that run
+would really take the template route. A preference file that fails its strict load does not fall
+back to on: the run continues with the path closed and says so, the interactive controls refuse to
+overwrite it, and only an explicit `-ArchTemplate on` reopens it. None of the checks moved with the
+default. A file that
 matches a catalog entry takes the catalog path, and a match that then fails a catalog, expectation
 or seal check is a hard failure rather than a demotion onto the template path - a silent downgrade
 there would be exactly the way a misconfiguration hides itself. An architecture with no template
