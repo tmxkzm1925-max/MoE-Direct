@@ -364,7 +364,7 @@ Notes on this table:
 
 ## Running an unlisted model (experimental)
 
-* As of version v0.2.3, the following features are built-in and can be used automatically, while the following applies when used manually 
+As of version v0.2.3, the following features are built-in and can be used automatically, while the following applies when used manually 
 
 The table above is a list of six models, and until v0.2.2 it was also the list of models that would
 run at all: a GGUF the catalog did not carry was refused even when its architecture was one the
