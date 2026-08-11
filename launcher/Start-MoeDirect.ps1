@@ -75,11 +75,18 @@ param(
     # keys above. It is subordinate to warmstart: hard-OFF and soft-OFF turn autosave off as well,
     # and this key can never raise either of them back on.
     [string] $Autosave,
-    # OPEN_ARCH C axis (LS OA-1): the private entry point to the arch-template path. Deliberately
-    # undocumented - the same posture the repacker takes with argparse.SUPPRESS on
-    # --experimental-arch-template (repack_experts.py:3519). Release activation is the M5 atomic
-    # gate, not this switch: without it an unregistered model still stops at "unsupported GGUF"
-    # exactly as it does today.
+    # UX 1-1-2: the canonical arch-template control. Taken as a raw [string] for the same reason as
+    # the six allowlist keys above - a [ValidateSet] binder failure would terminate before a status
+    # line could be written. It is NOT an allowlist override key: it is resolved BEFORE model
+    # identification (a preset is profile-bound and cannot exist that early), so it travels the
+    # global preference file instead of the preset. on | off, absent = the resolution order below.
+    # Naming note: Invoke-Repacker has its own [bool] $ArchTemplate parameter with an explicit
+    # default, so it shadows this one inside that function and never reads it.
+    [string] $ArchTemplate,
+    # OPEN_ARCH C axis (LS OA-1): the ORIGINAL private entry point to the arch-template path.
+    # DEPRECATED by UX 1-1-2 - kept working for anyone who scripted it, but it is now only the
+    # second rung of the resolution order: it maps to 'on' when the canonical -ArchTemplate is
+    # absent, and "-ExperimentalArchTemplate -ArchTemplate off" resolves to off.
     [switch] $ExperimentalArchTemplate,
     # Dot-source hook for launcher_selftest.ps1: define everything, run nothing.
     [switch] $LibraryMode
@@ -250,6 +257,63 @@ $script:DERIVED_LOCK_ID_PREFIX = 'arch-template:'
 # inventory_sha256; 16 hex is what goes into the id so the directory name stays short while the
 # collision domain stays far beyond the number of models one machine will ever derive.
 $script:DERIVED_DIGEST_CHARS = 16
+
+# ---------------------------------------------------------------------------
+# UX 1-3: the arch families the REPACKER carries a template for - the key set of ARCH_TEMPLATES
+# (repack_experts.py:162). Exactly TWO consumers are allowed to read it, and the launcher selftest
+# asserts exact-set equality against the repacker table so a drift cannot ship:
+#   1. the model-menu family label (UX 1-3)
+#   2. the early admissibility gate at the selection call (UX 1-1-3)
+# The template DERIVATION logic is deliberately NOT duplicated here - that would be the "second
+# GGUF/template parser" the derive-plan note below (region 7b) forbids. A membership set is not a
+# parser: it decides admissibility, never what the inventory contains.
+$script:ARCH_TEMPLATE_FAMILIES = @('gpt-oss', 'qwen35moe', 'deepseek2')
+
+# ---------------------------------------------------------------------------
+# UX 1-1-1: the arch-template preference is a GLOBAL launcher preference, not a preset override.
+# Reason (frozen): its only consumer is the model-identification step, and identification runs
+# BEFORE the CLI override parse, the preset load, the effective config and the interactive custom
+# editor. A preset is bound to a source_tag/profile_id/expect_digest triple that does not exist yet
+# at that point, so a stored preset value could never reach the gate that needs it - it would show
+# "off" on the status screen while an existing template repack was already being served.
+$script:ARCH_TEMPLATE_PREF_FILE_NAME = 'arch_template_pref.json'
+$script:ARCH_TEMPLATE_PREF_SCHEMA_VERSION = 1
+# Two fields, both required, nothing else accepted. Deliberately NOT the preset's 5-field schema:
+# this file is machine-owned, tiny, and its whole job is to survive a version skew as either a
+# clean value or a clean discard.
+$script:ARCH_TEMPLATE_PREF_REQUIRED_FIELDS = @('schema_version', 'arch_template')
+# The product default once the file is absent (UX 1-1-2 rung 4).
+$script:ARCH_TEMPLATE_DEFAULT = 'on'
+# UX 1-1-1 discard policy: file ABSENT = the product default; file PRESENT but rejected by the
+# strict load = 'off' for this run (fail-close). The asymmetry is the point. needRepack=false skips
+# the repack confirmation entirely, so a damaged preference that failed OPEN would re-enable the
+# serving of an existing template artifact with no gate in front of it. Recovery is the explicit
+# CLI '-ArchTemplate on' only.
+$script:ARCH_TEMPLATE_PREF_DISCARD_VALUE = 'off'
+# The one line every interactive writer prints instead of acting, once the discard has latched.
+# Saying it out loud matters: silently hiding the toggle would look like a missing feature rather
+# than a deliberate lock, and the user needs to be told which command reopens it.
+$script:ARCH_TEMPLATE_DISCARD_LOCK_NOTE =
+    'arch template stays off for this run (the stored preference failed its strict load); it can only be re-enabled with -ArchTemplate on'
+
+# UX 1-3 label vocabulary. Provisional by construction: the final catalog verdict also weighs shard
+# count, per-shard bytes and the source pin (Get-StructuralProfileCandidates), none of which a
+# one-file header read can see.
+$script:LABEL_CATALOG           = '[catalog]'
+$script:LABEL_TEMPLATE_PREFIX   = '[template: '
+$script:LABEL_UNSUPPORTED       = '[unsupported]'
+$script:LABEL_IDENTIFY_PENDING  = '[identify pending]'
+$script:LABEL_PROVISIONAL_NOTE  = 'labels are provisional; final identification happens at start'
+
+# ---------------------------------------------------------------------------
+# UX 1-4 / 1-5: the launcher-side warmup default is ON, and the two bench modes force it back off.
+# The forced value carries a REASON so the single ready-side record can name it; the reason enum is
+# what replaced the old "RELEASE_SPEC 8 default" text, which becomes false once the default is on.
+$script:WARMUP_PRODUCT_DEFAULT = 'on'
+$script:WARMUP_FORCED_REASON_BENCH =
+    'repro/smoke forces warmup off (bench cache-state preservation)'
+$script:WARMUP_SKIP_FORCED_BENCH = 'forced_bench'
+$script:WARMUP_SKIP_USER_OFF     = 'user_off'
 
 # LS OA-1 surface axes (wire). Three separate questions, never collapsed into one badge:
 #   copy integrity     - did every selected routed slice verify byte-for-byte?
@@ -1878,8 +1942,14 @@ function Read-GgufValue {
     }
 }
 
+# UX 1-3 (-LabelMode): the model-menu label needs the four IDENTIFICATION fields and nothing else.
+# The ordinary counter below also counts the three split.* keys, so a split model that writes them
+# before its structural keys can satisfy the count with zero structural fields read - which would
+# turn a perfectly readable model into "[identify pending]". Label mode therefore wants
+# general.architecture plus the three <arch>.* suffix keys only, and leaves split.* uncounted.
+# It changes nothing for identify, which needs the split keys and keeps the default.
 function Read-GgufHeader {
-    param([string] $Path, [bool] $ExpectSplitKeys = $false)
+    param([string] $Path, [bool] $ExpectSplitKeys = $false, [bool] $LabelMode = $false)
     $fs = $null; $br = $null
     try {
         $fs = New-Object System.IO.FileStream($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read,
@@ -1899,6 +1969,7 @@ function Read-GgufHeader {
         $needExact  = @('general.architecture', 'split.count', 'split.no', 'split.tensors.count')
         $wantCount = 4
         if ($ExpectSplitKeys) { $wantCount = 7 }
+        if ($LabelMode) { $needExact = @('general.architecture'); $wantCount = 4 }
         $got = 0
         for ($i = [uint64]0; $i -lt $nKv; $i++) {
             $key = Read-GgufString -Reader $br
@@ -2975,7 +3046,8 @@ function Get-BudgetAutoCandidate {
 # caller passes the probe results in rather than having them read behind its back - the same shape
 # as Resolve-EffectivePrefetch taking -ProbeOk - which is what lets the selftest drive every row.
 function Resolve-BudgetAutotune {
-    param($Profile, $Overrides, $Installed, $Geometry, $Mem, [bool] $ReproMode, [bool] $PerfCustom)
+    param($Profile, $Overrides, $Installed, $Geometry, $Mem, [bool] $ReproMode, [bool] $PerfCustom,
+          [bool] $WarmPath = $false)
 
     $profileMin = [long](Get-JsonValue -Obj $Profile -Name 'min_budget_mb')
     $calc = $null
@@ -3034,7 +3106,14 @@ function Resolve-BudgetAutotune {
     # overrides map the EFFECTIVE writer uses), a fail_resource row still never claims the
     # identity (it serves no budget at all), and 'explicit' no longer needs a clause of its own -
     # a budget_mb override is never performance-neutral, so it already arrives as PerfCustom.
-    $identity = ((-not $PerfCustom) -and ($source -cne 'fail_resource') -and ($budget -eq $profileMin))
+    # UX 1-4 (Codex build r1 M4) adds the WARMUP dimension to that same question. Since v0.2.3 the
+    # launcher warms up by default while every published number was measured cold, so a warm run is
+    # not the measured operating point no matter how the budget landed - and the status screen
+    # already says so. Without this clause the record would answer 'identity true' next to a screen
+    # reading [unmeasured], which is the exact disagreement the r1 F2 repair exists to prevent.
+    # It arrives as a parameter rather than being read here because the value is a decision of
+    # Build-EffectiveConfig (the bench force can still turn the warmup off after the override layers).
+    $identity = ((-not $PerfCustom) -and (-not $WarmPath) -and ($source -cne 'fail_resource') -and ($budget -eq $profileMin))
 
     $rec = [ordered]@{
         source                = $source
@@ -3042,6 +3121,9 @@ function Resolve-BudgetAutotune {
         budget_mb             = $(if ($source -ceq 'fail_resource') { $null } else { [long]$budget })
         profile_min_budget_mb = $profileMin
         repro                 = [bool]$ReproMode
+        # UX 1-4 (Codex build r1 M4): the warmup dimension that fed performance_identity above, so
+        # the record explains its own verdict instead of leaving a reader to guess why.
+        warm_path             = [bool]$WarmPath
         explicit_override     = ($null -ne $Overrides -and $Overrides.ContainsKey('budget_mb'))
         probe_method          = [string]$Installed.method
         probe_ok              = [bool]$Installed.ok
@@ -4464,6 +4546,245 @@ function Remove-UserPreset {
 # endregion
 
 # ============================================================================
+# region 13b. ARCH-TEMPLATE PREFERENCE (UX 1-1) - global, resolved before identification
+#
+# Everything in this region runs BEFORE Resolve-ProfileSelection, so nothing here may depend on a
+# profile, a catalog entry or an expect digest - that is exactly why the value cannot live in the
+# preset (which is bound to all three) and needs a file of its own. See the constants block in
+# region 1 for the full reasoning and for the discard policy.
+# ============================================================================
+
+function Get-ArchTemplatePrefPath {
+    # Same state directory as the user preset (LS 1-7): one directory, two independent files. The
+    # preset's 8-step load contract is untouched by this - a separate file cannot partially apply.
+    return (Join-Path (Get-LauncherStateDir) $script:ARCH_TEMPLATE_PREF_FILE_NAME)
+}
+
+# Strict load with exactly three outcomes and no fourth:
+#   absent  - no file at all                    -> the caller applies the product default
+#   valid   - every check passed                -> the stored value
+#   discard - the file EXISTS and failed a check -> the caller fails CLOSED (UX 1-1-1)
+# "Exists but unreadable" is deliberately a discard rather than an absence: an I/O error on a file
+# the user did create is not the same statement as never having chosen.
+function Read-ArchTemplatePref {
+    $path = Get-ArchTemplatePrefPath
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        return @{ state = 'absent'; path = $path }
+    }
+    $b = Read-FileBytesStrict -Path $path
+    if (-not $b.ok) { return @{ state = 'discard'; path = $path; reason = ('unreadable - ' + $b.reason) } }
+    $t = ConvertFrom-Utf8Strict -Bytes $b.bytes
+    if (-not $t.ok) { return @{ state = 'discard'; path = $path; reason = ('not valid utf-8 - ' + $t.reason) } }
+    $pr = ConvertFrom-JsonStrict -Text $t.text
+    if (-not $pr.ok) { return @{ state = 'discard'; path = $path; reason = ('corrupt or truncated json - ' + $pr.reason) } }
+    $obj = $pr.value
+    foreach ($f in $script:ARCH_TEMPLATE_PREF_REQUIRED_FIELDS) {
+        if (-not (Test-JsonHas -Obj $obj -Name $f)) {
+            return @{ state = 'discard'; path = $path; reason = ('required field missing: ' + $f) }
+        }
+    }
+    # Unknown top-level key discards the WHOLE file - the preset's rule (LS 1-7 step 2) for the same
+    # reason: a file written by a newer launcher carries a meaning this one cannot claim to know.
+    foreach ($k in (Get-JsonKeys -Obj $obj)) {
+        if ($script:ARCH_TEMPLATE_PREF_REQUIRED_FIELDS -notcontains $k) {
+            return @{ state = 'discard'; path = $path; reason = ('unknown top-level field: ' + $k) }
+        }
+    }
+    $sv = Get-JsonValue -Obj $obj -Name 'schema_version'
+    if (-not (Test-JsonNonNegativeInteger $sv)) {
+        return @{ state = 'discard'; path = $path; reason = 'schema_version is not an integer' }
+    }
+    if ([long]$sv -ne [long]$script:ARCH_TEMPLATE_PREF_SCHEMA_VERSION) {
+        return @{ state = 'discard'; path = $path; reason = ('stale schema_version ' + $sv) }
+    }
+    $v = Get-JsonValue -Obj $obj -Name 'arch_template'
+    if (-not (Test-JsonNonEmptyString $v)) {
+        return @{ state = 'discard'; path = $path; reason = 'arch_template is not a string' }
+    }
+    # Exact and lower-case. The 'true'/'1' spellings the CLI accepts are a typing convenience on the
+    # command line; this file is written by the launcher itself and is held to the canonical form.
+    if ([string]$v -cne 'on' -and [string]$v -cne 'off') {
+        return @{ state = 'discard'; path = $path; reason = "arch_template must be 'on' or 'off'" }
+    }
+    return @{ state = 'valid'; path = $path; value = [string]$v }
+}
+
+# tmp + read-back + atomic replace - the preset saver's pattern (LS 1-7), adopted for the same
+# reason: a half-written preference is precisely the corrupt file the discard rule then has to fail
+# closed on. A write failure is non-terminal, because this run already holds its resolved value.
+function Save-ArchTemplatePref {
+    param([string] $Value)
+    $path = Get-ArchTemplatePrefPath
+    $dir = Split-Path -Parent $path
+    try {
+        if (-not (Test-Path -LiteralPath $dir -PathType Container)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+        $obj = [ordered]@{
+            schema_version = [int]$script:ARCH_TEMPLATE_PREF_SCHEMA_VERSION
+            arch_template  = [string]$Value
+        }
+        $tmp = $path + '.tmp'
+        [System.IO.File]::WriteAllText($tmp, ($obj | ConvertTo-Json -Depth 4), (New-Object System.Text.UTF8Encoding($false)))
+        $rb = Read-JsonFileStrict -Path $tmp
+        if (-not $rb.ok) { throw ('read-back parse failed: ' + $rb.reason) }
+        if ([string](Get-JsonValue -Obj $rb.value -Name 'arch_template') -cne [string]$Value) { throw 'read-back value mismatch' }
+        Move-FileAtomic -TempPath $tmp -FinalPath $path
+        Write-Diag -Kind 'ARCH_TEMPLATE_PREF_SAVED' -Data @{ path = $path; value = [string]$Value }
+        return $true
+    } catch {
+        Write-Line ('[arch template] WARNING: could not save the preference (' + $_.Exception.Message +
+                    '). This run uses ' + $Value + '; the choice will not persist.')
+        Write-Diag -Kind 'arch_template_pref_save_failed' -Data @{ path = $path; reason = $_.Exception.Message }
+        try { if (Test-Path -LiteralPath ($path + '.tmp') -PathType Leaf) { Remove-Item -LiteralPath ($path + '.tmp') -Force -ErrorAction SilentlyContinue } } catch { }
+        return $false
+    }
+}
+
+# Raw-string validation for the canonical CLI value, the same discipline as the six allowlist keys.
+# An unusable value terminates as fail_custom_args and is never silently promoted to the default -
+# that would be a fail-OPEN on the one control the whole admissibility gate hangs on.
+function Test-ArchTemplateValue {
+    param([string] $Value)
+    $v = ([string]$Value).Trim().ToLowerInvariant()
+    if ($v -eq 'on'  -or $v -eq 'true'  -or $v -eq '1') { return @{ ok = $true; value = 'on' } }
+    if ($v -eq 'off' -or $v -eq 'false' -or $v -eq '0') { return @{ ok = $true; value = 'off' } }
+    return @{ ok = $false; reason = "arch template must be 'on' or 'off'" }
+}
+
+$script:ArchTemplateResolved     = $null
+$script:ArchTemplateSource       = $null
+$script:ArchTemplateCanonicalCli = $false
+# UX 1-1-5: set once the model-selection menu has actually rendered its toggle item. It is what
+# tells the -Model fallback question that the user has already been offered the same control, so
+# the two entry points can never both fire in one run.
+$script:ArchTemplateToggleOffered = $false
+
+function Set-ArchTemplateResolved {
+    param([string] $Value, [string] $Source)
+    $script:ArchTemplateResolved = [string]$Value
+    $script:ArchTemplateSource   = [string]$Source
+    Write-Diag -Kind 'ARCH_TEMPLATE_RESOLVED' -Data @{ value = [string]$Value; source = [string]$Source }
+}
+
+# UX 1-1-2 - the whole resolution order in one place, run ONCE and before identification:
+#   1 canonical -ArchTemplate   given = final, and the only recovery from a discarded preference
+#   2 a preference file that FAILED the strict load -> 'off' (fail-close). It sits above the
+#     deprecated switch on purpose: a damaged preference must not be revivable by the old switch,
+#     because needRepack=false would then serve an existing template artifact past a skipped gate.
+#   3 -ExperimentalArchTemplate  deprecated, maps to 'on' only when 1 is absent
+#   4 a valid preference file
+#   5 the product default
+# The answer is latched into $script:ArchTemplateResolved and every later consumer - the selection
+# gate, the status line, the interactive toggle - reads that one variable and nothing else.
+function Resolve-ArchTemplate {
+    if ($null -ne $ArchTemplate -and ([string]$ArchTemplate).Trim().Length -gt 0) {
+        $r = Test-ArchTemplateValue -Value ([string]$ArchTemplate)
+        if (-not $r.ok) { Stop-Launcher 'fail_custom_args' ("invalid -ArchTemplate '" + $ArchTemplate + "': " + $r.reason) }
+        $script:ArchTemplateCanonicalCli = $true
+        Set-ArchTemplateResolved -Value $r.value -Source 'cli'
+        return
+    }
+    $pref = Read-ArchTemplatePref
+    if ($pref.state -eq 'discard') {
+        Write-Line ('[arch template] stored preference discarded (' + $pref.reason +
+                    '); this run continues with arch template OFF. Recover with -ArchTemplate on.')
+        Write-Diag -Kind 'ARCH_TEMPLATE_PREF_DISCARDED' -Data @{ path = $pref.path; reason = $pref.reason }
+        Set-ArchTemplateResolved -Value $script:ARCH_TEMPLATE_PREF_DISCARD_VALUE -Source 'pref_discarded'
+        return
+    }
+    if ($ExperimentalArchTemplate) {
+        Set-ArchTemplateResolved -Value 'on' -Source 'deprecated_switch'
+        return
+    }
+    if ($pref.state -eq 'valid') {
+        Set-ArchTemplateResolved -Value ([string]$pref.value) -Source 'preference'
+        return
+    }
+    Set-ArchTemplateResolved -Value $script:ARCH_TEMPLATE_DEFAULT -Source 'default'
+}
+
+# UX 1-1-3: template admissibility, decided at the selection call and nowhere else. Closing it
+# closes the template FALLBACK only - a catalog candidate, pinned or unpinned, is returned before
+# this can matter, so an out-of-family arch the catalog DOES describe keeps its catalog pin verdict.
+function Test-TemplateAdmissible {
+    param([string] $Arch)
+    if ($script:ArchTemplateResolved -cne 'on') { return $false }
+    return ($script:ARCH_TEMPLATE_FAMILIES -ccontains [string]$Arch)
+}
+
+# UX 1-1-1 fail-close, interactive half (Codex build r1 M1). The frozen recovery rule is "explicit
+# -ArchTemplate on ONLY". Resolve-ArchTemplate honours it, but an interactive control that WRITES a
+# fresh preference would launder the discard away inside the same run: the damaged file is replaced
+# by a clean one and the value flips to on with no CLI anywhere in the story. The reachable path is
+# an ordinary one - a partially written file or a version skew from a newer launcher, then the model
+# menu. So every interactive writer asks here first, and a locked run says so rather than going
+# quiet. Reading is unaffected; only writing and re-latching are closed.
+function Test-ArchTemplateInteractiveAllowed {
+    return ($script:ArchTemplateSource -cne 'pref_discarded')
+}
+
+# UX 1-1-5: an interactive choice is a decision taken LATER than any command line, so it both
+# persists and re-latches the value for this run. That is the entire point of the toggle - the
+# interactive custom editor is only reached after selection, derive-plan and the repack
+# confirmation, which is too late to be the first place a user can say "no".
+function Set-ArchTemplateInteractive {
+    param([string] $Value)
+    [void](Save-ArchTemplatePref -Value $Value)
+    Set-ArchTemplateResolved -Value ([string]$Value) -Source 'interactive'
+}
+
+# UX 1-1-5, second half: -Model skips the selection menu, so the same pre-identification decision
+# needs an entry point on that path too. Scope is frozen and narrow - only when this run would
+# actually take the template path, only when no explicit choice has ever been stored, and never
+# under -NonInteractive or a canonical CLI value. The answer is stored either way, so a later run
+# never asks again. Deliberately NOT Confirm-User: that helper's default answer is "no" and obeys
+# -AssumeYes/-AssumeNo, which belong to the repack confirmation; here the default answer has to be
+# the product default (keep it on) and a bare Enter must mean exactly that.
+function Confirm-ArchTemplateBeforeIdentify {
+    param($Catalog, $ModelSet, [string] $Root)
+    if ($NonInteractive) { return }
+    if ($script:ArchTemplateCanonicalCli) { return }
+    if ($script:ArchTemplateToggleOffered) { return }
+    # Codex build r1 M1: a discarded preference is locked off; an interactive answer here would write
+    # a clean file and undo that, so the question is not asked at all (the value is already off, so
+    # Test-TemplateAdmissible below would refuse too - this states the reason explicitly).
+    if (-not (Test-ArchTemplateInteractiveAllowed)) { return }
+    $Arch = [string]$ModelSet.arch
+    if (-not (Test-TemplateAdmissible -Arch $Arch)) { return }
+    if ((Read-ArchTemplatePref).state -ne 'absent') { return }
+    # Codex build r1 M2: family membership alone is NOT "this run will take the template path".
+    # Resolve-ProfileSelection returns a catalog candidate - pinned or unpinned - before the template
+    # value can matter, so a catalogued gpt-oss/qwen35moe/deepseek2 model would be asked a question
+    # that changes nothing about its own run while still rewriting a GLOBAL preference. This is the
+    # exact predicate that call uses (Get-StructuralProfileCandidates), not the menu label's weaker
+    # 4-field comparison: two quantisations of one model share all four identify fields but differ in
+    # shard bytes, so the label-level check would skip the question on a run that really does go
+    # template. The candidates are recomputed a few lines later by the selection itself; that costs
+    # one expect read for the profiles that pass the header prefilter, and no GGUF is reopened.
+    # Assign, then wrap - Get-StructuralProfileCandidates returns its array through the ", @(...)"
+    # idiom, so "@(Get-StructuralProfileCandidates ...)" re-wraps it and reports Count 1 even when it
+    # is empty (the same trap Get-JsonValue documents). Resolve-ProfileSelection assigns first for
+    # exactly this reason, and the question below has to see the same count that call will see.
+    $catalogCands = Get-StructuralProfileCandidates -Catalog $Catalog -ModelSet $ModelSet -Root $Root
+    if (@($catalogCands).Count -gt 0) { return }
+    Write-Line ''
+    Write-Line ('[arch template] on - this architecture (' + $Arch + ') has an EXPERIMENTAL arch template, so an')
+    Write-Line '                unlisted GGUF can be prepared without a catalog entry. No published'
+    Write-Line '                measurement covers such a model. Nothing is written before the plan'
+    Write-Line '                and its confirmation; turning it off reproduces the "unsupported GGUF"'
+    Write-Line '                refusal instead. This is asked once and the answer is remembered.'
+    $ans = Read-UserLine -Prompt '                Keep arch template enabled? [Y/n] '
+    $value = 'on'
+    if ($null -ne $ans) {
+        $a = ([string]$ans).Trim().ToLowerInvariant()
+        if ($a -eq 'n' -or $a -eq 'no') { $value = 'off' }
+    }
+    Set-ArchTemplateInteractive -Value $value
+    Write-Line ('[arch template] ' + $value + ' (stored; use -ArchTemplate to override a single run)')
+}
+
+# endregion
+
+# ============================================================================
 # region 14. ALLOWLIST OVERRIDES / EFFECTIVE CONFIG (LS 1-2, LS 1-3)
 # ============================================================================
 
@@ -4651,9 +4972,25 @@ function Build-EffectiveConfig {
     #   - an engine-internal warmup failure happens BEFORE ready, so it can only surface as
     #     fail_server_start/5 and can never reach the non-terminal degraded branch RS 5 requires;
     #   - one observable warmup owner keeps startup deterministic and the failure reportable.
-    $warm = 'off'
+    # UX 1-4: the launcher-side default is ON since v0.2.3 (a generic one-token request after ready,
+    # a few seconds). The engine side is untouched by that reversal - '--no-warmup' below is still
+    # forced in every configuration, so there is still exactly one warmup owner.
+    $warm = $script:WARMUP_PRODUCT_DEFAULT
     if ($Overrides.ContainsKey('warmup')) { $warm = [string]$Overrides['warmup'] }
     if (-not ($argv -ccontains '--no-warmup')) { $argv += '--no-warmup' }
+    # UX 1-5 (Codex build r1 M4): the bench force is DECIDED here, beside the value it overrides, and
+    # APPLIED at the tail of this function - the two halves are split on purpose. The decision has to
+    # exist this early because the BUDGET_AUTOTUNE record further down claims (or declines) the
+    # measured operating point, and that claim now includes the warmup dimension; it must therefore
+    # see the value this run will really serve, not the pre-force one. The application stays at the
+    # tail so it remains the LAST write to $warm and no override layer can re-raise it.
+    # This is the only place the bench flags DECIDE the warmup value. Test-WarmupOverrideNeutral
+    # reads the same two flags for a different question (is a stored override still performance
+    # custom - UX 1-4), so a grep finds two sites and only this one owns the value.
+    $warmForcedReason = $null
+    if ($Smoke -or $Repro) { $warmForcedReason = $script:WARMUP_FORCED_REASON_BENCH }
+    $warmFinal = $warm
+    if ($null -ne $warmForcedReason) { $warmFinal = 'off' }
 
     # locked layer, restated at build time so a catalog typo cannot relax it (RS 7-3).
     if (-not ($argv -ccontains '-np')) { $argv += @('-np', '1') }
@@ -4707,7 +5044,8 @@ function Build-EffectiveConfig {
               -Installed (Get-InstalledMemoryMib) `
               -Geometry (Get-BudgetSlotGeometry -OutputDir $OutputDir) `
               -Mem (Get-MemStatus) -ReproMode ([bool]$Repro) `
-              -PerfCustom (Test-CustomProvenance -Overrides $Overrides)
+              -PerfCustom (Test-CustomProvenance -Overrides $Overrides) `
+              -WarmPath (Test-WarmPathBaseline -Config @{ warmup = $warmFinal })
     $budget = [long]$bt.budget_mb
     $env0[$script:ENV_BUDGET_MB] = [string]$budget
     $qdEff = $Qd
@@ -4772,21 +5110,59 @@ function Build-EffectiveConfig {
     # custom edit.
     Update-WarmstartEligibility -Argv $argv -EnvVars $env0
 
+    # UX 1-5: bench protection APPLIED, and this is the LAST thing that touches $warm on purpose.
+    # Every runtime config in this launcher is produced by this one function, and the ready-side
+    # warmup consumes $Config.warmup alone, so overwriting the value here - after the CLI/preset/
+    # custom layers have all been folded in - is the single point no later settings layer can
+    # re-raise. The decision itself was taken next to the binding above (see the note there); this
+    # is only where it takes effect. The reason travels IN the config rather than being recorded
+    # here, because this function re-runs on every custom edit and the record must happen exactly
+    # once, at ready.
+    $warm = $warmFinal
+
     return @{ argv = $argv; env = $env0; port = [int]$port; budget_mb = $budget; qd = $qdEff;
               warmup = $warm; prefetch = $pf; host = $host0; warmstart = $wsOverride
-              autosave = $asOverride
+              autosave = $asOverride; warmup_forced_reason = $warmForcedReason
               budget_source = $bt.source; budget_unmeasured = [bool]$bt.unmeasured }
 }
 
 # LS 13-2: performance-neutral override keys do not make a configuration "custom". They change no
 # argv, no env and no measurement condition, so demoting the performance gate for them would punish
 # a user for following the README.
+# UX 1-4 adds ONE value-equivalence exception, and deliberately only one. Custom provenance is still
+# decided by KEY PRESENCE everywhere else; for 'warmup' alone it is decided by the final VALUE,
+# because the v0.2.2 advice was "switch warmup on" and that stored key is now the product default -
+# a user who followed the README must not be reclassified as custom by the default reversal itself.
 function Test-CustomProvenance {
     param($Overrides)
     foreach ($k in $Overrides.Keys) {
-        if ($script:PERF_NEUTRAL_OVERRIDE_KEYS -notcontains [string]$k) { return $true }
+        if ($script:PERF_NEUTRAL_OVERRIDE_KEYS -contains [string]$k) { continue }
+        if ([string]$k -ceq 'warmup' -and (Test-WarmupOverrideNeutral -Value ([string]$Overrides[$k]))) { continue }
+        return $true
     }
     return $false
+}
+
+# UX 1-4: a stored warmup override is performance-neutral when it cannot change the run's warmup
+# behaviour - either because it equals the product default, or because UX 1-5 has already forced the
+# value off and the stored key no longer decides anything. The second half is the frozen wording
+# "a stored warmup override invalidated by the -Repro/-Smoke force is not counted as performance
+# custom": counting it would demote a bench run for a setting that run does not use.
+function Test-WarmupOverrideNeutral {
+    param([string] $Value)
+    if ($Smoke -or $Repro) { return $true }
+    return ([string]$Value -ceq $script:WARMUP_PRODUCT_DEFAULT)
+}
+
+# UX 1-4: the warmup dimension of the performance gate, as one predicate so the screen and the
+# EFFECTIVE record cannot answer it differently. Only 'off' matches the official cold-cache
+# condition; 'on' (the product default) and 'file:<path>' both leave the machine warm before the
+# first measured token. It says nothing about the OTHER gate requirements - catalog performance
+# validation, measured-budget identity and the absence of performance-changing overrides are all
+# still required on their own (UX 1-4, "no over-claiming").
+function Test-WarmPathBaseline {
+    param($Config)
+    return ([string]$Config.warmup -cne 'off')
 }
 
 function Test-LoopbackAddress {
@@ -6544,6 +6920,13 @@ function Show-Status {
         Write-Line '  performance gate : [unmeasured] (custom configuration)'
     } elseif ($Config.budget_unmeasured) {
         Write-Line '  performance gate : [unmeasured] (auto budget differs from the measured configuration)'
+    } elseif (Test-WarmPathBaseline -Config $Config) {
+        # UX 1-4: the product default is now warmup ON, and every published number was measured on a
+        # COLD cache. Such a run is neither custom nor auto-budgeted - it is simply not the condition
+        # the catalog measured - so it gets its own honest row instead of borrowing PASS. The
+        # -Repro/-Smoke forced off is what puts the warmup dimension back on the official condition,
+        # and it reaches this row through the same value, not through a special case.
+        Write-Line '  performance gate : [unmeasured] (product warm-path baseline; official measurements are cold-cache)'
     } elseif ($perf) {
         Write-Line '  performance gate : PASS (reference machine)'
     } else {
@@ -6573,7 +6956,19 @@ function Show-Status {
     # BUDGET_AUTOTUNE_SPEC v0.2 section 3: no silent automatic value - the source travels with the
     # number on the launch screen, and the banner line above carries the arithmetic behind it.
     Write-Line ('  budget / QD      : {0} MB [{1}] / {2}' -f $Config.budget_mb, $Config.budget_source, $Config.qd)
-    Write-Line ('  warmup           : {0} (default OFF)' -f $Config.warmup)
+    # UX 1-2 / 1-4: the default is ON since v0.2.3. When a bench mode forced it back off the line
+    # states the FORCING instead of the default, because "off (default ON)" would leave the reader
+    # to guess who decided (UX 1-4 table, row 3).
+    $warmTxt = ('{0} (default ON)' -f $Config.warmup)
+    if ($Config.warmup_forced_reason) { $warmTxt = ('{0} (forced: {1})' -f $Config.warmup, $Config.warmup_forced_reason) }
+    Write-Line ('  warmup           : {0}' -f $warmTxt)
+    # UX 1-2: the arch-template state belongs on the same screen as the rest of the configuration.
+    # Its source is the value latched before identification - NOT the effective config, which never
+    # carries it, because this is a global preference and not an allowlist override (UX 1-1).
+    # The empty guard covers the dot-sourced -LibraryMode case, where nothing resolved it.
+    $atTxt = [string]$script:ArchTemplateResolved
+    if ($atTxt.Length -eq 0) { $atTxt = '(unresolved)' }
+    Write-Line ('  arch template    : {0} (experimental - unlisted GGUFs of known architectures)' -f $atTxt)
     # LS 13-1: pre-start eligibility, NOT the result. The actual restore outcome is echoed after
     # ready, on its own line.
     Write-Line ('  kv               : {0}' -f $script:WarmstartCtx.status_text)
@@ -6649,6 +7044,9 @@ function Invoke-CustomEditor {
     foreach ($k in $keys) {
         $cur = '(catalog default)'
         if ($Overrides.ContainsKey($k)) { $cur = [string]$Overrides[$k] }
+        # UX 1-4: the third warmup mode was only discoverable from the README, and the default has
+        # just reversed - so the one screen where the value is edited states the whole grammar.
+        if ($k -eq 'warmup') { Write-Line '  warmup accepts on | off | file:<path>   (default on)' }
         $ans = Read-UserLine -Prompt ('  ' + $k + ' [' + $cur + ']: ')
         if ($null -eq $ans) { continue }
         # r1 F1: "was anything typed at all" is decided on a TRIMMED COPY, but the value handed to
@@ -6663,6 +7061,30 @@ function Invoke-CustomEditor {
             continue
         }
         $Overrides[$k] = $v.value
+    }
+    # UX 1-1-4: arch template is editable here too, but it is NOT an override key. It is written to
+    # the GLOBAL preference file and PRESET_ALLOWLIST_KEYS stays untouched (the preset schema and
+    # its schema_version are unchanged by this whole round). It also cannot take effect now -
+    # identification finished several stages ago - so the echo says "from the next start" instead of
+    # pretending a value changed something. The pre-identification controls are the model-menu
+    # toggle and, on the -Model path, the one-shot question (UX 1-1-5).
+    $curAt = [string]$script:ArchTemplateResolved
+    if (-not (Test-ArchTemplateInteractiveAllowed)) {
+        # Codex build r1 M1: writing here would replace the damaged preference with a clean one and
+        # thereby undo the fail-close for the NEXT run - the same laundering the menu toggle is
+        # blocked from doing. State it instead of prompting for a value that would be refused.
+        Write-Line ('  arch template    : ' + $script:ARCH_TEMPLATE_DISCARD_LOCK_NOTE)
+        return $Overrides
+    }
+    $ansAt = Read-UserLine -Prompt ('  arch template [' + $curAt + ']: ')
+    if ($null -ne $ansAt -and ([string]$ansAt).Trim().Length -gt 0) {
+        $vAt = Test-ArchTemplateValue -Value ([string]$ansAt)
+        if (-not $vAt.ok) {
+            # LS 5: interactive violations re-loop / are ignored, they never terminate.
+            Write-Line ('    rejected: ' + $vAt.reason)
+        } elseif (Save-ArchTemplatePref -Value $vAt.value) {
+            Write-Line ('    arch template ' + $vAt.value + ' stored; applies from the next start (this run stays ' + $curAt + ').')
+        }
     }
     return $Overrides
 }
@@ -6888,11 +7310,76 @@ function Get-ModelScanRoots {
     return $roots
 }
 
+# UX 1-3: the -00001-of- member of a split set, when the given path belongs to one and that member
+# exists. The recent list stores whatever path the user last identified with - LS 1-5 discovery
+# accepts any shard - but only shard 1 carries the structural metadata a label needs. Label reading
+# only: the candidate keeps the path it was offered under, and a missing shard 1 is left for
+# identify to refuse rather than being turned into an error here.
+function Get-ShardRepresentativePath {
+    param([string] $Path)
+    $name = [System.IO.Path]::GetFileName([string]$Path)
+    $m = [regex]::Match($name, $script:SPLIT_REGEX)
+    if (-not $m.Success) { return [string]$Path }
+    $dir = [System.IO.Path]::GetDirectoryName([string]$Path)
+    $first = Join-Path $dir ('{0}-{1:d5}-of-{2:d5}.gguf' -f $m.Groups['base'].Value, 1, [int]$m.Groups['cnt'].Value)
+    if (Test-Path -LiteralPath $first -PathType Leaf) { return $first }
+    return [string]$Path
+}
+
+# UX 1-3: the identify block of a catalog profile, and deliberately nothing else. The REAL catalog
+# verdict also weighs the shard count, the per-shard byte sizes and the source pin
+# (Get-StructuralProfileCandidates / Resolve-ProfileSelection) - which is exactly why this label is
+# provisional and the menu says so on screen.
+function Test-CatalogIdentifyMatch {
+    param($Catalog, [string] $Arch, [long] $NLayer, [long] $NExpert, [long] $NExpertUsed)
+    if ($null -eq $Catalog) { return $false }
+    foreach ($p in (Get-JsonArray -Obj $Catalog -Name 'profiles')) {
+        $id = Get-JsonValue -Obj $p -Name 'identify'
+        if ([string](Get-JsonValue -Obj $id -Name 'arch') -cne $Arch) { continue }
+        if ([long](Get-JsonValue -Obj $id -Name 'n_layer') -ne $NLayer) { continue }
+        if ([long](Get-JsonValue -Obj $id -Name 'n_expert') -ne $NExpert) { continue }
+        if ([long](Get-JsonValue -Obj $id -Name 'n_expert_used') -ne $NExpertUsed) { continue }
+        return $true
+    }
+    return $false
+}
+
+# UX 1-3: one candidate's provisional family label. Four answers, and the fourth is the one that
+# carries the contract: a header that does not yield all four identification fields is reported as
+# pending and is never guessed into a template claim (r1 Q4).
+# The four fields are re-checked BY ARCH after the read rather than trusted from the reader's
+# counter, because the counter matches '.block_count' on any prefix - the arch-qualified lookup is
+# what actually proves the model described itself completely.
+# Cost boundary: one header read per candidate, once, while the menu is built, and for a split set
+# only the representative shard. Nothing here opens the body or walks a tensor table.
+function Get-ModelCandidateLabel {
+    param([string] $Path, $Catalog)
+    $h = Read-GgufHeader -Path (Get-ShardRepresentativePath -Path $Path) -LabelMode $true
+    if (-not $h.ok) { return $script:LABEL_IDENTIFY_PENDING }
+    $meta = $h.meta
+    if ($null -eq $meta -or -not $meta.ContainsKey('general.architecture')) { return $script:LABEL_IDENTIFY_PENDING }
+    $arch = [string]$meta['general.architecture']
+    $vals = @{}
+    foreach ($s in @('.block_count', '.expert_count', '.expert_used_count')) {
+        if (-not $meta.ContainsKey($arch + $s)) { return $script:LABEL_IDENTIFY_PENDING }
+        $vals[$s] = [long]$meta[$arch + $s]
+    }
+    if (Test-CatalogIdentifyMatch -Catalog $Catalog -Arch $arch -NLayer $vals['.block_count'] `
+            -NExpert $vals['.expert_count'] -NExpertUsed $vals['.expert_used_count']) {
+        return $script:LABEL_CATALOG
+    }
+    if ($script:ARCH_TEMPLATE_FAMILIES -ccontains $arch) { return ($script:LABEL_TEMPLATE_PREFIX + $arch + ']') }
+    return $script:LABEL_UNSUPPORTED
+}
+
 # UI-1 3: recent (existing only, newest first, max 8) followed by the scan (newest first, max 12).
 # A path already offered by the recent source is not offered a second time by the scan, so every
 # menu index maps to exactly one file.
+# UX 1-3: this is also where the family label is read - once per offered candidate, at menu build
+# time. $Catalog is optional so the label degrades to the non-catalog answers rather than throwing
+# when a caller has no catalog to hand.
 function Build-ModelCandidates {
-    param([string[]] $RecentPaths, [string[]] $ScanRoots)
+    param([string[]] $RecentPaths, [string[]] $ScanRoots, $Catalog = $null)
     $items = @()
     $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
     $recentAdded = 0
@@ -6904,7 +7391,8 @@ function Build-ModelCandidates {
         $agg = Get-ShardDisplayAggregate -Path ([string]$p)
         $items += @{ path = [string]$p; name = [System.IO.Path]::GetFileName([string]$p)
                      bytes = [long]$agg.bytes; shards = [int]$agg.shards
-                     repacked = (Test-RepackArtifactsPresent -ModelPath ([string]$p)); source = 'recent' }
+                     repacked = (Test-RepackArtifactsPresent -ModelPath ([string]$p))
+                     label = (Get-ModelCandidateLabel -Path ([string]$p) -Catalog $Catalog); source = 'recent' }
         $recentAdded++
     }
     $scan = @(Get-GgufScanCandidates -Roots $ScanRoots -MaxDepth $script:SCAN_MAX_DEPTH)
@@ -6917,7 +7405,8 @@ function Build-ModelCandidates {
         $agg = Get-ShardDisplayAggregate -Path ([string]$c.path)
         $items += @{ path = [string]$c.path; name = [string]$c.name
                      bytes = [long]$agg.bytes; shards = [int]$agg.shards
-                     repacked = (Test-RepackArtifactsPresent -ModelPath ([string]$c.path)); source = 'scan' }
+                     repacked = (Test-RepackArtifactsPresent -ModelPath ([string]$c.path))
+                     label = (Get-ModelCandidateLabel -Path ([string]$c.path) -Catalog $Catalog); source = 'scan' }
         $scanAdded++
     }
     return @{ items = @($items); truncated = $truncated; recent_count = $recentAdded; scan_count = $scanAdded }
@@ -6931,10 +7420,14 @@ function Format-CandidateSize {
     return ('{0} B' -f $Bytes)
 }
 
-# UI-1 3 / UI-3: file name and size only. Reading the header to enrich the label is forbidden - the
-# verdict is identify's job, after the selection. For a split set the size is the summed one and the
-# number of summed shards is stated next to it, so a metadata-only shard 1 cannot read as the whole
-# model. ASCII separator on purpose: LS 8 freezes the output surface as English ASCII.
+# UI-1 3 / UI-3: file name and size in the first bracket - no path, and no verdict. For a split set
+# the size is the summed one and the number of summed shards is stated next to it, so a
+# metadata-only shard 1 cannot read as the whole model. ASCII separator on purpose: LS 8 freezes the
+# output surface as English ASCII.
+# UX 1-3 revises the v0.2.2 "the header is never read for a label" rule: the family label IS read
+# from one header per candidate (Get-ModelCandidateLabel), because "can this launcher prepare this
+# file at all" is the question the first-run menu could not answer before. What has NOT changed is
+# who decides: the label is provisional, identify after the selection is still the only verdict.
 function Format-ModelCandidate {
     param($Candidate)
     $size = Format-CandidateSize -Bytes ([long]$Candidate.bytes)
@@ -6944,7 +7437,12 @@ function Format-ModelCandidate {
     if ($n -gt 1) { $parts += ('{0} shards' -f $n) }
     # LS 11-6-e: presence of the three artifacts only - never a verify verdict.
     if ($Candidate.repacked) { $parts += 'repacked' }
-    return ('{0}   [{1}]' -f [string]$Candidate.name, ($parts -join ', '))
+    $line = ('{0}   [{1}]' -f [string]$Candidate.name, ($parts -join ', '))
+    # UX 1-3: a SEPARATE bracket, not one more comma item in the size bracket. The two answer
+    # different questions - how big is it / can this launcher prepare it - and folding them together
+    # would let one read as an answer to the other (the same rule as the LS OA-1 three axes).
+    if ($Candidate.label) { $line = $line + '   ' + [string]$Candidate.label }
+    return $line
 }
 
 # UI-1 1: menu mode requires a real console. Redirected stdin (pipe, file, CI, the selftest
@@ -7074,25 +7572,63 @@ function Read-MenuChoiceInteractive {
 # item and any render failure. The returned path is NOT validated here; Resolve-ModelPath and
 # identify treat it exactly like a typed one.
 function Select-ModelPathInteractive {
+    param($Catalog = $null)
     if (-not (Test-MenuModeAvailable)) { return $null }
     try {
-        $cand = Build-ModelCandidates -RecentPaths (Read-RecentModels) -ScanRoots (Get-ModelScanRoots)
+        $cand = Build-ModelCandidates -RecentPaths (Read-RecentModels) -ScanRoots (Get-ModelScanRoots) -Catalog $Catalog
         $items0 = @($cand.items)
         Write-Diag -Kind 'MODEL_MENU' -Data @{ recent = $cand.recent_count; scanned = $cand.scan_count
                                                truncated = $cand.truncated }
         if ($items0.Count -eq 0) { return $null }
-        $labels = @()
-        foreach ($c in $items0) { $labels += (Format-ModelCandidate -Candidate $c) }
-        $labels += 'enter path manually'
-        $title = 'Select the model GGUF   (Up/Down + Enter)'
-        if ($cand.truncated) {
-            $title = $title + ('   [scan list truncated to the {0} most recent files]' -f $script:SCAN_MODELS_SHOW)
+        # UX 1-1-5: the toggle is only offered while the canonical CLI has not already decided this
+        # run - with -ArchTemplate given, offering to change it here would be offering a lie.
+        # Codex build r1 M1: and never after a strict-load discard. The toggle WRITES a preference,
+        # so offering it there would recover a damaged file without the canonical CLI - exactly what
+        # the UX 1-1-1 fail-close forbids. Say why, rather than dropping the row unexplained.
+        $toggle = (-not $script:ArchTemplateCanonicalCli) -and (Test-ArchTemplateInteractiveAllowed)
+        if ((-not $script:ArchTemplateCanonicalCli) -and (-not (Test-ArchTemplateInteractiveAllowed))) {
+            Write-Line ''
+            Write-Line ('  ' + $script:ARCH_TEMPLATE_DISCARD_LOCK_NOTE)
         }
-        $r = Show-SelectionMenu -Title $title -Items $labels -InitialIndex 0 `
-                 -Hint ('  {0} recent, {1} found under <drive>:\{2}' -f $cand.recent_count, $cand.scan_count, $script:MODELS_DIR_NAME)
-        $i = [int]$r.index
-        if ($i -lt 0 -or $i -ge $items0.Count) { return $null }   # "enter path manually"
-        return [string]$items0[$i].path
+        # The candidate list (and its header reads) is built ONCE; only the toggle row is re-rendered.
+        while ($true) {
+            $labels = @()
+            foreach ($c in $items0) { $labels += (Format-ModelCandidate -Candidate $c) }
+            $labels += 'enter path manually'
+            $toggleIndex = -1
+            if ($toggle) {
+                $toggleIndex = $labels.Count
+                $labels += ('arch template: {0} (toggle)' -f $script:ArchTemplateResolved)
+            }
+            $title = 'Select the model GGUF   (Up/Down + Enter)'
+            if ($cand.truncated) {
+                $title = $title + ('   [scan list truncated to the {0} most recent files]' -f $script:SCAN_MODELS_SHOW)
+            }
+            # UX 1-3: each label came from a single header read and cannot see the shard count, the
+            # per-shard bytes or the source pin, so the screen says so rather than letting a
+            # provisional answer read as the final one.
+            $title = $title + "`n  " + $script:LABEL_PROVISIONAL_NOTE
+            $r = Show-SelectionMenu -Title $title -Items $labels -InitialIndex 0 `
+                     -Hint ('  {0} recent, {1} found under <drive>:\{2}' -f $cand.recent_count, $cand.scan_count, $script:MODELS_DIR_NAME)
+            # Codex build r1 M3: recorded only NOW, because only now has the toggle actually been on
+            # screen. Setting it while building the item list meant a render/host fault - which falls
+            # back to the text prompt without ever drawing anything - still counted as "the user was
+            # offered this control", and that silently deleted the -Model fallback question.
+            if ($toggle) { $script:ArchTemplateToggleOffered = $true }
+            $i = [int]$r.index
+            if ($toggle -and $i -eq $toggleIndex) {
+                # UX 1-1-5: recorded immediately AND latched for this run, then the menu is redrawn
+                # so the new state is visible before a model is picked. This is the only control that
+                # reaches the user before the first template repack - the custom editor is three
+                # stages too late (selection, derive-plan, repack confirmation).
+                $next = 'off'
+                if ($script:ArchTemplateResolved -cne 'on') { $next = 'on' }
+                Set-ArchTemplateInteractive -Value $next
+                continue
+            }
+            if ($i -lt 0 -or $i -ge $items0.Count) { return $null }   # "enter path manually"
+            return [string]$items0[$i].path
+        }
     } catch {
         # LS 11-7 b: same rule as the choice menu - a LauncherExit (cancellation) is re-thrown.
         if ($null -ne $_.Exception -and $_.Exception.GetType().FullName -eq 'MoeLauncher.LauncherExit') { throw }
@@ -8335,12 +8871,15 @@ function Resolve-OutputDirectory {
 }
 
 function Resolve-ModelPath {
+    # UX 1-3: the catalog is threaded through purely so a candidate whose four identification fields
+    # match a shipped profile can say [catalog] instead of claiming a template it will never take.
+    param($Catalog = $null)
     if ($Model) { $p = $Model }
     else {
         # LS 11 (UI-1 3): the selection menu fills the SAME variable the text prompt fills, and
         # returns $null whenever it is not applicable - menu mode unavailable, no candidate, or
         # "enter path manually". Everything after this point is the v0.4 path, unchanged.
-        $p = Select-ModelPathInteractive
+        $p = Select-ModelPathInteractive -Catalog $Catalog
         if ($null -eq $p) {
             $p = Read-UserLine -Prompt 'Model GGUF path> '
             if ($null -eq $p) { Stop-Launcher 'fail_model_path' 'no model path supplied' }
@@ -8403,12 +8942,26 @@ function Complete-PreSpawnConfig {
                                           autosave = [string]$script:WarmstartCtx.autosave_setting
                                           autosave_active = (Test-AutosaveActive)
                                           autosave_minutes = [int]$script:WarmstartCtx.autosave_minutes
+                                          # UX 1-2 / 1-4 / 1-5: the three new decisions this record
+                                          # has to be able to explain - which arch-template value the
+                                          # run resolved, whether the warmup dimension was on the
+                                          # official cold condition, and who forced it if it was.
+                                          arch_template = [string]$script:ArchTemplateResolved
+                                          arch_template_source = [string]$script:ArchTemplateSource
+                                          warmup = [string]$config.warmup
+                                          warmup_forced_reason = [string]$config.warmup_forced_reason
+                                          warm_path_baseline = (Test-WarmPathBaseline -Config $config)
                                           kv = $script:WarmstartCtx.status_text
                                           kv_reason = $script:WarmstartCtx.reason
                                           budget_source = $config.budget_source
                                           provenance = $(if ($Custom) { 'custom' } elseif ($config.budget_unmeasured) { 'auto' } else { 'catalog defaults' })
                                           format_gate = (Test-JsonBooleanTrue (Get-JsonValue -Obj (Get-JsonValue -Obj $Profile -Name 'gates') -Name 'format_validated'))
-                                          performance_gate = $(if ($Custom -or $config.budget_unmeasured) { 'unmeasured' } else { (Test-JsonBooleanTrue (Get-JsonValue -Obj (Get-JsonValue -Obj $Profile -Name 'gates') -Name 'performance_validated')) }) }
+                                          # UX 1-4 (Codex build r1 M4): the warm-path dimension counts
+                                          # HERE too. This field is the record's conclusion and it
+                                          # carries the same name as the screen's row, so it may not
+                                          # answer 'true' while the screen prints [unmeasured]
+                                          # (product warm-path baseline). One predicate, both writers.
+                                          performance_gate = $(if ($Custom -or $config.budget_unmeasured -or (Test-WarmPathBaseline -Config $config)) { 'unmeasured' } else { (Test-JsonBooleanTrue (Get-JsonValue -Obj (Get-JsonValue -Obj $Profile -Name 'gates') -Name 'performance_validated')) }) }
     return $config
 }
 
@@ -8421,6 +8974,10 @@ function Invoke-LauncherMain {
     # (0) launcher-owned CLI validation before anything else can fail without a status line
     Set-FailureStage 'fail_custom_args'
     Resolve-ExtraCliArgs
+    # UX 1-1-2: the arch-template answer is latched HERE, at the top of the run. It has to be
+    # decided before the model selection menu offers its toggle and long before the selection call
+    # consumes it, and its only inputs (CLI, the global preference file) are all available now.
+    Resolve-ArchTemplate
 
     # (1) bundle integrity comes first (LS 2 "launcher first action")
     Set-FailureStage 'fail_gate_bundle'
@@ -8434,12 +8991,22 @@ function Invoke-LauncherMain {
 
     # (3) model + identification
     Set-FailureStage 'fail_model_path'
-    $modelPath = Resolve-ModelPath
+    $modelPath = Resolve-ModelPath -Catalog $catalog
     $modelSet = Get-ModelShardSet -ModelPath $modelPath
 
+    # UX 1-1-5: a run that reached the model MENU was already offered the toggle. A run that did not
+    # (-Model, or any fallback to the text prompt) gets the equivalent one-shot question here -
+    # after the arch is known, which is what makes the "would this run take the template path"
+    # scope check possible at all, and still before the selection call below closes the door.
+    Confirm-ArchTemplateBeforeIdentify -Catalog $catalog -ModelSet $modelSet -Root $root
+
     # LS OA-1 (M1): the header fingerprint narrows the candidates, the source pin decides.
+    # UX 1-1-3: admissibility is folded into that same argument. The arch is the shard-set consensus
+    # Get-ModelShardSet already produced (no new header read), and a family miss closes the template
+    # FALLBACK here - before the SHA cache, the output lock and the derive-plan can leave anything
+    # on disk - while a catalog candidate still returns on its own merits further in.
     $selection = Resolve-ProfileSelection -Catalog $catalog -ModelSet $modelSet -Root $root `
-                     -TemplateAllowed ([bool]$ExperimentalArchTemplate)
+                     -TemplateAllowed (Test-TemplateAdmissible -Arch ([string]$modelSet.arch))
     $derived = $null
     $profile = $selection.profile
     $outputDir = $null
@@ -8807,7 +9374,22 @@ function Invoke-LauncherWarmup {
     $wf = Get-WarmupFilePath -Value ([string]$Config.warmup)
     if ($null -ne $wf) { Invoke-LauncherWarmfile -Config $Config -RawPath $wf; return }
     if ($Config.warmup -ne 'on') {
-        Write-Diag -Kind 'WARMUP_SKIPPED' -Data @{ reason = 'warmup off (RELEASE_SPEC 8 default)' }
+        # UX 1-5: the skip reason is an ENUM now. 'RELEASE_SPEC 8 default' died with the default
+        # reversal - it was already false for a bench run, and since v0.2.3 there is no default-off
+        # case left at all. Two reasons remain and they are not interchangeable: 'forced_bench' is
+        # the launcher protecting a measurement, 'user_off' is a choice the user made. Recorded HERE
+        # and only here: Build-EffectiveConfig re-runs on every custom edit, so putting the record
+        # there would log the same forcing several times per run.
+        $reasonEnum = $script:WARMUP_SKIP_USER_OFF
+        $reasonText = 'warmup off (user or stored preset)'
+        if ($Config.warmup_forced_reason) {
+            $reasonEnum = $script:WARMUP_SKIP_FORCED_BENCH
+            $reasonText = [string]$Config.warmup_forced_reason
+            # RS 5 lineage: a degraded/skipped branch states its reason on the console. Only the
+            # forced case echoes - a run the user switched off does not need to be told twice.
+            Write-Line ('[warmup] skipped: ' + $reasonText + ' [reason=' + $reasonEnum + ']')
+        }
+        Write-Diag -Kind 'WARMUP_SKIPPED' -Data @{ reason = $reasonText; reason_enum = $reasonEnum }
         return
     }
     $uri = ('http://{0}:{1}/v1/chat/completions' -f $Config.host, $Config.port)
