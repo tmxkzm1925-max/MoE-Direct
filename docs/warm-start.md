@@ -91,8 +91,8 @@ that pays for the very first token of the run. If you preferred the old behaviou
 the `warmup` key set to `off` restores it exactly.
 
 That default has one honest consequence, and it is worth stating plainly because it changes what
-the status screen tells you. **Every published number in this README was measured on a cold cache,
-and a warmed-up run is not that condition.** So a default start now reports its performance gate as
+the status screen tells you. **Every published number in [Measurements](measured-results.md) was
+measured on a cold cache, and a warmed-up run is not that condition.** So a default start now reports its performance gate as
 `[unmeasured] (product warm-path baseline; official measurements are cold-cache)` rather than
 claiming a measured result it is not entitled to. This is a labelling change, not a slower run -
 warming up does not make anything worse, it just puts the machine in a state the official figures

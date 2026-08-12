@@ -5,13 +5,18 @@
 MoE-Direct keeps a model's expert weights on your NVMe SSD and reads only the experts each
 token actually routes to. That is enough to serve Kimi K2.6, a 1T-class model whose 416.8 GiB
 of weights are about thirteen times the RAM of the machine this project was built on, from a
-32 GB desktop. The model this release is tuned for, Qwen3.5-122B, decodes at around 6 tok/s on
-that same desktop, 2.3x faster than the same engine reading the same weights through plain mmap.
+32 GB desktop. On the reference desktop, Qwen3.5-122B averaged **5.96 tok/s** (5.65-6.26 per
+probe, `PROBE`) in a paired run on the v0.2.1 release binary, **2.2983x** the same binary's
+plain-mmap arm. The separate historical `OFFICIAL` gate recorded **5.59-5.69 tok/s**; neither
+run was repeated for v0.2.3.
 
-The server is ready in seconds, because experts are never bulk-loaded up front. And nothing about
-the model is approximated: no quantization step, no routing change, no touched weights. In the
-paired comparison, the direct-read path returned token-for-token the same output as the stock
-path. Every expert byte is verified against your original GGUF before it is ever used.
+The server is ready in seconds on the recorded reference machine - about 19 seconds in the Kimi
+demo - because experts are never bulk-loaded up front. And nothing about the model is
+approximated: no quantization step, no routing change, no touched weights. Separately, on
+**gpt-oss-120b under greedy decoding**, 12 direct-read/plain-mmap response pairs had identical
+token IDs - not a parity claim for sampled decoding or Kimi K2.6. On Qwen3.5-122B the separate
+check is run-to-run reproducibility, not a second parity pair. Every expert byte is verified
+against your original GGUF before it is ever used.
 
 [![MoE-Direct demo](https://img.youtube.com/vi/JDfrWMxwczk/maxresdefault.jpg)](https://youtu.be/JDfrWMxwczk)
 
@@ -37,27 +42,29 @@ from the [supported list](#supported-models).
 
 1. **Download** `moe-direct-v0.2.3-win-x64.zip` from [Releases](../../releases), right-click
    it, Properties, tick **Unblock**, then extract with Windows "Extract All" into a new, empty
-   folder. Checking the download is one paste, not a hex comparison: with the zip and
-   `SHA256SUMS.txt` in your Downloads folder, paste this into PowerShell and it prints `OK` or
-   `MISMATCH`:
+   folder. Checking the download is one paste, not a hex comparison. In Explorer, open the
+   folder that holds both downloaded files, right-click empty space > Open in Terminal
+   (PowerShell), then paste:
 
    ```powershell
-   if((Get-Content .\SHA256SUMS.txt -Raw) -match (Get-FileHash .\moe-direct-v0.2.3-win-x64.zip -Algorithm SHA256).Hash){'OK: hash matches'}else{'MISMATCH: download again'}
+   $e=((Get-Content .\SHA256SUMS.txt -Raw).Trim() -split '\s+')[0];$a=(Get-FileHash .\moe-direct-v0.2.3-win-x64.zip -Algorithm SHA256).Hash;if($a -eq $e){'OK: hash matches'}else{'MISMATCH: download again'}
    ```
 
-   If you skip it, you are still not running unchecked bytes: the launcher re-verifies every
-   file in the bundle against its sealed manifest on every start and refuses to run if anything
-   is off. The paste is the one check the launcher cannot do for you - that the zip itself is
-   the released one.
-2. **Place your GGUF** under `<drive>:\moe-models\<any-folder>\` and double-click
-   `Start-MoeDirect.cmd`. Pick your model with the arrow keys.
+   If you skip it, the launcher's own sealed-manifest check still catches files changed or
+   corrupted **inside the extracted bundle** on every start - what it cannot do is authenticate
+   the zip or the launcher itself; that is what this paste is for.
+2. Download **every shard** of one exact tested GGUF and revision from
+   [docs/models.md](docs/models.md), and keep all shards in one folder. **Place your GGUF**
+   under `<drive>:\moe-models\<any-folder>\` and double-click `Start-MoeDirect.cmd`. Pick your
+   model with the arrow keys.
 3. **Approve the one-time repack** (the launcher shows the exact disk cost and time before
    writing anything), press Enter when the status screen appears, and connect any
    OpenAI-compatible client to the printed URL.
 
 That is the whole loop. The first run repacks once (minutes to ~18 minutes here, with live
-progress); every later run goes straight to serving. First conversation of a session is the
-slowest by design; later turns reuse the prefix cache and are much faster.
+progress); every later run goes straight to serving. A **cold** session's first conversation is
+the slowest by design; later turns reuse the prefix cache, and a restored exact prefix can skip
+that first-prefill entirely.
 
 Prefer watching first? The **[setup walkthrough](https://youtu.be/I0MRTEn0G6g)** is a single
 real-time take with chapters, including the waits.
@@ -94,12 +101,13 @@ path: **[docs/models.md](docs/models.md)**.
 
 Every number ships with the conditions it was measured under; these are the headlines.
 
-| What | Result | Grade |
+| What | Result | Evidence |
 |---|---|---|
-| Qwen3.5-122B sustained decode | **5.59-5.69 tok/s**, release gate PASS, **2.3x** over the same binary's mmap path | `OFFICIAL` |
+| Qwen3.5-122B sustained decode | **5.59-5.69 tok/s**, `GATE1_SERVE: PASS`; direct-read arms 2.3226x/2.3439x over mmap (separate ISLC-off cross-run estimate: 2.0695x) | `OFFICIAL` |
+| Qwen3.5-122B on the v0.2.1 release binary | 5.65-6.26 per probe, arm average 5.96; combined 2.2983x over the same binary's mmap arm | `PROBE` |
 | Output parity, direct-read vs stock path (gpt-oss-120b, greedy) | 12 paired responses, token IDs identical | `OFFICIAL` |
-| Kimi K2.6 (1T class) from 32 GB RAM | 1.03 tok/s, coherent output | `PROBE` |
-| Your weights after the one-time repack | byte-for-byte the source tensors, every record SHA-256 verified | gate, fail-closed |
+| Kimi K2.6 (1T class) from 32 GB RAM | 1.03 tok/s, coherent output (budget 10240 MB, QD 8, prefetch off, older staging binaries) | `PROBE` |
+| Your weights after the one-time repack | byte-for-byte the source tensors, every record SHA-256 verified | `FORMAT GATE` (fail-closed) |
 
 Results scale primarily with NVMe read throughput; treat them as data points from the reference
 machine (32 GB RAM, one RTX 5080, Gen5 NVMe), not as promises for yours. Full tables, protocols
@@ -114,12 +122,13 @@ Work ships one piece per release, when it is measured, not on a schedule.
   your disk the model's size again; the rework reads experts out of your original file in
   place. It ships only if it holds read performance — space is never bought with speed here.
 - **v0.4 and after:** the speed work, in whatever order is ready first — a prefill path that
-  reads each expert once per request instead of once per token (about 3x in an internal probe),
-  prefetch that derives its own starting point for any model family, and the same hunt on the
-  decode side.
-- **Further out:** an engine-neutral expert-execution core. The parts this project actually
-  owns — the expert store, cache, placement and prefetch — are being carved to a clean boundary,
-  with llama.cpp as the first engine behind it. Also code signing, wider hardware and OS support.
+  reads each expert once per request instead of once per token (about 3x in an internal probe -
+  an internal result, not yet a published benchmark), prefetch that derives its own starting
+  point for any model family, and the same hunt on the decode side.
+- **Further out:** an engine-neutral expert-execution core is **planned**: the parts this
+  project owns - the expert store, cache, placement and prefetch - defined behind a clean
+  boundary, with llama.cpp as the first engine behind it. Also code signing, wider hardware and
+  OS support.
 
 What you are holding is the floor, not the ceiling.
 

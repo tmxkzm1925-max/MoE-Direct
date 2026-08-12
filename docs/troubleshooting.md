@@ -5,8 +5,9 @@
 ## Reporting problems
 
 Every run ends with one machine-readable line on stderr - `[moe-launcher] status=<enum>` - and, for
-failures, two human-readable lines just above it saying what happened and which section of this
-document to read.
+failures, two human-readable lines just above it saying what happened and which section to read.
+The current launcher still prints its legacy pointer `see : README.md > Troubleshooting > <status>`.
+After the documentation split, the matching section is `docs/troubleshooting.md#<status>` - this page.
 
 Diagnostic files, all local:
 
@@ -36,8 +37,9 @@ user name.
 
 ## Troubleshooting
 
-Each status below is a heading, so the launcher's `see : README.md > Troubleshooting > <status>`
-line corresponds to `README.md#<status>`.
+Each status below is a heading. The current launcher still prints its legacy pointer
+`see : README.md > Troubleshooting > <status>`; after the documentation split, the matching
+section is `docs/troubleshooting.md#<status>` - this page.
 
 Exit codes, for scripting: `0` clean stop, `2` you cancelled, `3` path/resource/repack preparation
 failed, `4` a policy gate refused, `5` server start, runtime or shutdown failure, `6` smoke check
@@ -76,8 +78,10 @@ What to do:
 - Check the path, including that the file finished downloading.
 - For a multi-shard model, all shards must be in the same folder and be one complete set - a
   partial download or two different quantizations mixed in one folder both land here.
-- If your model genuinely is not in [Supported models](models.md#supported-models), that is expected: the
-  launcher refuses to write hundreds of GB for a layout it has never verified. Use issue form 4 to
+- If the model is not pinned in [Supported models](models.md#supported-models), check whether its
+  architecture has a shipped experimental template
+  ([Running an unlisted model](models.md#running-an-unlisted-model-experimental)). Architectures
+  without a template are refused before any repack output is written. Use issue form 4 to
   request the profile, and include the model's repo, revision and quantization.
 
 ### fail_resource

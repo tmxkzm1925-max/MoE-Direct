@@ -27,7 +27,7 @@
   served API is the documented subset described in
   [Connecting a client](clients.md#connecting-a-client).
 
-That boundary is why the token-identical claim at the top of this page is even possible: the
+That boundary is why the scoped [token-parity result](measured-results.md) is even possible: the
 compute graph is the stock one - only the storage path underneath the expert tensors changed.
 
 ## How it works
@@ -46,8 +46,8 @@ seconds rather than not starting at all, because nothing is bulk-loaded up front
 the first token. It gets faster when you keep it on the same kind of work, because the cache fills with whatever
 your work actually touches - a genuinely new topic streams its own experts in first. And where that claim has been put to the test - greedy decoding on gpt-oss-120b, direct reads
 against the same binary's mmap path - it produced token-for-token the same output, because none
-of this changes what is computed, only where the bytes come from; the exact scope of that
-comparison is stated with the headline table above.
+of this changes what is computed, only where the bytes come from; the exact scope is stated in
+[Measurements](measured-results.md).
 
 The launcher measures your machine instead of assuming ours. A short read-only sweep picks the queue
 depth for your drive, and the cache budget is sized from your installed RAM and the model's own

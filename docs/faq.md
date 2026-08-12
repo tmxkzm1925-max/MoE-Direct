@@ -6,7 +6,7 @@
 
 - **MoE models only.** Dense models get no benefit from this design.
 - **First-run repack cost is real** - minutes to roughly 18 minutes on the recorded machine, and
-  roughly the model's size again on disk. There is no resume in v0.2.2: an interrupted repack restarts
+  roughly the model's size again on disk. There is no resume as of v0.2.3: an interrupted repack restarts
   from the beginning.
 - **Windows only.** No Linux or macOS build, and no promised numbers for them.
 - **This zip carries the CUDA runtime only.** The official numbers were measured on NVIDIA CUDA.
@@ -16,7 +16,7 @@
   off-bundle - an RTX 5080 at CUDA-parity decode, and a first cross-vendor run on an AMD
   RX 9070 XT whose arms were character-identical among themselves - see
   [Non-official observations](../TECHNICAL.md#non-official-observations) - but nothing Vulkan
-  ships in v0.2.2, and other backends (ROCm/HIP, unified-memory platforms) remain **untested**. CPU-only serving (`-ngl 0`) needs no GPU at all - that is how the 35B row in
+  ships in v0.2.3, and other backends (ROCm/HIP, unified-memory platforms) remain **untested**. CPU-only serving (`-ngl 0`) needs no GPU at all - that is how the 35B row in
   [TECHNICAL.md](../TECHNICAL.md) was measured. If you run this on other hardware, the
   performance-report issue form is where we would like to see the result.
 - **Unsigned preview build.** Expect SmartScreen friction; some managed machines will refuse it.
@@ -74,7 +74,8 @@ promised until they exist.
 
 **AI involvement?** This project is built in an AI-assisted workflow - design, implementation and
 review loops involving multiple AI systems, under human direction - with every change gated by the
-verification protocol above and the raw verdicts kept. Posts to upstream projects are written by
+verification protocol recorded in [TECHNICAL.md](../TECHNICAL.md) and the raw verdicts kept.
+Posts to upstream projects are written by
 the author personally. Parts of this document were written with AI assistance.
 
 ## Source
@@ -105,4 +106,4 @@ per release. A rebased mainline PR series is in preparation.
 |---|---|
 | Wider hardware, wider OS | Windows only today. A Vulkan build of the same engine has been measured off-bundle - RTX 5080 at CUDA-parity decode, and a first AMD run (RX 9070 XT, RDNA4) at about 89 percent of that, its arms character-identical among themselves - so cross-vendor GPU support is now a hardening-and-tooling queue item rather than an open question; the numbers are under [Non-official observations](../TECHNICAL.md#non-official-observations). OS expansion is genuinely hard in the current test environment and will take time. Community ports are welcome. |
 
-Next: [Troubleshooting and status codes](troubleshooting.md)
+Next: [TECHNICAL.md](../TECHNICAL.md) - the long-form technical record.

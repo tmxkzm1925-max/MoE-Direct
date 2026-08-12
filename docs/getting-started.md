@@ -4,7 +4,7 @@
 
 ## Who this release is for
 
-> **v0.2.2 is a public preview aimed at hands-on users.** It runs, it is measured, and its rough
+> **v0.2.3 is a public preview aimed at hands-on users.** It runs, it is measured, and its rough
 > edges are written down rather than hidden. It is not a one-click app for casual use yet - that
 > is a direction, not a promise.
 
@@ -22,10 +22,10 @@ you bring your own GGUF.
 
 | | Requirement | Notes |
 |---|---|---|
-| OS | Windows 10 or 11, x64 | Windows only in v0.2.2. No Linux/macOS build exists; see [FAQ](faq.md#faq). |
+| OS | Windows 10 or 11, x64 | Windows only in v0.2.3. No Linux/macOS build exists; see [FAQ](faq.md#faq). |
 | Runtime | Microsoft Visual C++ Redistributable (x64) | The engine binaries are built with MSVC. Most machines already have it; if it is missing the server cannot start (see [`fail_server_start`](troubleshooting.md#fail_server_start)). Install it from Microsoft's [Latest supported Visual C++ Redistributable downloads](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist) page. |
 | Storage | An NVMe SSD | This design is I/O bound by construction. Other storage - a SATA SSD, an external drive - is **not validated and not recommended**: the launcher does not block it, it measures your drive and reports the throughput it found. |
-| Model | It must be GGUF, and models that have not been tested as of v0.2.3 are also acceptable |  Not all models are supported; for detailed information, Exact repos and revisions in [Supported models](models.md#supported-models). |
+| Model | It must be GGUF. Pinned catalog models are the validated path; an unlisted GGUF is accepted only when its architecture has a shipped template, and it runs labelled `experimental`. | Exact repos and revisions in [Supported models](models.md#supported-models). |
 | Disk | About **2x the model size**, plus reserve | The repack writes its output next to your GGUF and the original stays. Nothing is deleted. |
 | Time | **Minutes to roughly 18 minutes on the recorded machine, once per model** | Recorded there: 61 GB store in 130 s, 72.8 GB in 220 s, 436 GB in 18 min. Another drive may take longer. |
 | RAM | Enough for the cache budget the launcher picks | The launcher sizes the expert cache from your installed RAM and the model's slot geometry, between 4 GB and 12 GB, and you can override it. Each profile also has a minimum below which it cannot be served at all: 8 GB for the 122B, 397B, gpt-oss and DeepSeek profiles, 4 GB for the 35B, 10 GB for K2.6. On a first run the sizing needs the slot geometry that the repack produces, so it happens after the repack and its verification; the preflight that runs before any repack output is written checks the explicit or profile-minimum budget instead. |
@@ -37,9 +37,9 @@ something is wrong with your download - verify the SHA-256 and decide for yourse
 PCs, or with Smart App Control enabled, the file may be blocked outright with no "Run anyway"
 option; Smart App Control has no per-app exception. We will never ask you to turn off Defender,
 SmartScreen or Smart App Control, to add antivirus exclusions, to change your machine-wide
-execution policy, or to run anything as administrator. The code signing is planned, and so far it has not yet been signed. 
-We intend to register it naturally as development and progress continue 
-Please wait just a little, haha
+execution policy, or to run anything as administrator. Code signing is planned. It has not
+happened yet - the project applies as its visibility grows - so unsigned-preview warnings remain
+the expected experience for now.
 
 ## Quick start
 
@@ -47,7 +47,9 @@ Please wait just a little, haha
 > with chapters): [youtu.be/I0MRTEn0G6g](https://youtu.be/I0MRTEn0G6g) - it covers everything in
 > this section, including the waits you should expect.
 
-**Step 0 - get the right file.** On the Releases page there are exactly two assets:
+**Step 0 - get the right file.** On the Releases page, download these **two maintainer-provided
+files** (GitHub also shows two automatically generated "Source code" archives - ignore those;
+they contain no binaries):
 
 | Asset | What it is |
 |---|---|
@@ -61,18 +63,20 @@ Please wait just a little, haha
 **Then, in this order.** The order matters: Windows marks downloaded files, and unblocking the zip
 *after* extracting does not clean up the files that were already extracted.
 
-1. **Verify the download.** With the zip and `SHA256SUMS.txt` in the same folder, paste this
-   one line into PowerShell - it does the hashing and the comparison for you and prints `OK` or
-   `MISMATCH`, nothing to compare by eye:
+1. **Verify the download.** In Explorer, open the folder that holds both downloaded files,
+   right-click empty space > Open in Terminal (PowerShell), then paste:
    ```powershell
-   if((Get-Content .\SHA256SUMS.txt -Raw) -match (Get-FileHash .\moe-direct-v0.2.3-win-x64.zip -Algorithm SHA256).Hash){'OK: hash matches'}else{'MISMATCH: download again'}
+   $e=((Get-Content .\SHA256SUMS.txt -Raw).Trim() -split '\s+')[0];$a=(Get-FileHash .\moe-direct-v0.2.3-win-x64.zip -Algorithm SHA256).Hash;if($a -eq $e){'OK: hash matches'}else{'MISMATCH: download again'}
    ```
-   On `MISMATCH`, stop and download again. If you skip this step, the launcher still re-verifies
-   every file inside the bundle against its sealed manifest on every start, fail-closed; what the
-   launcher cannot check for you is that the zip you downloaded is the released one - that is
-   what this paste establishes.
+   On `MISMATCH`, stop and download again. If you skip it, the launcher's own sealed-manifest
+   check still catches files changed or corrupted **inside the extracted bundle** on every start
+   - what it cannot do is authenticate the zip or the launcher itself; that is what this paste
+   is for.
 2. **Unblock the zip itself** - right-click `moe-direct-v0.2.3-win-x64.zip` -> Properties -> tick
-   **Unblock** -> OK. (Equivalent: `Unblock-File .\moe-direct-v0.2.3-win-x64.zip`.)
+   **Unblock** -> OK. (Equivalent: `Unblock-File .\moe-direct-v0.2.3-win-x64.zip`.) If the
+   **Unblock** checkbox is not there, the file was never marked - carry on. If a managed policy
+   or Smart App Control offers no continuation, do not disable system-wide protection; wait for
+   a signed build or use another machine.
 3. **Extract with Windows "Extract All"** into a **new, empty** folder, for example
    `C:\moe-direct\v0.2.3\`. Other archivers differ in how they propagate the mark-of-the-web, so
    this is the one path we document.
@@ -108,7 +112,7 @@ Please wait just a little, haha
    stops and shows you the exact cost - output size, free space left afterwards, expected time -
    and no model or repack output is created until you answer. This is the long step: minutes to
    roughly 18 minutes on the recorded machine, depending on model size, with
-   live progress. There is no resume in v0.2.2; if you cancel, the next run starts the repack from
+   live progress. There is no resume as of v0.2.3; if you cancel, the next run starts the repack from
    the beginning (it will tell you and ask before deleting the partial output).
 
    ![The repack plan and its confirmation prompt](img/03-repack-plan.png)

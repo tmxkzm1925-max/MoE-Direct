@@ -13,8 +13,8 @@
 | Your weights after the one-time repack | byte for byte the source tensors[^bytes] | Every record SHA-256 compared against the source bytes, all records, no sampling, consumed fail-closed by both the launcher and the engine. |
 
 Each row is expanded, with its full protocol and its caveats, in [Measured results](#measured-results)
-and in [TECHNICAL.md](../TECHNICAL.md). Nothing above is cherry-picked, and no number in this
-document appears without the conditions it was taken under.
+and in [TECHNICAL.md](../TECHNICAL.md). These headline rows are not cherry-picked, and every
+number in this document is accompanied by its conditions.
 
 ## Measured results
 
@@ -37,12 +37,12 @@ same kind of thing.
 | Kimi K2.6, 1T class | 1.03 tok/s decode, coherent English, ~42 % expert-byte cache hits | `PROBE` | Budget 10240 MB, QD 8, prefetch off, older staging binaries. It has **not** passed the performance gate; do not plan interactive work around it. |
 | Qwen3.5-122B multi-turn reuse | 314.9-316.5 context-tok/s perceived, from 8.1-8.3x prefix reuse; 9.3-9.6 tok/s of genuinely new work in the same runs | `PROBE` | Prefix-cache A/B on the reference machine. The two figures must always be read together: the large one is reuse, the small one is new work. |
 
-**Which build these came from.** The paired figures in the box at the top of this page were
-measured on the bundle in this release. The equivalent pair on the previous release, run on
-2026-08-02 against the v0.2 binary, is kept in
-[TECHNICAL.md](../TECHNICAL.md#the-release-pair-headline-source) as the earlier generation's
-record rather than deleted, because that engine is not this one. The frozen gate record predates
-both and keeps its own section.
+**Which build these came from.** The `PROBE` pair in [The headline numbers](#the-headline-numbers)
+was measured on the v0.2.1 release binary and has not been rerun on the current v0.2.3 zip. The
+v0.2 pair kept below is the previous generation's record; the frozen gate predates both. That
+earlier pair, run on 2026-08-02 against the v0.2 binary, is kept in
+[TECHNICAL.md](../TECHNICAL.md#the-release-pair-headline-source) rather than deleted, because
+that engine is not this one.
 
 The release-binary pair the headline comes from, the reference machine's full specification, the
 paired protocol, the historical gate record, the release binary's lineage and every non-official
@@ -53,7 +53,7 @@ to bury it. That file exists so this page can stay short enough to read.
 
 | Where we are | Status |
 |---|---|
-| Serving a 1T-class MoE (Kimi K2.6, deepseek2 architecture) from a 32 GB machine | **Done and shown** - unedited single-take demo below. Format gate passed; performance gate not passed (1.03 tok/s, honestly labelled `PROBE`). |
+| Serving a 1T-class MoE (Kimi K2.6, deepseek2 architecture) from a 32 GB machine | **Done and shown** - unedited single take in the [README demo](../README.md). Format gate passed; performance gate not passed (1.03 tok/s, honestly labelled `PROBE`). |
 | KV cache quantized to `q8_0` | **Measured and gated; the switch is still queued.** The quality gate passed on Qwen3.5-122B, with the divergence and perplexity figures in [TECHNICAL.md](../TECHNICAL.md#kv-cache-q8). What is not in this build is the opt-in switch that would let you turn it on, so the measurement is published ahead of the feature rather than the other way round. It was named for v0.2.3 and did not make it - that release turned out to be a convenience patch, and this is a feature. |
 
 [^same]: **What was compared, and under what conditions.** The paired protocol runs the same
