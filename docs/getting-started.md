@@ -56,10 +56,6 @@ they contain no binaries):
 | `moe-direct-v0.2.3-win-x64.zip` | The runtime bundle. This is the one you want. |
 | `SHA256SUMS.txt` | The checksum of that zip. |
 
-> GitHub also shows an automatically generated **"Source code (zip / tar.gz)"** on every release.
-> That is *not* a runnable bundle - it contains no binaries. Do not download it to run
-> MoE-Direct.
-
 **Then, in this order.** The order matters: Windows marks downloaded files, and unblocking the zip
 *after* extracting does not clean up the files that were already extracted.
 
