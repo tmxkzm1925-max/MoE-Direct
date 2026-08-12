@@ -1,14 +1,14 @@
 # MoE-Direct
 
-**Run Mixture-of-Experts models far larger than your RAM, on an ordinary Windows PC.**
+**Run Mixture-of-Experts models far larger than your RAM, on an ordinary consumer PC.**
 
 MoE-Direct keeps a model's expert weights on your NVMe SSD and reads only the experts each
 token actually routes to. That is enough to serve Kimi K2.6, a 1T-class model whose 416.8 GiB
 of weights are about thirteen times the RAM of the machine this project was built on, from a
-32 GB desktop. On the reference desktop, Qwen3.5-122B averaged **5.96 tok/s** (5.65-6.26 per
-probe, `PROBE`) in a paired run on the v0.2.1 release binary, **2.2983x** the same binary's
-plain-mmap arm. The separate historical `OFFICIAL` gate recorded **5.59-5.69 tok/s**; neither
-run was repeated for v0.2.3.
+32 GB desktop. The model these releases are tuned for, Qwen3.5-122B, averaged **5.96 tok/s**
+on that desktop in a paired run - about **2.3x** the same engine reading the same weights
+through plain mmap. Which build and conditions every number here was measured under is stated
+in [Measurements](docs/measured-results.md) and in each release's notes.
 
 The server is ready in seconds on the recorded reference machine - about 19 seconds in the Kimi
 demo - because experts are never bulk-loaded up front. And nothing about the model is
@@ -30,6 +30,8 @@ then the same run on Qwen3.5-122B. Task Manager stays on screen the whole time.*
   in your RAM does not need this.
 - It is a **hands-on preview, not a one-click app**. You bring your own GGUF; MoE-Direct never
   downloads weights. The rough edges are written down in the docs rather than hidden.
+- Today it ships for **Windows with an NVIDIA GPU (CUDA)**. Linux, macOS and more backends are
+  where this is going - see the [roadmap](#roadmap).
 
 The exact boundary — what is changed and what is provably not touched (the math, the routing,
 the weights, your files) — is stated once, in [How it works](docs/how-it-works.md). Known rough
@@ -40,14 +42,14 @@ edges live in [Limitations and FAQ](docs/faq.md).
 You need Windows 10/11 x64, an NVMe SSD, disk space of about twice the model size, and a GGUF
 from the [supported list](#supported-models).
 
-1. **Download** `moe-direct-v0.2.3-win-x64.zip` from [Releases](../../releases), right-click
-   it, Properties, tick **Unblock**, then extract with Windows "Extract All" into a new, empty
-   folder. Checking the download is one paste, not a hex comparison. In Explorer, open the
-   folder that holds both downloaded files, right-click empty space > Open in Terminal
-   (PowerShell), then paste:
+1. **Download** the runtime zip (`moe-direct-<version>-win-x64.zip`) and `SHA256SUMS.txt` from
+   [Releases](../../releases), right-click the zip, Properties, tick **Unblock**, then extract
+   with Windows "Extract All" into a new, empty folder. Checking the download is one paste, not
+   a hex comparison. In Explorer, open the folder that holds both downloaded files, right-click
+   empty space > Open in Terminal (PowerShell), then paste:
 
    ```powershell
-   $e=((Get-Content .\SHA256SUMS.txt -Raw).Trim() -split '\s+')[0];$a=(Get-FileHash .\moe-direct-v0.2.3-win-x64.zip -Algorithm SHA256).Hash;if($a -eq $e){'OK: hash matches'}else{'MISMATCH: download again'}
+   $e=((Get-Content .\SHA256SUMS.txt -Raw).Trim() -split '\s+')[0];$a=(Get-FileHash .\moe-direct-*-win-x64.zip -Algorithm SHA256).Hash;if($a -eq $e){'OK: hash matches'}else{'MISMATCH: download again'}
    ```
 
    If you skip it, the launcher's own sealed-manifest check still catches files changed or
@@ -69,8 +71,8 @@ that first-prefill entirely.
 Prefer watching first? The **[setup walkthrough](https://youtu.be/I0MRTEn0G6g)** is a single
 real-time take with chapters, including the waits.
 
-Windows SmartScreen will warn you: v0.x is an unsigned preview, so "Windows protected your PC"
-is the expected message, not a verdict on your download. Verify the SHA-256 and decide for
+Windows SmartScreen will warn you: these preview builds are unsigned, so "Windows protected
+your PC" is the expected message, not a verdict on your download. Verify the SHA-256 and decide for
 yourself. We never ask you to disable Defender or SmartScreen. Details, including managed-PC
 cases, are in [Getting started](docs/getting-started.md).
 
@@ -103,28 +105,29 @@ Every number ships with the conditions it was measured under; these are the head
 
 | What | Result | Evidence |
 |---|---|---|
-| Qwen3.5-122B sustained decode | **5.59-5.69 tok/s**, `GATE1_SERVE: PASS`; direct-read arms 2.3226x/2.3439x over mmap (separate ISLC-off cross-run estimate: 2.0695x) | `OFFICIAL` |
-| Qwen3.5-122B on the v0.2.1 release binary | 5.65-6.26 per probe, arm average 5.96; combined 2.2983x over the same binary's mmap arm | `PROBE` |
-| Output parity, direct-read vs stock path (gpt-oss-120b, greedy) | 12 paired responses, token IDs identical | `OFFICIAL` |
-| Kimi K2.6 (1T class) from 32 GB RAM | 1.03 tok/s, coherent output (budget 10240 MB, QD 8, prefetch off, older staging binaries) | `PROBE` |
-| Your weights after the one-time repack | byte-for-byte the source tensors, every record SHA-256 verified | `FORMAT GATE` (fail-closed) |
+| Qwen3.5-122B sustained decode | **5.59-5.69 tok/s**, frozen release gate passed; about **2.3x** over the same binary's plain-mmap path | release-gate run |
+| Qwen3.5-122B paired probe | 5.65-6.26 per probe, arm average **5.96 tok/s** | paired probe |
+| Output parity, direct-read vs stock path (gpt-oss-120b, greedy) | 12 paired responses, token IDs identical | paired run |
+| Kimi K2.6 (1T class) from 32 GB RAM | 1.03 tok/s, coherent output | probe |
+| Your weights after the one-time repack | byte-for-byte the source tensors, every record SHA-256 verified | fail-closed gate |
 
 Results scale primarily with NVMe read throughput; treat them as data points from the reference
-machine (32 GB RAM, one RTX 5080, Gen5 NVMe), not as promises for yours. Full tables, protocols
-and grades: **[docs/measured-results.md](docs/measured-results.md)** and
-**[TECHNICAL.md](TECHNICAL.md)**.
+machine (32 GB RAM, one RTX 5080, Gen5 NVMe), not as promises for yours. Which build each
+number came from, the full protocols and the grading rules:
+**[docs/measured-results.md](docs/measured-results.md)**, **[TECHNICAL.md](TECHNICAL.md)** and
+each release's notes.
 
 ## Roadmap
 
 Work ships one piece per release, when it is measured, not on a schedule.
 
-- **v0.3, in progress:** the repack without the second copy. Today the one-time repack costs
+- **Next, in progress:** the repack without the second copy. Today the one-time repack costs
   your disk the model's size again; the rework reads experts out of your original file in
   place. It ships only if it holds read performance — space is never bought with speed here.
-- **v0.4 and after:** the speed work, in whatever order is ready first — a prefill path that
-  reads each expert once per request instead of once per token (about 3x in an internal probe -
-  an internal result, not yet a published benchmark), prefetch that derives its own starting
-  point for any model family, and the same hunt on the decode side.
+- **After that:** the speed work, in whatever order is ready first — a prefill path that
+  reads each expert once per request instead of once per token (about 3x in an internal probe,
+  not yet a published benchmark), prefetch that derives its own starting point for any model
+  family, and the same hunt on the decode side.
 - **Further out:** an engine-neutral expert-execution core is **planned**: the parts this
   project owns - the expert store, cache, placement and prefetch - defined behind a clean
   boundary, with llama.cpp as the first engine behind it. Also code signing, wider hardware and
