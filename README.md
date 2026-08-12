@@ -68,7 +68,8 @@ yourself. We never ask you to disable Defender or SmartScreen. Details, includin
 cases, are in [Getting started](docs/getting-started.md).
 
 Full detail for every step, including what success looks like on screen:
-**[docs/getting-started.md](docs/getting-started.md)**.
+**[docs/getting-started.md](docs/getting-started.md)**. Connecting a chat client or an agent:
+**[docs/clients.md](docs/clients.md)**.
 
 ## Supported models
 
