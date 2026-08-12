@@ -148,7 +148,23 @@ The `status=` line the launcher prints, every status code and its fix:
 
 ## Credit and license
 
-MIT License. Built on [llama.cpp](https://github.com/ggml-org/llama.cpp); built and verified
-with AI assistance (Claude, GPT). Trademarks and citation: [TRADEMARKS.md](TRADEMARKS.md),
-[CITATION.cff](CITATION.cff). Archived releases carry a DOI:
+Built on [llama.cpp](https://github.com/ggml-org/llama.cpp) (MIT), base commit `0bd0ec6` (b10057) -
+upstream copyright and license preserved; source releases keep all upstream notices. See
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+MoE-Direct additions (c) 2026 tmxkzm1925-max, released under the [MIT License](LICENSE). The
+MoE-Direct name identifies this project and its official builds - see
+[TRADEMARKS.md](TRADEMARKS.md). If you use this work, please cite it
+([CITATION.cff](CITATION.cff)). Archived releases carry a DOI:
 [10.5281/zenodo.21739367](https://doi.org/10.5281/zenodo.21739367).
+
+**Thanks.** This project was built by one person with a great deal of machine help, and the help
+was not incidental. Anthropic's Claude and OpenAI's GPT models did design work, implementation and,
+just as usefully, adversarial review of each other's output, under human direction and with every
+change gated by the verification this project's documents describe. Having a second and a third
+reader who never got tired is most of the reason the checking here is as strict as it is.
+
+Thanks are owed as well to the teams whose models this was measured against: Qwen, DeepSeek,
+Moonshot AI, OpenAI for gpt-oss, and Mistral. None of them are affiliated with this project and
+none of them have endorsed it. They published weights that one person with one desktop could
+actually study, and without that there would have been nothing here to run.

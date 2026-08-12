@@ -51,7 +51,7 @@ Please wait just a little, haha
 
 | Asset | What it is |
 |---|---|
-| `moe-direct-v0.2.2-win-x64.zip` | The runtime bundle. This is the one you want. |
+| `moe-direct-v0.2.3-win-x64.zip` | The runtime bundle. This is the one you want. |
 | `SHA256SUMS.txt` | The checksum of that zip. |
 
 > GitHub also shows an automatically generated **"Source code (zip / tar.gz)"** on every release.
@@ -61,15 +61,20 @@ Please wait just a little, haha
 **Then, in this order.** The order matters: Windows marks downloaded files, and unblocking the zip
 *after* extracting does not clean up the files that were already extracted.
 
-1. **Verify the download.** In PowerShell:
+1. **Verify the download.** With the zip and `SHA256SUMS.txt` in the same folder, paste this
+   one line into PowerShell - it does the hashing and the comparison for you and prints `OK` or
+   `MISMATCH`, nothing to compare by eye:
    ```powershell
-   Get-FileHash .\moe-direct-v0.2.2-win-x64.zip -Algorithm SHA256
+   if((Get-Content .\SHA256SUMS.txt -Raw) -match (Get-FileHash .\moe-direct-v0.2.3-win-x64.zip -Algorithm SHA256).Hash){'OK: hash matches'}else{'MISMATCH: download again'}
    ```
-   Compare the result with `SHA256SUMS.txt`. If it does not match, stop and download again.
-2. **Unblock the zip itself** - right-click `moe-direct-v0.2.2-win-x64.zip` -> Properties -> tick
-   **Unblock** -> OK. (Equivalent: `Unblock-File .\moe-direct-v0.2.2-win-x64.zip`.)
-3. **Extract with Windows "Extract All"** into a folder of your choice, for example
-   `C:\moe-direct\v0.2.2\`. Other archivers differ in how they propagate the mark-of-the-web, so
+   On `MISMATCH`, stop and download again. If you skip this step, the launcher still re-verifies
+   every file inside the bundle against its sealed manifest on every start, fail-closed; what the
+   launcher cannot check for you is that the zip you downloaded is the released one - that is
+   what this paste establishes.
+2. **Unblock the zip itself** - right-click `moe-direct-v0.2.3-win-x64.zip` -> Properties -> tick
+   **Unblock** -> OK. (Equivalent: `Unblock-File .\moe-direct-v0.2.3-win-x64.zip`.)
+3. **Extract with Windows "Extract All"** into a **new, empty** folder, for example
+   `C:\moe-direct\v0.2.3\`. Other archivers differ in how they propagate the mark-of-the-web, so
    this is the one path we document.
 4. **Put your GGUF somewhere the launcher can find it.** Any path works, but if you place models
    under `<drive>:\moe-models\` (up to three levels deep, e.g.
