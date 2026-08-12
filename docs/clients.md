@@ -61,3 +61,5 @@ our recommendation, not something the app does for you. `agent.api_max_retries: 
 aborted attempts resume from the prompt cache. This is a first-turn cost only: in the same session
 the second turn entered generation in under a minute, because the prefix cache absorbed the
 repeated system prompt.
+
+Next: [Warm start and prompt precompute](warm-start.md)

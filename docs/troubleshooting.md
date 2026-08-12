@@ -211,3 +211,5 @@ Exit `6`. *A smoke assertion failed, while the shutdown itself completed cleanly
 
 Only reachable with `-Smoke`. The failing assertion is named in the output; attach the launcher
 JSONL.
+
+Next: [Limitations and FAQ](faq.md)

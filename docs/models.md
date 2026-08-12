@@ -161,3 +161,5 @@ uses is the *shape* of local execution we have found practical on the hardware t
 targets. Its expert format (MXFP4) is already one
 the repacker handles today. That is a structural argument about the size class, not a claim that
 this project will be first or fastest there.
+
+Next: [Getting started](getting-started.md)

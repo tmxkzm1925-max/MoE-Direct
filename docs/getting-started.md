@@ -156,3 +156,5 @@ are gone, and exits with:
 
 That last line is the machine-readable one, on stderr, exactly once, on every run - success or
 failure. Every status value is listed in [Troubleshooting](troubleshooting.md#troubleshooting).
+
+Next: [Connecting a client](clients.md)

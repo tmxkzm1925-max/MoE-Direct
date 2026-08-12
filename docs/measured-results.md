@@ -74,3 +74,5 @@ to bury it. That file exists so this page can stay short enough to read.
     quality/space trade in this project. The general repacker test matrix covers 128-384 experts
     and 1-2 shards across four quantization layouts; separately, the shipped 512-expert, 6-shard
     Qwen3.5-397B profile has passed its model-specific format gate.
+
+Next: [TECHNICAL.md](../TECHNICAL.md) - the long version of every number here.

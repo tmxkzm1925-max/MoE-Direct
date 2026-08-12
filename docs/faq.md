@@ -104,3 +104,5 @@ per release. A rebased mainline PR series is in preparation.
 | Where we are | Status |
 |---|---|
 | Wider hardware, wider OS | Windows only today. A Vulkan build of the same engine has been measured off-bundle - RTX 5080 at CUDA-parity decode, and a first AMD run (RX 9070 XT, RDNA4) at about 89 percent of that, its arms character-identical among themselves - so cross-vendor GPU support is now a hardening-and-tooling queue item rather than an open question; the numbers are under [Non-official observations](../TECHNICAL.md#non-official-observations). OS expansion is genuinely hard in the current test environment and will take time. Community ports are welcome. |
+
+Next: [Troubleshooting and status codes](troubleshooting.md)

@@ -61,3 +61,5 @@ behaves and what was measured, in
 looks like this, which alternatives were measured and rejected on data, and what was underneath each
 decision, is in a technical note with a DOI:
 [10.5281/zenodo.21739367](https://doi.org/10.5281/zenodo.21739367).
+
+Next: [TECHNICAL.md](../TECHNICAL.md) - each technique in full.

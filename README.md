@@ -15,8 +15,9 @@ path. Every expert byte is verified against your original GGUF before it is ever
 
 [![MoE-Direct demo](https://img.youtube.com/vi/JDfrWMxwczk/maxresdefault.jpg)](https://youtu.be/JDfrWMxwczk)
 
-*Unedited single take (2:49): cold boot to answer on the 447 GB Kimi K2.6, then the same run on
-Qwen3.5-122B. Task Manager stays on screen the whole time.*
+*Unedited single take (2:49): cold boot to answer on the 447 GB Kimi K2.6 - server loaded in
+about 19 seconds, the NVMe sustaining multi-GB/s reads, system RAM under 32 GB the whole way -
+then the same run on Qwen3.5-122B. Task Manager stays on screen the whole time.*
 
 **What this is, honestly:**
 
@@ -25,14 +26,29 @@ Qwen3.5-122B. Task Manager stays on screen the whole time.*
 - It is a **hands-on preview, not a one-click app**. You bring your own GGUF; MoE-Direct never
   downloads weights. The rough edges are written down in the docs rather than hidden.
 
+The exact boundary — what is changed and what is provably not touched (the math, the routing,
+the weights, your files) — is stated once, in [How it works](docs/how-it-works.md). Known rough
+edges live in [Limitations and FAQ](docs/faq.md).
+
 ## Quick start
 
 You need Windows 10/11 x64, an NVMe SSD, disk space of about twice the model size, and a GGUF
 from the [supported list](#supported-models).
 
-1. **Download** `moe-direct-<version>-win-x64.zip` from
-   [Releases](../../releases), check its SHA-256 against `SHA256SUMS.txt`, right-click,
-   Properties, **Unblock**, then extract with Windows "Extract All".
+1. **Download** `moe-direct-v0.2.3-win-x64.zip` from [Releases](../../releases), right-click
+   it, Properties, tick **Unblock**, then extract with Windows "Extract All" into a new, empty
+   folder. Checking the download is one paste, not a hex comparison: with the zip and
+   `SHA256SUMS.txt` in your Downloads folder, paste this into PowerShell and it prints `OK` or
+   `MISMATCH`:
+
+   ```powershell
+   if((Get-Content .\SHA256SUMS.txt -Raw) -match (Get-FileHash .\moe-direct-v0.2.3-win-x64.zip -Algorithm SHA256).Hash){'OK: hash matches'}else{'MISMATCH: download again'}
+   ```
+
+   If you skip it, you are still not running unchecked bytes: the launcher re-verifies every
+   file in the bundle against its sealed manifest on every start and refuses to run if anything
+   is off. The paste is the one check the launcher cannot do for you - that the zip itself is
+   the released one.
 2. **Place your GGUF** under `<drive>:\moe-models\<any-folder>\` and double-click
    `Start-MoeDirect.cmd`. Pick your model with the arrow keys.
 3. **Approve the one-time repack** (the launcher shows the exact disk cost and time before
@@ -105,6 +121,15 @@ Work ships one piece per release, when it is measured, not on a schedule.
   with llama.cpp as the first engine behind it. Also code signing, wider hardware and OS support.
 
 What you are holding is the floor, not the ceiling.
+
+Full detail on what has already shipped: [docs/models.md](docs/models.md),
+[docs/measured-results.md](docs/measured-results.md), [docs/warm-start.md](docs/warm-start.md)
+and [docs/disk-layout.md](docs/disk-layout.md).
+
+## Troubleshooting
+
+The `status=` line the launcher prints, every status code and its fix:
+[docs/troubleshooting.md](docs/troubleshooting.md).
 
 ## Documentation
 

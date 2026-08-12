@@ -56,3 +56,5 @@ Uninstalling completely = delete all four. Your GGUFs are yours and are never to
 | Where we are | Status |
 |---|---|
 | The repack that costs your disk the model's size a second time | **Being finished now, targeted at v0.3.** Instead of writing a second copy of the expert data, the launcher reads the experts out of your original file in place, so the space cost is the model and nothing more, and onboarding stops moving hundreds of gigabytes around. Nothing of it is in this build, and it ships only if it holds read performance - the rule this project works under is that space is never bought with speed. |
+
+Next: [Troubleshooting and status codes](troubleshooting.md)
