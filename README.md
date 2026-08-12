@@ -158,7 +158,7 @@ in memory.
 That boundary is why the token-identical claim at the top of this page is even possible: the
 compute graph is the stock one - only the storage path underneath the expert tensors changed.
 
-**Windows will warn you.** v0.2.2 is an *unsigned* public preview, so SmartScreen showing
+**Windows will warn you.** v0.x is an *unsigned* public preview, so SmartScreen showing
 "Windows protected your PC" is the expected outcome for a new unsigned file, not a sign that
 something is wrong with your download - verify the SHA-256 and decide for yourself. On managed
 PCs, or with Smart App Control enabled, the file may be blocked outright with no "Run anyway"
