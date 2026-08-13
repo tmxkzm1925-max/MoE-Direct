@@ -16,7 +16,7 @@ opened for you.
 
 A report is easiest to act on when it contains:
 
-- The release tag, or the SHA-256 of the `moe-direct-v0.2-win-x64.zip` you are running.
+- The release tag, or the SHA-256 of the `moe-direct-<version>-win-x64.zip` you are running.
 - Windows version, and whether the launcher was started from `Start-MoeDirect.cmd` or directly.
 - Exact steps to reproduce, and what an attacker gains if it works.
 - Any relevant lines from `%LOCALAPPDATA%\MoE-Direct\logs\` - please skim first, since those files

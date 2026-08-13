@@ -1,10 +1,13 @@
 # Engine patches: MoE-Direct on llama.cpp b10057
 
 This directory publishes the engine delta that produced the binaries in each
-release zip. The launcher, repacker, catalog and expectation files are published
-at the repository root; this is the remaining piece: what was changed inside the
-engine. The current release comes first; the earlier one is kept below because
-its zip is still downloadable.
+release zip - one patch per distinct engine revision, not per release number:
+a release that changes only the launcher or the docs reuses the previous
+engine tree (v0.2.3 ships the v0.2.2 engine unchanged), and the initial v0.2
+predates this directory. The launcher, repacker, catalog and expectation files
+are published at the repository root; this is the remaining piece: what was
+changed inside the engine. The current revision comes first; the earlier one
+is kept below because its zip is still downloadable.
 
 ## v0.2.2 - what exactly this is
 
@@ -107,8 +110,9 @@ mainline PR series.
 ## The same tree, browsable
 
 If you would rather read the source than apply a patch, the identical tree is
-pushed as a branch on a fork, one release branch each, one commit on top of
-the pinned base, carrying exactly the tree that release's patch reproduces.
+pushed as a branch on a fork, one branch per engine revision, one commit on
+top of the pinned base, carrying exactly the tree that revision's patch
+reproduces (releases that reuse an engine tree share its branch).
 The patch and the branch are cross-evidence for each other:
 [`tmxkzm1925-max/llama.cpp`, branch `moe-direct-v0.2.2`](https://github.com/tmxkzm1925-max/llama.cpp/tree/moe-direct-v0.2.2)
 (tree `38df4497...`) for the current release, and branch

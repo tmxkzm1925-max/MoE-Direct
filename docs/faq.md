@@ -88,7 +88,8 @@ time). As of v0.2.2 the zip carries all nine, so the repacker's self-test passes
 and from the zip alike - 65/65, measured on the assembled bundle; the v0.2.1 zip's 63/64 was a
 known issue of that bundle and this closes it - see [repacker/README.md](../repacker/README.md). `launcher/models.json` is the catalog the launcher consumes, exactly as the zip resolves
 it - it is where each profile's `expect_sha256` pin lives, so the binding between the launcher and
-the expectation files can be audited end to end. What runs from a plain checkout: the repacker
+the expectation files can be audited end to end (for this one file the zip copy differs in line
+endings only, CRLF against the repository's LF - the JSON content is identical). What runs from a plain checkout: the repacker
 does (its `repacker/expects/` catalog ships in place - see [repacker/README.md](../repacker/README.md));
 the launcher does not, since it needs the engine binaries and bundle manifest from the zip. The launcher's own test suite (978 checks as of
 v0.2.2, all passing on the shipped launcher) is not yet published: it depends
