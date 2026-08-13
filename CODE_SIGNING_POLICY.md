@@ -1,8 +1,13 @@
 # Code Signing Policy - MoE-Direct
 
-Status: application to the SignPath Foundation's free open-source code signing
-program is in progress. Releases up to and including v0.2.1 are unsigned; the
-README and the release notes say so plainly.
+Status: the application to the SignPath Foundation's free open-source code
+signing program was declined at the project's current stage (2026-08-09; the
+program weighs established usage metrics, which a project this young does not
+have yet). A re-application is possible once those exist. All releases to date
+are unsigned; the README and the release notes say so plainly. Everything
+below describes what would be signed once a signing relationship exists - and
+the runtime integrity chain in "Integrity beyond the signature" holds with or
+without one.
 
 This document describes what gets signed in a MoE-Direct release, how the
 artifacts are built, and how signing is controlled. It exists so that anyone

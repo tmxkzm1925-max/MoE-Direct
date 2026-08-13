@@ -6,12 +6,16 @@ authors:
   - name: "tmxkzm1925-max"
 repository-code: "https://github.com/tmxkzm1925-max/moe-direct"
 license: MIT
-date-released: 2026-08-03
-version: "0.2.1"
-identifiers:
-  - type: doi
-    value: 10.5281/zenodo.21739367
-    description: "Technical note describing the method and measurement protocol (Zenodo, defensive publication)"
+date-released: 2026-08-09
+version: "0.2.3"
+preferred-citation:
+  type: report
+  title: "MoE-Direct: Byte-preserving MoE expert streaming from NVMe on consumer hardware"
+  authors:
+    - name: "tmxkzm1925-max"
+  doi: 10.5281/zenodo.21739367
+  year: 2026
+  notes: "Technical note describing the method and measurement protocol (Zenodo, defensive publication)"
 abstract: >-
   MoE-Direct serves Mixture-of-Experts LLMs whose weights exceed system memory
   by keeping repacked, 4KiB-aligned expert records on NVMe and reading them on
