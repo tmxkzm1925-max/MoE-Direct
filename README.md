@@ -49,12 +49,14 @@ from the [supported list](#supported-models).
    empty space > Open in Terminal (PowerShell), then paste:
 
    ```powershell
-   $e=((Get-Content .\SHA256SUMS.txt -Raw).Trim() -split '\s+')[0];$a=(Get-FileHash .\moe-direct-*-win-x64.zip -Algorithm SHA256).Hash;if($a -eq $e){'OK: hash matches'}else{'MISMATCH: download again'}
+   $e,$n=((Get-Content .\SHA256SUMS.txt -Raw).Trim() -split '\s+');$a=(Get-FileHash ".\$n" -Algorithm SHA256).Hash;if($a -eq $e){'OK: hash matches'}else{'MISMATCH: download again'}
    ```
 
    If you skip it, the launcher's own sealed-manifest check still catches files changed or
-   corrupted **inside the extracted bundle** on every start - what it cannot do is authenticate
-   the zip or the launcher itself; that is what this paste is for.
+   corrupted **inside the extracted bundle** on every start - what it cannot do is check the
+   zip you just downloaded against the published checksum; that is what this paste is for. A
+   checksum from the same page proves the download is intact, not who published it - releases
+   are unsigned for now, so publisher trust rests on the GitHub account and the HTTPS path.
 2. Download **every shard** of one exact tested GGUF and revision from
    [docs/models.md](docs/models.md), and keep all shards in one folder. **Place your GGUF**
    under `<drive>:\moe-models\<any-folder>\` and double-click `Start-MoeDirect.cmd`. Pick your

@@ -27,7 +27,7 @@ Every profile carries **two independent gates**, and one never implies the other
 | Qwen3.5-35B-A3B Q4_K_M (`qwen35-35b`) | [unsloth/Qwen3.5-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.5-35B-A3B-GGUF) rev `bc014a17be43adabd7066b7a86075ff935c6a4e2` | 256 (top-8) | 19.5 GB | 4096 MB | `format-validated` | `disabled` |
 | Qwen3.5-397B-A17B Q4_K_M, 6 shards (`qwen35-397b`) | [unsloth/Qwen3.5-397B-A17B-GGUF](https://huggingface.co/unsloth/Qwen3.5-397B-A17B-GGUF) rev `da33c16fa4440f831149fcf53b98a22bc07785e5` | 512 (top-10) | shown by the launcher before it writes | 8192 MB | `format-validated` | `disabled` |
 | Kimi K2.6 447 GB mixed-quant (`kimi-k2.6-ram-447gb`) | [baa-ai/Kimi-K2.6-RAM-447GB-GGUF](https://huggingface.co/baa-ai/Kimi-K2.6-RAM-447GB-GGUF) rev `1e8bc2c2c759db5b4bb783965129d4e1e9182bc6` | 384 (top-8) | 436 GB | 10240 MB | `format-validated` | `validated` (K=8, N=4) |
-| DeepSeek-V4-Flash-0731 MXFP4/Q8_0 (`deepseek-v4-flash`) **new** | [bullerwins/DeepSeek-V4-Flash-0731-GGUF](https://huggingface.co/bullerwins/DeepSeek-V4-Flash-0731-GGUF) rev `ed48c7a2df419aaa01e325521cd6f93464969641` | 256 (top-6) | shown by the launcher before it writes | 8192 MB | `format-validated` | `disabled` |
+| DeepSeek-V4-Flash-0731 MXFP4/Q8_0 (`deepseek-v4-flash`) | [bullerwins/DeepSeek-V4-Flash-0731-GGUF](https://huggingface.co/bullerwins/DeepSeek-V4-Flash-0731-GGUF) rev `ed48c7a2df419aaa01e325521cd6f93464969641` | 256 (top-6) | shown by the launcher before it writes | 8192 MB | `format-validated` | `disabled` |
 
 Notes on this table:
 
@@ -65,7 +65,7 @@ Notes on this table:
 
 ## Running an unlisted model (experimental)
 
-As of version v0.2.3, the following features are built-in and can be used automatically, while the following applies when used manually 
+Since v0.2.3 the architecture-template path is enabled by default. The controls below matter only when you want to override or persist that default.
 
 The table above is a list of six models, and until v0.2.2 it was also the list of models that would
 run at all: a GGUF the catalog did not carry was refused even when its architecture was one the

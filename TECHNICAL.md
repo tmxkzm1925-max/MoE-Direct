@@ -398,9 +398,9 @@ separate thing and is reported in its own section above.
 
 `GATE`, and measured ahead of its own release. Quantizing the KV cache to `q8_0` buys memory back,
 and it is worth nothing if it quietly degrades the model, so it went behind a measured gate
-instead of behind a switch. The gate passed. The switch that would let you turn it on is queued
-for v0.2.3 and is **not** in this bundle, so what follows is a published measurement rather than a
-feature you can use yet.
+instead of behind a switch. The gate passed. The switch that would let you turn it on was queued
+for v0.2.3 but did not ship there and is **not** in this bundle - it remains planned for a later
+release, so what follows is a published measurement rather than a feature you can use yet.
 
 | Statistic | `q8_0` KV against the f16 arm |
 |---|---|

@@ -91,15 +91,16 @@ it - it is where each profile's `expect_sha256` pin lives, so the binding betwee
 the expectation files can be audited end to end (for this one file the zip copy differs in line
 endings only, CRLF against the repository's LF - the JSON content is identical). What runs from a plain checkout: the repacker
 does (its `repacker/expects/` catalog ships in place - see [repacker/README.md](../repacker/README.md));
-the launcher does not, since it needs the engine binaries and bundle manifest from the zip. The launcher's own test suite (978 checks as of
-v0.2.2, all passing on the shipped launcher) is not yet published: it depends
+the launcher does not, since it needs the engine binaries and bundle manifest from the zip. The launcher's own test suite (1,063 checks as of
+v0.2.3, all passing on the shipped launcher) is not yet published: it depends
 on fixture files that need to be packaged for standalone use, and it will follow in a later
 release. The engine is a patched llama.cpp build; the binaries are sealed by
 the bundle's SHA manifest, and the full engine delta is published in [`patches/`](../patches/) as a
 single reviewed patch against the pinned upstream commit, with a mechanical proof that it
 reproduces the exact source tree the shipped binaries were built from; the same tree is browsable
 as a [fork branch](https://github.com/tmxkzm1925-max/llama.cpp/tree/moe-direct-v0.2.2), one branch
-per release. A rebased mainline PR series is in preparation.
+per distinct engine revision - releases that reuse an engine tree share its branch. A rebased
+mainline PR series is in preparation.
 
 ## From the roadmap
 

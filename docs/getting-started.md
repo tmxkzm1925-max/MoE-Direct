@@ -66,8 +66,10 @@ they contain no binaries):
    ```
    On `MISMATCH`, stop and download again. If you skip it, the launcher's own sealed-manifest
    check still catches files changed or corrupted **inside the extracted bundle** on every start
-   - what it cannot do is authenticate the zip or the launcher itself; that is what this paste
-   is for.
+   - what it cannot do is check the zip you just downloaded against the published checksum;
+   that is what this paste is for. A checksum from the same page proves the download is intact,
+   not who published it - releases are unsigned for now, so publisher trust rests on the GitHub
+   account and the HTTPS path.
 2. **Unblock the zip itself** - right-click `moe-direct-v0.2.3-win-x64.zip` -> Properties -> tick
    **Unblock** -> OK. (Equivalent: `Unblock-File .\moe-direct-v0.2.3-win-x64.zip`.) If the
    **Unblock** checkbox is not there, the file was never marked - carry on. If a managed policy
