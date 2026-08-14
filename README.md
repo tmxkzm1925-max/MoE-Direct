@@ -21,9 +21,9 @@ business holding in memory, the largest about thirteen times its RAM:
 
 | the model | routed-expert data on disk | what that desktop measured | grade |
 |---|---|---|---|
-| Qwen3.5-122B | 72.8 GB | **5.59-5.69 tok/s** sustained decode, about **2.3x** the same binary reading the same weights through plain mmap | `OFFICIAL` - release-gate pass |
-| gpt-oss-120b | 61 GB | **12 of 12** greedy responses token-identical to the stock read path | `OFFICIAL` |
-| Kimi K2.6, 1T-class | 436 GB | **1.03 tok/s**, coherent output, server ready in about 19 s | `PROBE` - performance gate not passed |
+| Qwen3.5-122B, Q4_K_M | 72.8 GB | **5.59-5.69 tok/s** sustained decode, about **2.3x** the same binary reading the same weights through plain mmap | `OFFICIAL` - release-gate pass |
+| gpt-oss-120b, MXFP4 | 61 GB | **12 of 12** greedy responses token-identical to the stock read path | `OFFICIAL` |
+| Kimi K2.6, 1T-class, mixed-quant | 436 GB | **1.03 tok/s**, coherent output, server ready in about 19 s | `PROBE` - performance gate not passed |
 
 The grades mean what they say: `OFFICIAL` is the frozen release-gate protocol on the
 reference machine, with the verdict stated. `PROBE` is a deliberate measurement with a
