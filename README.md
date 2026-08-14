@@ -2,11 +2,11 @@
 
 # MoE-Direct
 
-### Models far larger than your RAM, on an ordinary desktop.
+### Models far larger than your RAM, on a single consumer desktop.
 
 A Mixture-of-Experts model only activates a few experts per token. MoE-Direct keeps them<br>
-on your NVMe and streams them in on demand. No quantization step. No routing change.<br>
-No touched weights.
+on your NVMe and streams them in on demand. No re-quantization. No routing change.<br>
+No modified weights.
 
 [![release](https://img.shields.io/github/v/release/tmxkzm1925-max/MoE-Direct?label=release)](../../releases)
 ![platform](https://img.shields.io/badge/platform-Windows%20x64-0078D6)
@@ -16,17 +16,19 @@ No touched weights.
 
 </div>
 
-One ordinary desktop - 32 GB RAM, one RTX 5080, a Gen5 NVMe - and three models it has no
+One consumer desktop - 32 GB RAM, one RTX 5080, a Gen5 NVMe - and three models it has no
 business holding in memory, the largest about thirteen times its RAM:
 
-| the model | weights on disk | what that desktop measured | grade |
+| the model | routed-expert data on disk | what that desktop measured | grade |
 |---|---|---|---|
-| Qwen3.5-122B | 72.8 GB | **5.59-5.69 tok/s** sustained decode, about **2.3x** the same binary reading the same weights through plain mmap | `official` - release-gate pass |
-| gpt-oss-120b | 61 GB | **12 of 12** greedy responses token-identical to the stock read path | `official` |
-| Kimi K2.6, 1T-class | 447 GB | **1.03 tok/s**, coherent output, server ready in about 19 s | `probe` - performance gate not passed |
+| Qwen3.5-122B | 72.8 GB | **5.59-5.69 tok/s** sustained decode, about **2.3x** the same binary reading the same weights through plain mmap | `OFFICIAL` - release-gate pass |
+| gpt-oss-120b | 61 GB | **12 of 12** greedy responses token-identical to the stock read path | `OFFICIAL` |
+| Kimi K2.6, 1T-class | 436 GB | **1.03 tok/s**, coherent output, server ready in about 19 s | `PROBE` - performance gate not passed |
 
-The grades mean what they say: `official` numbers come from the frozen release protocol,
-`probe` numbers are honest one-off measurements you should not plan interactive work around.
+The grades mean what they say: `OFFICIAL` is the frozen release-gate protocol on the
+reference machine, with the verdict stated. `PROBE` is a deliberate measurement with a
+written protocol that is not a gate run - it promotes nothing, and the Kimi figure is one
+you should not plan interactive work around.
 The token-identity check is scoped - greedy decoding on gpt-oss-120b; on Qwen3.5-122B the
 separate check is run-to-run reproducibility, and no parity claim is made for sampled decoding
 or for K2.6. Every expert byte is verified against your original GGUF before it is ever used,
