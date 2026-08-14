@@ -2,10 +2,10 @@
 
 # MoE-Direct
 
-### A 1T-class model. One consumer desktop. 32 GB of RAM.
+### Models far larger than your RAM, on an ordinary desktop.
 
-Run Mixture-of-Experts models far larger than your RAM: the experts stay on your NVMe<br>
-and stream in as each token routes to them. No quantization step. No routing change.<br>
+A Mixture-of-Experts model only activates a few experts per token. MoE-Direct keeps them<br>
+on your NVMe and streams them in on demand. No quantization step. No routing change.<br>
 No touched weights.
 
 [![release](https://img.shields.io/github/v/release/tmxkzm1925-max/MoE-Direct?label=release)](../../releases)
@@ -16,7 +16,7 @@ No touched weights.
 
 </div>
 
-One mid-range desktop - 32 GB RAM, one RTX 5080, a Gen5 NVMe - and three models it has no
+One ordinary desktop - 32 GB RAM, one RTX 5080, a Gen5 NVMe - and three models it has no
 business holding in memory, the largest about thirteen times its RAM:
 
 | the model | weights on disk | what that desktop measured | grade |
