@@ -4,10 +4,13 @@
 > here are the developer's; AI assistants draft and cross-check under his direction.
 > "FROZEN" means the document text was locked after multi-round cross-review;
 > implementation and measurement status, including deferred items, is stated in each note.
-> References to internal files (HANDOFF, SESSION_STATE, reviews/) point to the private
-> workspace and are left in place on purpose - they show how the records are kept.
+> References to internal files (HANDOFF, SESSION_STATE, reviews/), local working paths and
+> contract anchors (`[[C:...]]`) point to the private workspace and are left in place on
+> purpose - they show how the records are kept.
 >
 > **TL;DR:** Runner spec for a preregistered 1,059-cell device-ceiling decomposition campaign, including a 90-coordinate Stage A1 grid, that separates what the NVMe device can do from what the software stack loses (queueing, submission width, dispatcher serialization) before any tuning decision is allowed.
+>
+> **Note:** Effective protocol after erratum 5: 1,059 cells. References to the earlier 705-cell plan in the preserved base text are superseded.
 > ---
 
 # SPEC_MICROBENCH_V3 — 장치 천장 분해 마이크로벤치 러너 사양 (**동결판 v1.0** · 26-08-07 · 작성 Fable)

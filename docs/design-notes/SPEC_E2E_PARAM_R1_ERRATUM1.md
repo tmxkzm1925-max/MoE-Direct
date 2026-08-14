@@ -4,8 +4,9 @@
 > here are the developer's; AI assistants draft and cross-check under his direction.
 > "FROZEN" means the document text was locked after multi-round cross-review;
 > implementation and measurement status, including deferred items, is stated in each note.
-> References to internal files (HANDOFF, SESSION_STATE, reviews/) point to the private
-> workspace and are left in place on purpose - they show how the records are kept.
+> References to internal files (HANDOFF, SESSION_STATE, reviews/), local working paths and
+> contract anchors (`[[C:...]]`) point to the private workspace and are left in place on
+> purpose - they show how the records are kept.
 >
 > **TL;DR:** Frozen erratum 1 to the e2e protocol: external-I/O gate demotion, implementation rules, and the missing-copies disposition.
 > ---

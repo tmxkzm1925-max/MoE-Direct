@@ -174,7 +174,8 @@ And if you are curious how this actually gets built: some of my working records 
 [docs/design-notes/](docs/design-notes/), as-is. They are in Korean — I am a Korean
 developer, the design and the decisions are mine, and my AI assistants draft and
 cross-check under my direction — but each file opens with a short English TL;DR, and the
-round-by-round review ledgers are kept inside. If that is your kind of thing, have a look.
+notes preserve their round-by-round review history and references (the referenced private
+workspace files are not included). If that is your kind of thing, have a look.
 
 ## Credit and license
 
