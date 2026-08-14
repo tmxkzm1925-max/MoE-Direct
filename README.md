@@ -170,6 +170,12 @@ The `status=` line the launcher prints, every status code and its fix:
 | Known limitations and FAQ | [docs/faq.md](docs/faq.md) |
 | The long version: every technique and every number | [TECHNICAL.md](TECHNICAL.md) |
 
+And if you are curious how this actually gets built: some of my working records are up in
+[docs/design-notes/](docs/design-notes/), as-is. They are in Korean — I am a Korean
+developer, the design and the decisions are mine, and my AI assistants draft and
+cross-check under my direction — but each file opens with a short English TL;DR, and the
+round-by-round review ledgers are kept inside. If that is your kind of thing, have a look.
+
 ## Credit and license
 
 Built on [llama.cpp](https://github.com/ggml-org/llama.cpp) (MIT), base commit `0bd0ec6` (b10057) -
