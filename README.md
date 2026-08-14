@@ -1,22 +1,37 @@
+<div align="center">
+
 # MoE-Direct
 
-**Run Mixture-of-Experts models far larger than your RAM, on an ordinary consumer PC.**
+### A 1T-class model. One consumer desktop. 32 GB of RAM.
 
-MoE-Direct keeps a model's expert weights on your NVMe SSD and reads only the experts each
-token actually routes to. That is enough to serve Kimi K2.6, a 1T-class model whose 416.8 GiB
-of weights are about thirteen times the RAM of the machine this project was built on, from a
-32 GB desktop. The model these releases are tuned for, Qwen3.5-122B, averaged **5.96 tok/s**
-on that desktop in a paired run - about **2.3x** the same engine reading the same weights
-through plain mmap. Which build and conditions every number here was measured under is stated
-in [Measurements](docs/measured-results.md) and in each release's notes.
+Run Mixture-of-Experts models far larger than your RAM: the experts stay on your NVMe<br>
+and stream in as each token routes to them. No quantization step. No routing change.<br>
+No touched weights.
 
-The server is ready in seconds on the recorded reference machine - about 19 seconds in the Kimi
-demo - because experts are never bulk-loaded up front. And nothing about the model is
-approximated: no quantization step, no routing change, no touched weights. Separately, on
-**gpt-oss-120b under greedy decoding**, 12 direct-read/plain-mmap response pairs had identical
-token IDs - not a parity claim for sampled decoding or Kimi K2.6. On Qwen3.5-122B the separate
-check is run-to-run reproducibility, not a second parity pair. Every expert byte is verified
-against your original GGUF before it is ever used.
+[![release](https://img.shields.io/github/v/release/tmxkzm1925-max/MoE-Direct?label=release)](../../releases)
+![platform](https://img.shields.io/badge/platform-Windows%20x64-0078D6)
+![gpu](https://img.shields.io/badge/GPU-NVIDIA%20CUDA-76B900)
+![scope](https://img.shields.io/badge/models-MoE%20only-8A2BE2)
+[![license](https://img.shields.io/github/license/tmxkzm1925-max/MoE-Direct?color=blue)](LICENSE)
+
+</div>
+
+One mid-range desktop - 32 GB RAM, one RTX 5080, a Gen5 NVMe - and three models it has no
+business holding in memory, the largest about thirteen times its RAM:
+
+| the model | weights on disk | what that desktop measured | grade |
+|---|---|---|---|
+| Qwen3.5-122B | 72.8 GB | **5.59-5.69 tok/s** sustained decode, about **2.3x** the same binary reading the same weights through plain mmap | `official` - release-gate pass |
+| gpt-oss-120b | 61 GB | **12 of 12** greedy responses token-identical to the stock read path | `official` |
+| Kimi K2.6, 1T-class | 447 GB | **1.03 tok/s**, coherent output, server ready in about 19 s | `probe` - performance gate not passed |
+
+The grades mean what they say: `official` numbers come from the frozen release protocol,
+`probe` numbers are honest one-off measurements you should not plan interactive work around.
+The token-identity check is scoped - greedy decoding on gpt-oss-120b; on Qwen3.5-122B the
+separate check is run-to-run reproducibility, and no parity claim is made for sampled decoding
+or for K2.6. Every expert byte is verified against your original GGUF before it is ever used,
+and the server never bulk-loads experts up front. Which build and conditions every number was
+measured under: [Measurements](docs/measured-results.md) and each release's notes.
 
 [![MoE-Direct demo](https://img.youtube.com/vi/JDfrWMxwczk/maxresdefault.jpg)](https://youtu.be/JDfrWMxwczk)
 
