@@ -128,12 +128,20 @@ Work ships one piece per release, when it is measured, not on a schedule.
   place. It ships only if it holds read performance — space is never bought with speed here.
 - **After that:** the speed work, in whatever order is ready first — a prefill path that
   reads each expert once per request instead of once per token (about 3x in an internal probe,
-  not yet a published benchmark), prefetch that derives its own starting point for any model
-  family, and the same hunt on the decode side.
-- **Further out:** an engine-neutral expert-execution core is **planned**: the parts this
-  project owns - the expert store, cache, placement and prefetch - defined behind a clean
-  boundary, with llama.cpp as the first engine behind it. Also code signing, wider hardware and
-  OS support.
+  not yet a published benchmark), and prefetch that derives its own starting point for any
+  model family.
+- **Then the engine gets its surgery:** a cleanup pass over the codebase, followed by the
+  engine-neutral expert-execution core — the parts this project owns (the expert store,
+  cache, placement and prefetch) pulled behind a clean boundary, with llama.cpp as the first
+  engine behind it.
+- **And on that foundation, context.** The question this project asked about weights —
+  "does it fit my RAM?" becoming "does it fit my SSD?" — applies to the KV cache too.
+  The goal is million-token context on the same consumer hardware, by tiering KV across
+  VRAM, RAM and NVMe for the coming generation of sparse-attention models. Same contract
+  as the experts: nothing is dropped or approximated, the memory is all there and read
+  selectively. The first release will aim to prove it works and publish honest numbers;
+  the finished feature set comes after, piece by piece.
+- Code signing, wider hardware and OS support, further out.
 
 What you are holding is the floor, not the ceiling.
 
