@@ -126,15 +126,16 @@ Work ships one piece per release, when it is measured, not on a schedule.
 - **Next, in progress:** the repack without the second copy. Today the one-time repack costs
   your disk the model's size again; the rework reads experts out of your original file in
   place. It ships only if it holds read performance — space is never bought with speed here.
-- **After that:** the speed work, in whatever order is ready first — a prefill path that
-  reads each expert once per request instead of once per token (about 3x in an internal probe,
-  not yet a published benchmark), and prefetch that derives its own starting point for any
-  model family.
-- **Then the engine gets its surgery:** a cleanup pass over the codebase, followed by the
-  engine-neutral expert-execution core — the parts this project owns (the expert store,
-  cache, placement and prefetch) pulled behind a clean boundary, with llama.cpp as the first
-  engine behind it.
-- **And on that foundation, context.** The question this project asked about weights —
+- **After that, the codebase gets its cleanup pass:** readability and structural work,
+  including the boundary contract the later pieces build on.
+- **Then the engine gets its surgery:** the engine-neutral expert-execution core — the parts
+  this project owns (the expert store, cache, placement and prefetch) pulled behind a clean
+  boundary, with llama.cpp as the first engine behind it.
+- **Separately, the speed work stays in the release queue,** shipping in whatever order is
+  ready first — a prefill path that reads each expert once per request instead of once per
+  token (about 3x in an internal probe, not yet a published benchmark), and prefetch that
+  derives its own starting point for any model family.
+- **And on that engine foundation, context.** The question this project asked about weights —
   "does it fit my RAM?" becoming "does it fit my SSD?" — applies to the KV cache too.
   The goal is million-token context on the same consumer hardware, by tiering KV across
   VRAM, RAM and NVMe for the coming generation of sparse-attention models. Same contract
