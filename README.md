@@ -142,10 +142,12 @@ Work ships one piece per release, when it is measured, not on a schedule.
 
 - **Next, in progress:** the repack without the second copy. Today the one-time repack costs
   your disk the model's size again; the rework reads experts out of your original file in
-  place. It ships only if it holds read performance — space is never bought with speed here.
-  Change of plan, for the record: this release now bundles the prefetch runtime on by default,
-  because a preregistered A/B measured the in-place path about 14% faster in decode with it on,
-  at under 2% extra bytes read, and shipping the slower configuration made no sense.
+  place. Reading in place has a cost of its own — the experts sit scattered through the
+  original file, so fetching one takes several separate reads and misses get more expensive.
+  That is why prefetch is now part of this release, on by default: in a preregistered A/B it
+  made in-place decode about 14% faster at under 2% extra bytes read. That closes part of the
+  gap, and further recovery work is in progress. It ships only if it holds read performance —
+  space is never bought with speed here.
 - **After that, the codebase gets its cleanup pass:** readability and structural work,
   including the boundary contract the later pieces build on.
 - **Then the engine gets its surgery:** the engine-neutral expert-execution core — the parts
