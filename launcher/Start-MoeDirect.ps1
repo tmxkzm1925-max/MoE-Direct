@@ -5,6 +5,12 @@
     Authority (frozen, do not re-interpret):
       LAUNCHER_SPEC.md v0.4 (FROZEN 26-07-30, commit 7e2cb41)  -> "LS <section>"
       RELEASE_SPEC.md  v0.1 (FROZEN)                           -> "RS <section>"
+      bench/techdev/SPEC_PREFETCH_INIT.md      v1.0 (FROZEN)   -> "PI <section>"
+      bench/techdev/SPEC_PREFETCH_P4_LAUNCHER.md v1.0 (FROZEN) -> "P4 <section>"
+      PI/P4 supersede LS on the prefetch surface ONLY, and only where LAUNCHER_SPEC.md's own
+      "later-authority" clause lists it (LS 1-2 prefetch state/wire, LS 5 catalog semantic
+      failure disposition, LS 7 engine prefetch_state description, LS 12-3 selection signal,
+      LS 15 derived-profile prefetch fields). Every other v0.4 contract is unchanged.
 
     Wire contract (consumer-visible, implementation has no discretion):
       - final stderr line: "[moe-launcher] status=<enum>"  exactly one line   (LS 5)
@@ -75,6 +81,21 @@ param(
     # keys above. It is subordinate to warmstart: hard-OFF and soft-OFF turn autosave off as well,
     # and this key can never raise either of them back on.
     [string] $Autosave,
+    # P4 4: the prefetch opt-in surface. catalog | init | adapt, absent = catalog (v0.4 behaviour).
+    # Exactly two layers carry it - this CLI parameter and the stored preset - because PI 3
+    # invariant 3 limits the opt-in to "the launcher's explicit CLI/preset only". It is deliberately
+    # NOT offered by Invoke-CustomEditor and there is no path that changes it after the status
+    # screen. Raw string for the same reason as the six keys above: a binder failure would kill the
+    # run before a status line exists, so this script parses it and reports fail_custom_args.
+    [string] $Prefetch,
+    # RV 3: the repack mode opt-in. packed (and absence) = the v0.4 bin repack; virtual = the
+    # schema 3.0 in-place plan. Raw string for the same reason as the keys above - a [ValidateSet]
+    # binder failure would terminate before a status line exists, so this script parses it itself
+    # and reports fail_custom_args.
+    # It is NOT an allowlist override key and it deliberately takes no part in Get-CliOverrides or
+    # $overrides (RV 3 prohibition): those feed Test-CustomProvenance, and a mode selection is not
+    # a custom performance value.
+    [string] $RepackMode,
     # UX 1-1-2: the canonical arch-template control. Taken as a raw [string] for the same reason as
     # the six allowlist keys above - a [ValidateSet] binder failure would terminate before a status
     # line could be written. It is NOT an allowlist override key: it is resolved BEFORE model
@@ -182,16 +203,96 @@ $script:PREFILL_TASK_REGEX = '\|\s*task\s+(\d+)\s*\|\s*prompt processing,'
 
 # LS 1-2 : effective_prefetch echo strings (wire). R6 revision: 4 reasons, not 3.
 $script:PREFETCH_ECHO_ON                = 'on'
-$script:PREFETCH_ECHO_PROBE_FAILED      = 'off(reason=probe_failed)'
-$script:PREFETCH_ECHO_REFERENCE_ONLY    = 'off(reason=reference_only_live_forbidden)'
-$script:PREFETCH_ECHO_CATALOG_DISABLED  = 'off(reason=catalog_disabled)'
 # R6: the engine turns prefetch OFF by itself when N >= qd_effective (invalid_range, K/N=0), so a
 # launcher that still echoed "on[K8 N4]" was reporting a state the engine never entered. This is
 # the control-plane half of that fix: below the depth the launcher declares OFF and injects no K/N.
 $script:PREFETCH_ECHO_QD_BELOW_DEPTH    = 'off(reason=qd_below_prefetch_depth)'
 
-# LS 1-2 : catalog prefetch_state enum, lowercase exact-match, 3 values.
-$script:PREFETCH_STATES = @('validated', 'reference-only', 'disabled')
+# ---------------------------------------------------------------------------
+# P4 2 : the CLOSED off_reason enum (wire). 13 literals, exhaustively listed - a reason string
+# outside this table may not be emitted, and every echo is exactly "off(reason=<literal>)".
+# The two v0.4 one-axis literals 'reference_only_live_forbidden' and 'catalog_disabled' are
+# RETIRED with the one-axis prefetch_state field they described; nothing in this generation emits
+# them (selftest asserts their absence).
+# ---------------------------------------------------------------------------
+$script:PREFETCH_OFF_REASONS = @(
+    # carried over from v0.4 (unchanged meaning)
+    'probe_failed',
+    'qd_below_prefetch_depth',
+    # P4 1-b / 2 : the catalog row parsed but says something impossible
+    'catalog_semantic_invalid',
+    # P4 2.5 : catalog-fixed demands exact catalog identity, not a header fingerprint
+    'identity_not_exact',
+    # P4 3 : a derived profile whose plan text and GGUF header disagree about n_expert_used
+    'derived_t_mismatch',
+    # P4 2 step 4 : init opt-in refusals
+    'init_t_out_of_range',
+    'engine_env_k_floor_8_pre_p4a',
+    'phase4_hold_unresolved',
+    # P4 5 : adapt is refused on every path in Phase 4
+    'adapt_forbidden_in_repro_bench',
+    'adapt_controller_not_shipped_phase5',
+    # P4 2 step 3 : not opted in - the row's evidence value substituted into one token
+    'not_opted_in_evidence_observe',
+    'not_opted_in_evidence_unverified',
+    'not_opted_in_evidence_causal_replay')
+
+$script:PREFETCH_ECHO_PROBE_FAILED      = 'off(reason=probe_failed)'
+
+# PI 3 : the two catalog-stored axes. capability is NOT one of them - it is a seal-time runtime
+# result and storing it would make a forgeable field out of an unforgeable one.
+$script:PREFETCH_EVIDENCE_VALUES   = @('unverified', 'observe', 'causal-replay', 'paired-live')
+# P4 1 closure rule: the catalog may only ever store these two. 'opt-in-fixed' / 'opt-in-adaptive'
+# are RUNTIME activations computed from an opt-in, so a catalog that stores one is a semantic
+# defect, not a shortcut into the opt-in path.
+$script:PREFETCH_ACTIVATION_STORED  = @('off', 'catalog-fixed')
+$script:PREFETCH_ACTIVATION_RUNTIME = @('opt-in-fixed', 'opt-in-adaptive')
+
+# P4 4 : the public opt-in surface. 'catalog' (and absence) normalise to the internal arm 'none';
+# that mapping is written exactly once, in ConvertTo-PrefetchOptIn.
+$script:PREFETCH_REQUEST_VALUES = @('catalog', 'init', 'adapt')
+$script:PREFETCH_REQUEST_DEFAULT = 'catalog'
+# Internal arms. 'none' = no opt-in; the other two are the two ways a K/N pair can be produced.
+$script:PREFETCH_ARM_NONE    = 'none'
+$script:PREFETCH_ARM_CATALOG = 'catalog-fixed'
+$script:PREFETCH_ARM_INIT    = 'init'
+
+# PI 3 invariant 7 : provenance labels. 'env-override' is reserved and has NO issuing path in this
+# atomic step (the offline explicit override is opened together with the engine env K range).
+$script:PREFETCH_PROVENANCE_CATALOG = 'catalog-validated'
+$script:PREFETCH_PROVENANCE_INIT    = 'init_v1-unvalidated'
+$script:PREFETCH_PROVENANCE_ENV     = 'env-override'
+# PI 2 : the versioned prior. The version travels with every init-produced pair so a number can
+# never be read as "the validated value".
+$script:PREFETCH_INIT_VERSION = 'prefetch_init_v1'
+$script:PREFETCH_INIT_N_CAP   = 4
+$script:PREFETCH_INIT_T_MIN   = 1
+# PI 4-1 : pred wire is a top-16 ABI (SPEC_PHASEB_WIRE 13.2 'pred u16[16]').
+$script:PREFETCH_INIT_T_MAX   = 16
+# ---------------------------------------------------------------------------
+# P4 2 : TEMPORARY launcher-side copy of the engine's env K range floor.
+# 1st source (verified): bench/moe-direct/repro/moedirect-v2-b10057.patch:11054 - the engine
+# rejects MOE_DIRECT_PREFETCH_K outside "kv < 8 || kv > 16". This constant does NOT decide
+# capability (the seal does); it exists so the launcher cannot print a candidate ON for a family
+# whose t is below the floor the engine would reject. The follow-on atomic step that widens the
+# engine range to 1..16 changes the engine and THIS constant in one commit and one test run.
+# ---------------------------------------------------------------------------
+$script:ENGINE_ENV_K_FLOOR = 8
+# P4 2.5 : catalog-fixed turns ON only for an exactly identified model. Resolve-ProfileSelection
+# already answers this question; 'pinned' is the only verdict that means "the file bytes are the
+# ones the catalog measured".
+$script:PREFETCH_IDENTITY_EXACT = 'pinned'
+
+# P4 2 : one formatter for the whole enum, so an off reason cannot be spelled two ways.
+function Get-PrefetchOffEcho {
+    param([string] $Reason)
+    if ($script:PREFETCH_OFF_REASONS -cnotcontains $Reason) {
+        # Unreachable by construction (every caller passes a literal from the table above); it is a
+        # loud internal error rather than a silent new wire string.
+        Stop-Launcher 'fail_gate_catalog' ('internal: off reason outside the closed enum: ' + $Reason)
+    }
+    return ('off(reason=' + $Reason + ')')
+}
 
 # LS 1-7 : user preset required fields + exact schema version.
 # LS 13-2: PRESET_SCHEMA_VERSION stays 1. The unknown-key drop rule already gives both directions
@@ -199,7 +300,9 @@ $script:PREFETCH_STATES = @('validated', 'reference-only', 'disabled')
 # every stored user preset - buys nothing.
 $script:PRESET_SCHEMA_VERSION = 1
 $script:PRESET_REQUIRED_FIELDS = @('schema_version', 'source_tag', 'profile_id', 'expect_digest', 'overrides')
-$script:PRESET_ALLOWLIST_KEYS  = @('port', 'ctx', 'threads', 'warmup', 'budget_mb', 'qd', 'warmstart', 'autosave')
+# P4 4: 'prefetch' joins the allowlist as the second (and last) opt-in surface. The unknown-key
+# drop rule already gives both compatibility directions, so PRESET_SCHEMA_VERSION still stays 1.
+$script:PRESET_ALLOWLIST_KEYS  = @('port', 'ctx', 'threads', 'warmup', 'budget_mb', 'qd', 'warmstart', 'autosave', 'prefetch')
 
 # LS 13-2: override keys that take no part in argv/env and cannot change a performance condition.
 # They are excluded from the "is this a custom configuration" decision, so following the README's
@@ -223,11 +326,51 @@ $script:WARMUP_FILE_PREFIX = 'file:'
 # every other warmup failure (RS 5).
 $script:WARMFILE_TIMEOUT_SEC = 1800
 
-# LS 2 : the four artifacts deleted when a .partial marker is found.
+# LS 2 : the four artifacts deleted when a .partial marker is found. BIN ONLY - a virtual output
+# directory holds none of these, and RV 1-1 gives it its own set below.
 $script:PARTIAL_DELETE_SET = @('experts.bin.partial', 'experts.bin', 'manifest.json', 'verify_report.json')
 
+# ---------------------------------------------------------------------------
+# RV (SPEC_LAUNCHER_VIRTUAL_R1, FROZEN v1.0) - the virtual repack opt-in surface.
+# ---------------------------------------------------------------------------
+# RV 3 : the two request values. Manual validation, no [ValidateSet] (see the parameter comment).
+$script:REPACK_MODE_PACKED  = 'packed'
+$script:REPACK_MODE_VIRTUAL = 'virtual'
+$script:REPACK_MODE_VALUES  = @('packed', 'virtual')
+$script:REPACK_MODE_DEFAULT = 'packed'
+# RV 1 : the three outcomes of the manifest mode detector - the engine's own truth table
+# (detect_manifest_mode, ggml-moe-direct.cpp:2110-2137). 'unrecognized' is a fail-close, not a
+# fourth mode: nothing may be served on it.
+$script:MANIFEST_MODE_BIN          = 'bin'
+$script:MANIFEST_MODE_VIRTUAL      = 'virtual'
+$script:MANIFEST_MODE_UNRECOGNIZED = 'unrecognized'
+$script:MANIFEST_MODE_UNRECOGNIZED_REASON = 'mode: unrecognized manifest schema/mode'
+# RV 1-1 [2] : the default output directory leaf per mode. The two modes never share a default
+# directory, so an opt-in run cannot silently consume the other mode's artifacts.
+$script:REPACK_DIR_PACKED  = 'repack'
+$script:REPACK_DIR_VIRTUAL = 'repack-virtual'
+# RV 1-1 [3] : the incomplete-production set of a VIRTUAL output directory. The repacker promotes
+# plan_report.json first and manifest.json.partial -> manifest.json second, so an interruption
+# between the two atomic replacements leaves exactly these (repack_experts.py:3997).
+# PARTIAL_DELETE_SET is the bin set and must NOT be reused here.
+$script:VIRTUAL_PARTIAL_DELETE_SET = @('plan_report.json', 'manifest.json.partial')
+# RV 2-4 : the shape the preview is pinned to - the f3c GO run measured io_qd_total = 8. Every QD
+# request path is refused in virtual rather than folded in, so this is the effective QD by
+# construction and not a default that something later can outrank.
+$script:VIRTUAL_PINNED_QD = 8
+$script:VIRTUAL_PIN_REASON = 'virtual preview pins the measured shape'
+# RV 2-5 : the disk reservation for a virtual repack. A virtual run moves 0 bytes of expert data;
+# its whole output is manifest.json + plan_report.json (6.11 MiB on the preview's own model), so
+# the bin path's expert_bytes_total (~65 GiB) would be a false resource refusal. 128 MiB is a
+# conservative reservation for the v0.3 preview and the CURRENT catalog - it is not a mathematical
+# upper bound for an arbitrary schema 3.0 output.
+$script:VIRTUAL_REPACK_RESERVE_MB = 128
+
 # Catalog schema (see report: schema is launcher-side until RELEASE_SPEC required item 2 lands).
-$script:CATALOG_SCHEMA_VERSION = 1
+# P4 1: bumped 1 -> 2 with the one-axis prefetch_state field's replacement by the two stored axes.
+# The launcher and the catalog ship in the same bundle, so the version is an exact match and an old
+# launcher meeting a new catalog stops at fail_gate_catalog instead of guessing.
+$script:CATALOG_SCHEMA_VERSION = 2
 $script:CATALOG_FILE_NAME      = 'models.json'
 $script:BUNDLE_MANIFEST_NAME   = 'bundle_manifest.json'
 $script:BUNDLE_MANIFEST_VERSION = 1
@@ -323,6 +466,10 @@ $script:AXIS_COPY_PASS            = 'PASS (every selected routed slice verified)
 $script:AXIS_COPY_PENDING         = 'pending (repack verify has not run yet)'
 $script:AXIS_INVENTORY_PIN        = 'model-pin'
 $script:AXIS_INVENTORY_UNPINNED   = 'model-pin(unpinned)'
+# P4 2.5: the fourth inventory answer. 'unpinned' means "the bytes were never checked"; this one
+# means "they were checked and they are NOT the catalog's bytes" - a strictly stronger statement,
+# so it may not share the unpinned wording.
+$script:AXIS_INVENTORY_MISMATCH   = 'model-pin(mismatch)'
 $script:AXIS_INVENTORY_TEMPLATE   = 'arch-template'
 $script:AXIS_SERVING_VALIDATED    = 'validated'
 $script:AXIS_SERVING_UNVALIDATED  = 'unvalidated'
@@ -332,6 +479,8 @@ $script:TEMPLATE_COPY_SENTENCE =
     'the template-selected routed-expert inventory was copied byte-for-byte from your file'
 $script:UNPINNED_NOTE =
     'no source pin recorded for this catalog profile: the header fingerprint matched but the file bytes were not checked'
+$script:MISMATCH_NOTE =
+    'this file has the catalog profile shape but NOT its bytes: every published number for this profile describes a different file, prefetch is off and no reference claim is made'
 
 # Derived defaults.argv skeleton. NOT a guess: all five shipped catalog profiles carry a
 # byte-identical argument list apart from '--n-cpu-moe <n_layer>' and '-c' (12288 on four,
@@ -1178,7 +1327,7 @@ $script:STATUS_HINT = [ordered]@{
     'fail_repack'           = 'the repacker exited abnormally or produced no verify report'
     'fail_custom_args'      = 'a custom value failed the type/bounds check in non-interactive mode'
     'fail_gate_bundle'      = 'bundle integrity failed: its manifest, schema, or file set did not match the sealed bundle'
-    'fail_gate_catalog'     = 'models.json failed the catalog schema, prefetch_state or expect digest check'
+    'fail_gate_catalog'     = 'models.json failed the catalog schema, the prefetch axis structure or the expect digest check'
     'fail_gate_verify'      = 'the 7-item repack gate rejected the verify report or its manifest binding'
     'fail_gate_engine_seal' = 'the engine refused to start and printed its policy gate reject line'
     'fail_server_start'     = 'the server never reached ready: spawn, port, listener PID, health, or an early exit'
@@ -1589,18 +1738,26 @@ function Assert-BundleIntegrity {
 
 $script:CATALOG_TOP_KEYS = @('catalog_schema_version', 'source_tag', 'runtime', 'profiles')
 $script:CATALOG_RUNTIME_KEYS = @('server_exe', 'repacker_exe', 'repacker_argv', 'expects_dir', 'webui')
+# P4 1: the one-axis 'prefetch_state' is gone and the two STORED axes of PI 3 take its place. Both
+# are mandatory, so a catalog that still carries the old field (or carries both) fails the
+# deny-by-default key check - which is exactly the "old launcher + new catalog / new launcher + old
+# catalog" stop the schema bump exists to produce.
 $script:CATALOG_PROFILE_KEYS = @(
     'profile_id', 'display_name', 'hf_repo', 'hf_revision', 'routed_scope',
-    'expect_file', 'expect_sha256', 'identify', 'min_budget_mb', 'prefetch_state',
+    'expect_file', 'expect_sha256', 'identify', 'min_budget_mb',
+    'prefetch_evidence', 'prefetch_activation',
     'prefetch', 'gates', 'reference_measurements', 'allowlist_bounds', 'defaults')
 # LS OA-1 (M1). Part of the profile schema - deny-by-default still rejects any key outside the two
 # lists - but ABSENT is a legal state that means exactly the same thing as an empty array: no source
-# pin was recorded for this profile. It is optional rather than mandatory for one reason: the shipped
-# catalog does not carry the digests yet (collecting them means hashing the reference models, a
-# separate task), and a mandatory key would have made every shipped profile fail its own catalog
-# gate. Unpinned is never silently upgraded - it is surfaced as model-pin(unpinned) / unvalidated and
-# it self-heals the moment the digests land.
-$script:CATALOG_PROFILE_OPTIONAL_KEYS = @('source_shards_sha256')
+# pin was recorded for this profile. It is optional rather than mandatory because the digests can
+# only be collected by hashing the reference model, so a profile whose model nobody on this machine
+# holds could never satisfy a mandatory key. As of 26-08-07 the shipped catalog is PARTIALLY pinned:
+# qwen35-122b-nonextn carries its two shard digests (hashed from the local files that produced the
+# official G run), and the other five profiles remain unpinned. Unpinned is never silently upgraded -
+# it is surfaced as model-pin(unpinned) / unvalidated and it self-heals the moment the digests land.
+# P4 1 closure rule: prefetch_promotion_hold is optional and ABSENT means false. It is the 397B
+# row's Phase 4 lock and nothing else reads it, so a catalog that omits it everywhere is complete.
+$script:CATALOG_PROFILE_OPTIONAL_KEYS = @('source_shards_sha256', 'prefetch_promotion_hold')
 $script:CATALOG_IDENTIFY_KEYS = @('arch', 'n_layer', 'n_expert', 'n_expert_used')
 $script:CATALOG_BOUND_KEYS = @('port', 'ctx', 'threads', 'budget_mb', 'qd')
 # LS 1-9: every condition column must be present, otherwise the number is hidden as [unmeasured].
@@ -1735,19 +1892,33 @@ function Test-CatalogProfile {
         }
     }
 
-    # LS 1-2 last row: missing / unknown / wrong-typed prefetch_state = catalog gate failure.
-    $ps = Get-JsonValue -Obj $Profile -Name 'prefetch_state'
-    if (-not ($ps -is [string]) -or ($script:PREFETCH_STATES -cnotcontains $ps)) {
-        Stop-Launcher 'fail_gate_catalog' ($pid0 + ": prefetch_state must be exactly one of validated|reference-only|disabled")
+    # -----------------------------------------------------------------------------------------
+    # P4 1-b, the STRUCTURAL half of the two-layer disposition. Only the errors that make the row
+    # unparseable stop the launcher here:
+    #   - a missing axis key                (Deny-UnknownKeys above, required-key branch)
+    #   - the retired one-axis field, alone or beside the new ones (unknown key, same branch)
+    #   - an axis whose value is not a string / a hold that is not a boolean  (this block)
+    # Everything the parser CAN read but that says something impossible - an unknown enum member,
+    # a stored runtime activation, a missing or stray K/N tuple, an evidence value that does not
+    # support the activation - is a SEMANTIC error. Those are decided in Get-PrefetchCatalogAxes
+    # and disposed of per row (boot continues, that row's prefetch is OFF with a reason), because a
+    # single mis-authored row must not deny the user the five rows that are fine.
+    # -----------------------------------------------------------------------------------------
+    foreach ($k in @('prefetch_evidence', 'prefetch_activation')) {
+        if (-not (Test-JsonNonEmptyString (Get-JsonValue -Obj $Profile -Name $k))) {
+            Stop-Launcher 'fail_gate_catalog' ($pid0 + ": " + $k + " must be a non-empty string")
+        }
+    }
+    if (Test-JsonHas -Obj $Profile -Name 'prefetch_promotion_hold') {
+        if (-not (Test-JsonBoolean (Get-JsonValue -Obj $Profile -Name 'prefetch_promotion_hold'))) {
+            Stop-Launcher 'fail_gate_catalog' ($pid0 + ": prefetch_promotion_hold must be a JSON boolean (absent = false)")
+        }
     }
     $pf = Get-JsonValue -Obj $Profile -Name 'prefetch'
-    if ($ps -ceq 'validated') {
+    if ($null -ne $pf) {
+        # A tuple that exists at all must be shaped like a tuple. WHETHER it may exist for this
+        # row's activation is the semantic question, decided per row further down.
         Deny-UnknownKeys -Obj $pf -Allowed @('k', 'n') -Where ($pid0 + '.prefetch')
-        foreach ($k in @('k', 'n')) {
-            if (-not (Test-JsonNonNegativeInteger (Get-JsonValue -Obj $pf -Name $k))) {
-                Stop-Launcher 'fail_gate_catalog' ($pid0 + ": prefetch." + $k + " must be a non-negative integer for validated profiles")
-            }
-        }
     }
 
     $g = Get-JsonValue -Obj $Profile -Name 'gates'
@@ -2287,13 +2458,45 @@ function Select-Profile {
 #   pinned    the profile records source digests AND they match this file set  -> catalog path
 #   unpinned  the profile records no digests at all                            -> catalog path,
 #             surfaced as model-pin(unpinned) / unvalidated (never silently "validated")
-#   template  nothing structural matched, or every structural match had a pin that DISAGREED
+#   mismatch  every structural match records a pin and every one DISAGREED, and the private
+#             arch-template switch was NOT given                               -> catalog path,
+#             surfaced as model-pin(mismatch) / unvalidated, prefetch off(reason=identity_not_exact)
+#   template  nothing structural matched, or every structural match had a pin that DISAGREED AND
+#             the private switch WAS given
 #             -> the arch-template path, which is the normal home of a file the catalog never saw
 # A pin that MATCHED is a latch: from that point the template path is closed for this run, so a
 # later catalog / expect / seal failure is a hard stop and can never be laundered into an
 # "experimental" downgrade (OPEN_ARCH_DESIGN section 0).
+#
+# ---- why 'mismatch' exists, and exactly where its boundary with 'template' runs ----------------
+# P4 2.5 / PI 3 invariant 5 require a disagreeing pin to be a PREFETCH disposition, not a refusal
+# to run: "off(reason=identity_not_exact)" with the catalog row retained, because the direct-read
+# body is unaffected by a prefetch decision. Before this branch existed that reason string was
+# unreachable on the real path - with no unpinned sibling the run fell through to the
+# "unsupported GGUF" fail_model_path stop below, so a re-quantised GGUF (the exact shape the spec
+# names as its threat) could not run at all.
+#
+# The boundary is drawn at the private switch, deliberately:
+#   - WITHOUT -ExperimentalArchTemplate this branch keeps the catalog row and reports 'mismatch'.
+#     That is the branch P4 contradicts, and the only one it may change: today's behaviour there
+#     is a hard stop, and PI/P4 require a non-terminal prefetch-only disposition instead.
+#   - WITH -ExperimentalArchTemplate the v0.4 OA-1 semantics stand unchanged (template row, derived
+#     profile, no catalog claims). LAUNCHER_SPEC's later-authority clause hands P4 exactly five
+#     surfaces, and of LS 15 it hands over only the "derived-profile prefetch fields" - NOT OA-1's
+#     selection branches. A user who explicitly opened the template path asked for that path, and
+#     rewriting it here would edit a frozen contract this atomic step has no authority over.
+# The safety property OA-1 M1 was built for is preserved in BOTH branches: a mismatched file never
+# inherits the reference model's claims. It is served from the catalog row's geometry only, while
+# Get-SurfaceAxes reports model-pin(mismatch) / unvalidated and the performance gate is demoted -
+# the row's numbers describe a file this one demonstrably is not.
 # ---------------------------------------------------------------------------------------------
 $script:PinMatchedLatch = $false
+# P4 2.5 companion latch. It is set by the same function that decides the verdict, and it is what
+# stops a catalog row's published numbers from being printed next to a file that has just been
+# PROVEN not to be the bytes those numbers were measured on. 'unpinned' does not set it: unchecked
+# is not the same statement as checked-and-different, and OA-1 already answers unchecked in the
+# surface-axes block.
+$script:PinMismatchLatch = $false
 
 function Resolve-ProfileSelection {
     param($Catalog, $ModelSet, [string] $Root, [bool] $TemplateAllowed)
@@ -2309,8 +2512,11 @@ function Resolve-ProfileSelection {
     }
 
     # Hashing a multi-hundred-GB model is only worth doing when the answer can change the outcome:
-    # a pin has to be checked, and the template path records the source attestation. With today's
-    # entirely unpinned catalog neither applies, so the ordinary run pays nothing.
+    # a pin has to be checked, and the template path records the source attestation. Since 26-08-07
+    # the catalog is partially pinned (qwen35-122b-nonextn), so a run that structurally matches THAT
+    # profile does pay one hash of its two shards - the cost the exact-identity gate is made of, and
+    # the result is cached per file. A run matching any of the five unpinned profiles still pays
+    # nothing.
     $needShas = ($pinned.Count -gt 0) -or ($TemplateAllowed -and $unpinned.Count -eq 0)
     $shas = @()
     if ($needShas) {
@@ -2350,6 +2556,20 @@ function Resolve-ProfileSelection {
                                                  pinned_candidates_rejected = $pinned.Count
                                                  profile = [string](Get-JsonValue -Obj $prof -Name 'profile_id') }
         return @{ kind = 'unpinned'; profile = $prof; shas = @($shas); candidates = @($cands) }
+    }
+
+    # P4 2.5 - the disagreeing pin. See the boundary note above the function: this branch is the
+    # DEFAULT path only. Ambiguity is resolved by the same Select-Profile rules the unpinned branch
+    # uses, so a multi-candidate catalog keeps its existing prompt / non-interactive refusal.
+    if ($pinned.Count -gt 0 -and -not $TemplateAllowed) {
+        $script:PinMismatchLatch = $true
+        $prof = Select-Profile -Catalog $Catalog -ModelSet $ModelSet -Root $Root -Candidates $pinned
+        Write-Line '[identify] the catalog pin for this profile does NOT match this file - continuing with'
+        Write-Line '           the catalog geometry, prefetch off, and every reference claim withheld.'
+        Write-Diag -Kind 'PROFILE_PIN' -Data @{ verdict = 'mismatch'; shards = @($shas).Count
+                                                 pinned_candidates_rejected = $pinned.Count
+                                                 profile = [string](Get-JsonValue -Obj $prof -Name 'profile_id') }
+        return @{ kind = 'mismatch'; profile = $prof; shas = @($shas); candidates = @($cands) }
     }
 
     if (-not $TemplateAllowed) {
@@ -2552,7 +2772,11 @@ function New-DerivedProfile {
         # ceil(n_expert * slot_stride_max / MiB) the autotune computes in Get-BudgetAutoCandidate -
         # because it answers the same question: below it the engine cannot start (n_slots >= n_expert).
         min_budget_mb  = [long]$minBudget
-        prefetch_state = 'disabled'
+        # P4 1: the derived row states the same thing the old one-axis 'disabled' stated, on the two
+        # axes that replaced it. Nothing has been measured for a model derived on the spot, so the
+        # evidence axis is 'unverified' and the activation axis is off by contract.
+        prefetch_evidence   = 'unverified'
+        prefetch_activation = 'off'
         prefetch       = $null
         # format_validated is true and it is not a courtesy: the derived path runs the SAME repack
         # verify and the same seven-item gate. performance_validated is false and stays false - no
@@ -2595,8 +2819,8 @@ function New-DerivedProfile {
 
 $script:DERIVED_PROFILE_KEYS = @(
     'derived_profile_schema_version', 'profile_id', 'display_name', 'routed_scope', 'identify',
-    'min_budget_mb', 'prefetch_state', 'prefetch', 'gates', 'reference_measurements',
-    'allowlist_bounds', 'defaults', 'derivation')
+    'min_budget_mb', 'prefetch_evidence', 'prefetch_activation', 'prefetch', 'gates',
+    'reference_measurements', 'allowlist_bounds', 'defaults', 'derivation')
 # Catalog-only keys. Their presence is not a harmless extra: hf_repo / hf_revision would assert an
 # upstream identity nobody established, and expect_file / expect_sha256 would point the seven-item
 # gate at the bundle expects directory instead of the derived expect in the output directory.
@@ -2649,8 +2873,12 @@ function Test-DerivedProfile {
         ([string](Get-JsonValue -Obj $d -Name 'template_id') + '@' + [string](Get-JsonValue -Obj $d -Name 'template_version'))) {
         return @{ ok = $false; reason = 'derivation.derived_from is not template_id@template_version' }
     }
-    if (([string](Get-JsonValue -Obj $Profile -Name 'prefetch_state')) -cne 'disabled') {
-        return @{ ok = $false; reason = 'a derived profile is prefetch_state=disabled by contract' }
+    if (([string](Get-JsonValue -Obj $Profile -Name 'prefetch_evidence')) -cne 'unverified' -or
+        ([string](Get-JsonValue -Obj $Profile -Name 'prefetch_activation')) -cne 'off') {
+        return @{ ok = $false; reason = 'a derived profile is prefetch_evidence=unverified / prefetch_activation=off by contract' }
+    }
+    if ($null -ne (Get-JsonValue -Obj $Profile -Name 'prefetch')) {
+        return @{ ok = $false; reason = 'a derived profile carries no prefetch tuple' }
     }
     if (Test-JsonBooleanTrue (Get-JsonValue -Obj (Get-JsonValue -Obj $Profile -Name 'gates') -Name 'performance_validated')) {
         return @{ ok = $false; reason = 'a derived profile can never claim performance_validated' }
@@ -2753,6 +2981,13 @@ function Get-SurfaceAxes {
         $inventory = $script:AXIS_INVENTORY_UNPINNED
         $serving   = $script:AXIS_SERVING_UNVALIDATED
         $note      = $script:UNPINNED_NOTE
+    } elseif ($Kind -ceq 'mismatch') {
+        # P4 2.5: serving validation is UNCONDITIONALLY unvalidated here - it does not consult
+        # gates.performance_validated at all, because that gate describes the bytes the catalog
+        # measured and this file has just been proven not to be them.
+        $inventory = $script:AXIS_INVENTORY_MISMATCH
+        $serving   = $script:AXIS_SERVING_UNVALIDATED
+        $note      = $script:MISMATCH_NOTE
     } else {
         $inventory = $script:AXIS_INVENTORY_PIN
         $serving   = $script:AXIS_SERVING_UNVALIDATED
@@ -2860,9 +3095,39 @@ function Test-RamVerdict {
     return @{ verdict = 'ok'; basis = 'full_formula'; required_mb = $required; kv_mb = $kv; avail_mb = $mem.avail_phys_mb }
 }
 
+# P4 2.5 (b) / r3 C-1: the bytes a stale-artifact replacement will hand back to the volume.
+# Only files that exist RIGHT NOW are counted, and an unreadable entry contributes nothing, so the
+# number can only ever understate what the deletion frees. It is a claim about the current state of
+# the disk, not a promise - the deletion still happens after the confirmation and nowhere else.
+function Get-StaleArtifactBytes {
+    param([string] $OutputDir)
+    $sum = [long]0
+    foreach ($n in $script:PARTIAL_DELETE_SET) {
+        $p = Join-Path $OutputDir $n
+        try {
+            $fi = New-Object System.IO.FileInfo($p); $fi.Refresh()
+            if ($fi.Exists) { $sum = $sum + [long]$fi.Length }
+        } catch { }
+    }
+    return $sum
+}
+
+# r4: the MB figure the disk gate consumes. A bare [long](bytes / 1MB) ROUNDS in PowerShell 5.1
+# (524289 bytes -> 1), which would OVERSTATE the reclaim on a fractional-MB tail - the one
+# direction this figure must never err. An explicit Floor keeps the understatement claim of
+# Get-StaleArtifactBytes true in MB as well as in bytes, and matches the surrounding free_mb /
+# needMb arithmetic.
+function Get-StaleArtifactReclaimMb {
+    param([string] $OutputDir)
+    return [long][math]::Floor((Get-StaleArtifactBytes -OutputDir $OutputDir) / 1MB)
+}
+
+# -ReclaimableMb (r3 C-1) is the conditional headroom above. It is passed ONLY on the mismatch
+# stale path; every other caller leaves it at 0, where the arithmetic and the printed lines are
+# byte-identical to what they were before it existed.
 function Invoke-Preflight {
     param([string] $OutputDir, [string] $ExpectPath, [long] $BudgetMb, [bool] $NeedsRepack,
-          [long] $CtxTokens = 0, [long] $ExpectedBytes = -1)
+          [long] $CtxTokens = 0, [long] $ExpectedBytes = -1, [long] $ReclaimableMb = 0)
 
     $vol = Get-VolumeFreeMb -Path $OutputDir
     if (-not $vol.ok) { Stop-Launcher 'fail_resource' ("output volume query failed: " + $vol.reason) }
@@ -2881,13 +3146,25 @@ function Invoke-Preflight {
     Write-Line ('  disk   : volume {0} free {1} MB' -f $vol.root, $vol.free_mb)
     if ($NeedsRepack) {
         Write-Line ('           repack artifact ~{0} MB' -f $needMb)
-        $residual = $vol.free_mb - $needMb
+        # r3 C-1: when this repack REPLACES artifacts that are about to be deleted, the volume the
+        # new one lands on is the current free space plus what the deletion returns. Gating on the
+        # pre-deletion figure alone would refuse a replacement that fits perfectly well - a false
+        # resource shortage, and on a large model the ordinary case rather than an edge one.
+        $freeForRepack = $vol.free_mb
+        if ($ReclaimableMb -gt 0) {
+            $freeForRepack = $vol.free_mb + $ReclaimableMb
+            Write-Line ('           reclaimed by replacing the stale artifacts ~{0} MB (deleted only if you approve)' -f $ReclaimableMb)
+            Write-Line ('           free after that reclaim ~{0} MB' -f $freeForRepack)
+        }
+        $residual = $freeForRepack - $needMb
         Write-Line ('           residual after repack ~{0} MB' -f $residual)
         if ($null -eq $script:DISK_POST_RESERVE_MB) {
             Write-Line '           reserve policy: [unmeasured] (LS 9 item 1) - displayed, not gated'
         }
-        if ($needMb -gt $vol.free_mb) {
-            Stop-Launcher 'fail_resource' ("disk preflight hard stop: need " + $needMb + " MB, free " + $vol.free_mb + " MB")
+        if ($needMb -gt $freeForRepack) {
+            $why = ("disk preflight hard stop: need " + $needMb + " MB, free " + $vol.free_mb + " MB")
+            if ($ReclaimableMb -gt 0) { $why = $why + " (+" + $ReclaimableMb + " MB reclaimable by replacing the stale artifacts)" }
+            Stop-Launcher 'fail_resource' $why
         }
     }
 
@@ -3098,9 +3375,12 @@ function Resolve-BudgetAutotune {
     # Codex r1 F2 + r2 F2-b. performance_identity is this record's claim that the run is STILL on
     # the catalog's measured operating point, so it has to answer the same question the EFFECTIVE
     # record answers with performance_gate. That gate demotes on the WHOLE performance provenance -
-    # Test-CustomProvenance over the same overrides map, where every key except the PERF_NEUTRAL
-    # list ('warmstart') counts: port, ctx, threads, qd, warmup, autosave all make the run custom,
-    # not just the budget key. A source-only formula answered 'true' for a valid '-Repro -Port <n>'
+    # Test-CustomProvenance over the same overrides map, which counts far more than the budget key.
+    # That function decides in three tiers: the PERF_NEUTRAL list ('warmstart') is exempt outright,
+    # a key whose final VALUE proves the run never left the measured condition is exempt for that
+    # value only, and everything else - port, ctx, threads, qd, autosave - counts on presence alone.
+    # The value-based tier is deliberately not re-listed here: that function carries the current set
+    # and the proof each member owes. A source-only formula answered 'true' for a valid '-Repro -Port <n>'
     # run while EFFECTIVE said custom/[unmeasured] (r2 F2-b). So the caller passes that one
     # provenance answer in as -PerfCustom (Build-EffectiveConfig computes it from the same
     # overrides map the EFFECTIVE writer uses), a fail_resource row still never claims the
@@ -3631,11 +3911,18 @@ function Merge-SweepRounds {
 # handed, which is what makes it directly regression-testable.
 #   V = {(q,bq) | status(q)=ok, bq finite positive}, bq = bytes/elapsed BEFORE display rounding
 #   M = max(bq) ; S90 = {q | 10*bq >= 9*M} ; q_base = min(S90)
-#   prefetch_state=validated only: E = {q in S90 | q >= N+1}; min(E) when E is non-empty
+#   arm 'catalog-fixed' only: E      = {q in S90 | q >= N+1} ; min(E) when E is non-empty
+#   arm 'init' only:          E_init = {q in S90 | q >= 2}   ; min(E_init) when it is non-empty
 # 'prefetch-preferred' is a bounded preference applied from a validated prior - it is NOT new
-# evidence that this device gains end to end (LS 12-3 wording rule).
+# evidence that this device gains end to end (LS 12-3 wording rule). 'init-prefetch-preferred' is
+# the same kind of preference applied from an UNVALIDATED prior, which is why it is a different
+# word: PI 2 forbids an init-produced number from wearing a validated label.
+# P4 2 / 3: the arm arrives already decided (Resolve-PrefetchArm), because a refused opt-in must
+# not move the QD of the run it was refused for. This function is handed 'none' in that case, and
+# the v0.4 formula and the 'prefetch-preferred' literal below are unchanged character for
+# character - only the signal that selects the branch changed from the retired one-axis state.
 function Select-SweepQd {
-    param($Points, [string] $PrefetchState, $CatalogN)
+    param($Points, [string] $PrefetchArm, $CatalogN)
     $valid = @()
     foreach ($p in @($Points)) {
         if ([string]$p.status -cne 'ok') { continue }
@@ -3658,13 +3945,23 @@ function Select-SweepQd {
     $qBase = [int]$s90[0]
     $qd = $qBase
     $reason = 'io-knee'
-    if ($PrefetchState -ceq 'validated' -and $null -ne $CatalogN) {
+    if ($PrefetchArm -ceq $script:PREFETCH_ARM_CATALOG -and $null -ne $CatalogN) {
         $need = [long]$CatalogN + 1
         $e = @()
         foreach ($q in $s90) { if ([long]$q -ge $need) { $e += [int]$q } }
         if ($e.Count -gt 0) {
             $pick = [int](@($e | Sort-Object)[0])
             if ($pick -ne $qBase) { $qd = $pick; $reason = 'prefetch-preferred' }
+        }
+    }
+    # PI 4-2 step 2: the init arm has no catalog N to clear, so its bound is the depth below which
+    # the formula produces nothing at all (QD1 -> OFF). Same shape, different prior, different word.
+    if ($PrefetchArm -ceq $script:PREFETCH_ARM_INIT) {
+        $eInit = @()
+        foreach ($q in $s90) { if ([long]$q -ge 2) { $eInit += [int]$q } }
+        if ($eInit.Count -gt 0) {
+            $pick = [int](@($eInit | Sort-Object)[0])
+            if ($pick -ne $qBase) { $qd = $pick; $reason = 'init-prefetch-preferred' }
         }
     }
     return @{ ok = $true; qd = [int]$qd; reason = $reason; degraded = $false
@@ -3898,7 +4195,7 @@ function Write-SweepBinding {
 
 # ---- LS 12-2 sweep run ----------------------------------------------------------------------
 function Invoke-QdSweep {
-    param([string] $OutputDir, [string] $ManifestSha256, [string] $PrefetchState, $CatalogN)
+    param([string] $OutputDir, [string] $ManifestSha256, [string] $PrefetchArm, $CatalogN)
     $bin = Join-Path $OutputDir 'experts.bin'
     $st = Get-FileAbsenceState -Path $bin
     if ($st.state -ne 'present') { return @{ ok = $false; reason = 'experts.bin is not available for the sweep' } }
@@ -3930,8 +4227,8 @@ function Invoke-QdSweep {
                       -WindowMs $win -QdOrder $script:SWEEP_ORDER_FORWARD -AlignBytes $al.align_bytes)
     $rounds += , (Invoke-SweepRound -TargetPath $bin -BlockBytes $blk.block_bytes -Offsets $seq.offsets `
                       -WindowMs $win -QdOrder $script:SWEEP_ORDER_REVERSE -AlignBytes $al.align_bytes)
-    $selA = Select-SweepQd -Points $rounds[0] -PrefetchState $PrefetchState -CatalogN $CatalogN
-    $selB = Select-SweepQd -Points $rounds[1] -PrefetchState $PrefetchState -CatalogN $CatalogN
+    $selA = Select-SweepQd -Points $rounds[0] -PrefetchArm $PrefetchArm -CatalogN $CatalogN
+    $selB = Select-SweepQd -Points $rounds[1] -PrefetchArm $PrefetchArm -CatalogN $CatalogN
     $confirm = $false
     if ([int]$selA.qd -ne [int]$selB.qd) {
         # LS 12-2: the two crossed rounds disagreed once - one confirmation round, never a loop.
@@ -3941,7 +4238,7 @@ function Invoke-QdSweep {
                           -WindowMs $win -QdOrder $script:SWEEP_ORDER_FORWARD -AlignBytes $al.align_bytes)
     }
     $points = Merge-SweepRounds -Rounds $rounds
-    $sel = Select-SweepQd -Points $points -PrefetchState $PrefetchState -CatalogN $CatalogN
+    $sel = Select-SweepQd -Points $points -PrefetchArm $PrefetchArm -CatalogN $CatalogN
     return @{ ok = $true; points = $points; selection = $sel; block_bytes = [long]$blk.block_bytes
               window_duration_ms = $win; rounds = @($rounds).Count; confirm_round = $confirm
               align_bytes = [long]$al.align_bytes; physical_sector = [long]$al.physical_bytes
@@ -3952,14 +4249,17 @@ function Invoke-QdSweep {
 # LS 12-1 / 12-4 orchestration: look the target key up once, sweep at most once, publish once.
 # Every failure here is NON-TERMINAL - it degrades to QD1 / conservative-default exactly like the
 # scratch probe's failure branch (RS 5).
+# P4 2: -PrefetchArm arrives from Resolve-PrefetchArm, i.e. AFTER the preset/CLI merge and BEFORE
+# any QD is picked. The sweep no longer reads a policy field off the profile itself: a row that is
+# catalog-fixed on paper but refused at runtime (identity, adapt, semantic) must sweep exactly like
+# an unpreferred row, which is only true if the caller decides the arm.
 function Resolve-QdSweep {
     param([string] $OutputDir, [string] $SourceTag, [string] $ProfileId, [string] $ExpectDigest,
-          [string] $ManifestSha256, [string] $CheckedAt, $Profile)
+          [string] $ManifestSha256, [string] $CheckedAt, $Profile, [string] $PrefetchArm = 'none')
     $out = @{ ok = $false; qd = [int]$script:QD_DEGRADED; qd_source = 'conservative-default'
               reason = $null; points = @(); from_binding = $false; persist_failed = $false
               detail = 'sweep not run'; block_bytes = $null; window_duration_ms = $null }
     try {
-        $pfState = [string](Get-JsonValue -Obj $Profile -Name 'prefetch_state')
         $pfN = $null
         $pf = Get-JsonValue -Obj $Profile -Name 'prefetch'
         if ($null -ne $pf) {
@@ -3977,7 +4277,7 @@ function Resolve-QdSweep {
             # the stored record.
             $hit = Read-SweepBinding -Key $key -CheckedAt $CheckedAt
             if ($hit.ok) {
-                $sel = Select-SweepQd -Points $hit.points -PrefetchState $pfState -CatalogN $pfN
+                $sel = Select-SweepQd -Points $hit.points -PrefetchArm $PrefetchArm -CatalogN $pfN
                 $out['points'] = $hit.points
                 $out['from_binding'] = $true
                 $out['block_bytes'] = $hit.block_bytes
@@ -4004,7 +4304,7 @@ function Resolve-QdSweep {
             if ($script:SweepRuns.ContainsKey($key)) { return $script:SweepRuns[$key] }
         }
         $run = Invoke-QdSweep -OutputDir $OutputDir -ManifestSha256 $ManifestSha256 `
-                   -PrefetchState $pfState -CatalogN $pfN
+                   -PrefetchArm $PrefetchArm -CatalogN $pfN
         if (-not $run.ok) {
             $out['detail'] = [string]$run.reason
             Write-Line ('[sweep] QD sweep could not run ({0}) -> degraded: QD{1}, conservative default (RS 5)' -f $run.reason, $script:QD_DEGRADED)
@@ -4111,6 +4411,27 @@ function Get-QdSource {
     if ($null -ne $Overrides -and $Overrides.ContainsKey('qd')) { return 'user-override' }
     if ($null -ne $Sweep) { return [string]$Sweep.qd_source }
     return 'conservative-default'
+}
+
+# RV 2-4. The QD sweep is a PHYSICAL probe of experts.bin (:4154 opens it), so in virtual it can
+# only ever fail - and its failure is not neutral: ProbeOk=$false is exactly what turns a
+# catalog-fixed row OFF (:5424), which would silently disable the one thing this preview exists to
+# serve. Virtual therefore does not run the sweep and does not consume its verdict; it serves the
+# shape the f3c GO run actually measured (io_qd_total = 8) with the profile's own catalog prefetch
+# policy untouched - catalog-fixed rows stay ON with their K/N, off/hold rows stay OFF.
+#
+# qd_source is 'virtual-pinned', never 'measured-sweep': no sweep ran in this process and the
+# status screen may not claim one. points stays empty for the same reason, so the "measured io"
+# row honestly reports that it has no point at this QD.
+function New-VirtualPinnedQd {
+    Write-Line ('[sweep] not run in mode=virtual (no experts.bin to probe); QD pinned to {0}, the measured shape.' -f `
+                $script:VIRTUAL_PINNED_QD)
+    Write-Diag -Kind 'SWEEP_SKIPPED_VIRTUAL' -Data @{ qd = [int]$script:VIRTUAL_PINNED_QD
+                                                       reason = 'mode=virtual has no experts.bin to probe' }
+    return @{ ok = $true; qd = [int]$script:VIRTUAL_PINNED_QD; qd_source = 'virtual-pinned'
+              reason = 'mode=virtual pinned shape'; points = @(); from_binding = $false
+              persist_failed = $false; detail = 'sweep not run (mode=virtual)'
+              block_bytes = $null; window_duration_ms = $null }
 }
 
 # endregion
@@ -4294,6 +4615,108 @@ function Invoke-PartialCleanup {
     Write-Line '[partial] Cleanup complete; repack will start from the beginning.'
 }
 
+# ---------------------------------------------------------------------------------------------
+# RV 1-1 [3] - the same recovery for a VIRTUAL output directory, and deliberately not the same
+# function: the file SET is different (VIRTUAL_PARTIAL_DELETE_SET, not PARTIAL_DELETE_SET) and the
+# reachable state is different. The virtual repacker promotes plan_report.json first and
+# manifest.json.partial -> manifest.json second (repack_experts.py:3997); an interruption between
+# those two atomic replacements leaves a report without a manifest, which the repacker then refuses
+# to overwrite without --force (:3915). Without this transition a TRUSTED producer's ordinary
+# interruption would have no successful continuation at all.
+#
+# The confirmation UX is inherited unchanged from Confirm-User: -AssumeYes proceeds, -NonInteractive
+# alone and -AssumeNo answer no and stop at cancelled_user with nothing deleted.
+# --force is NOT used: the artifacts are removed here, and the repacker then runs on a clean
+# directory exactly as it does on a first run.
+# ---------------------------------------------------------------------------------------------
+function Invoke-VirtualPartialCleanup {
+    param([string] $OutputDir)
+    Write-Line ''
+    Write-Line '[partial] An interrupted VIRTUAL repack was detected in this output directory.'
+    Write-Line '          The plan is rebuilt from the beginning; 0 bytes of expert data are moved.'
+    Write-Line '          The following incomplete artifacts will be DELETED before restarting:'
+    foreach ($n in $script:VIRTUAL_PARTIAL_DELETE_SET) { Write-Line ('            - ' + (Join-Path $OutputDir $n)) }
+    if (-not (Confirm-User -Question 'Delete these artifacts and restart the plan? [y/N] ')) {
+        Stop-Launcher 'cancelled_user' 'user declined the incomplete virtual artifact cleanup'
+    }
+    $failed = @()
+    foreach ($n in $script:VIRTUAL_PARTIAL_DELETE_SET) {
+        $p = Join-Path $OutputDir $n
+        try {
+            if (Test-Path -LiteralPath $p -PathType Leaf) { Remove-Item -LiteralPath $p -Force -ErrorAction Stop }
+        } catch {
+            $failed += ($n + ': ' + $_.Exception.Message)
+            continue
+        }
+        try {
+            $fi = New-Object System.IO.FileInfo($p); $fi.Refresh()
+            if ($fi.Exists) { $failed += ($n + ': still present after delete') }
+        } catch {
+            $failed += ($n + ': absence check failed - ' + $_.Exception.Message)
+        }
+    }
+    if ($failed.Count -gt 0) {
+        Write-Diag -Kind 'VIRTUAL_PARTIAL_CLEANUP_FAILED' -Data @{ failed = $failed }
+        Stop-Launcher 'fail_partial_cleanup' ('virtual .partial cleanup failed: ' + ($failed -join '; '))
+    }
+    Write-Diag -Kind 'VIRTUAL_PARTIAL_CLEANUP_OK' -Data @{ out = $OutputDir; deleted = $script:VIRTUAL_PARTIAL_DELETE_SET }
+    Write-Line '[partial] Cleanup complete; the virtual plan will start from the beginning.'
+}
+
+# ---------------------------------------------------------------------------------------------
+# P4 2.5 (b) - stale repack artifacts on the identity-mismatch path.
+#
+# The default output directory is "<model folder>\repack", so the original model and a same-shaped
+# file sitting beside it SHARE one output directory. A mismatch run keeps the catalog row, which
+# means it also keeps that row's profile_id / expect digest / lock id - and the artifact-reuse test
+# is "do the three files exist", while the 7-item gate checks the reference lock and the manifest's
+# own digest. None of those can answer "was this experts.bin built from THESE bytes", so without
+# this step a mismatch run could serve the ORIGINAL model's experts.bin as if it had been
+# copy-verified from the file the user actually named.
+#
+# INVESTIGATED, not assumed: the repacker's manifest carries no source digest at all -
+# build_manifest writes sources[] as {index, path, bytes, mtime, gguf_version, alignment,
+# data_start} (bench/repack/repack_experts.py:1326-1331), and every sha256 in that file is an
+# EXPECT digest, an inventory digest or the manifest's own digest - never a source shard hash.
+# So there is nothing to compare the current shard SHAs against, and the disposition is the
+# second of the two the spec allows: on a mismatch run the artifacts are treated as stale
+# regardless of their presence, and the repack is re-run from the current bytes.
+#
+# Deliberately scoped to the mismatch verdict: the pinned and unpinned paths keep their reuse
+# decision, their cost and their failure modes exactly as they were, and gain no new hashing -
+# the identity answer this depends on was already computed by Resolve-ProfileSelection.
+#
+# The deletion is NOT confirmed separately. It happens after the ordinary "Proceed with the repack
+# now?" confirmation, which the plan block warns beforehand (one confirmation point, not two -
+# the same rule the derived path follows). Failure reuses fail_partial_cleanup; no new status.
+# ---------------------------------------------------------------------------------------------
+function Remove-StaleRepackArtifacts {
+    param([string] $OutputDir)
+    $failed = @()
+    foreach ($n in $script:PARTIAL_DELETE_SET) {
+        $p = Join-Path $OutputDir $n
+        try {
+            if (Test-Path -LiteralPath $p -PathType Leaf) { Remove-Item -LiteralPath $p -Force -ErrorAction Stop }
+        } catch {
+            $failed += ($n + ': ' + $_.Exception.Message)
+            continue
+        }
+        try {
+            $fi = New-Object System.IO.FileInfo($p); $fi.Refresh()
+            if ($fi.Exists) { $failed += ($n + ': still present after delete') }
+        } catch {
+            $failed += ($n + ': absence check failed - ' + $_.Exception.Message)
+        }
+    }
+    if ($failed.Count -gt 0) {
+        Write-Diag -Kind 'STALE_ARTIFACT_CLEANUP_FAILED' -Data @{ failed = $failed }
+        Stop-Launcher 'fail_partial_cleanup' ('stale repack artifact cleanup failed: ' + ($failed -join '; '))
+    }
+    Write-Diag -Kind 'STALE_ARTIFACT_CLEANUP_OK' -Data @{ out = $OutputDir; deleted = $script:PARTIAL_DELETE_SET
+                                                           reason = 'identity_mismatch' }
+    Write-Line '[stale] Previous repack artifacts deleted; the repack restarts from the current file.'
+}
+
 # endregion
 
 # ============================================================================
@@ -4414,6 +4837,271 @@ function Assert-VerifyGate {
     # no gate branch above reads it, and its absence cannot change this function's verdict.
     return @{ pairs = $counts['pairs_total']; manifest_sha256 = $realSha.sha
               checked_at = [string](Get-JsonValue -Obj $rec -Name 'checked_at') }
+}
+
+# endregion
+
+# ============================================================================
+# region 12b. VIRTUAL MODE DETECTION + PLAN GATE (RV 1 / RV 1-1 / RV 2-3)
+#   1st source: the engine's own consumers -
+#     detect_manifest_mode()    ggml-moe-direct.cpp:2110-2137
+#     read_plan_report_gate()   ggml-moe-direct.cpp:2510-2549 (+ the caller equality at :8955)
+#   Nothing here relaxes either of them; where the two differ this side is the stricter one.
+# ============================================================================
+
+# RV 1. The mode truth table, mirrored, not paraphrased:
+#     "2.0" + NO mode key                -> BIN
+#     "3.0" + mode == "virtual" (string) -> VIRTUAL
+#     everything else                    -> fail-close
+# Key PRESENCE is the test, never the value: "2.0" with a mode key of ANY value (null, "bin",
+# "virtual") is a fail-close, and so is "3.0" with the key absent. Test-JsonHas is what makes that
+# distinction - a null-value check would collapse "absent" and "present but null" into one answer.
+function Get-ManifestMode {
+    param([string] $ManifestPath)
+    $r = Read-JsonFileStrict -Path $ManifestPath
+    if (-not $r.ok) { return @{ mode = $script:MANIFEST_MODE_UNRECOGNIZED; reason = $r.reason } }
+    $obj = $r.value
+    if (-not ($obj -is [System.Management.Automation.PSCustomObject])) {
+        return @{ mode = $script:MANIFEST_MODE_UNRECOGNIZED; reason = 'manifest root is not a JSON object' }
+    }
+    if (-not (Test-JsonHas -Obj $obj -Name 'schema_version')) {
+        return @{ mode = $script:MANIFEST_MODE_UNRECOGNIZED; reason = 'schema_version key missing' }
+    }
+    $sv = Get-JsonValue -Obj $obj -Name 'schema_version'
+    if (-not (Test-JsonNonEmptyString $sv)) {
+        return @{ mode = $script:MANIFEST_MODE_UNRECOGNIZED; reason = 'schema_version is not a JSON string' }
+    }
+    $svText = [string]$sv
+    $hasMode = Test-JsonHas -Obj $obj -Name 'mode'
+    if ($svText -ceq '2.0') {
+        if ($hasMode) {
+            return @{ mode = $script:MANIFEST_MODE_UNRECOGNIZED; reason = 'schema_version 2.0 carries a mode key' }
+        }
+        return @{ mode = $script:MANIFEST_MODE_BIN; reason = $null }
+    }
+    if ($svText -ceq '3.0') {
+        if (-not $hasMode) {
+            return @{ mode = $script:MANIFEST_MODE_UNRECOGNIZED; reason = 'schema_version 3.0 has no mode key' }
+        }
+        $mv = Get-JsonValue -Obj $obj -Name 'mode'
+        if (-not (Test-JsonNonEmptyString $mv)) {
+            return @{ mode = $script:MANIFEST_MODE_UNRECOGNIZED; reason = 'mode is not a JSON string' }
+        }
+        if ([string]$mv -ceq $script:MANIFEST_MODE_VIRTUAL) {
+            return @{ mode = $script:MANIFEST_MODE_VIRTUAL; reason = $null }
+        }
+        return @{ mode = $script:MANIFEST_MODE_UNRECOGNIZED; reason = ("mode is '" + [string]$mv + "'") }
+    }
+    return @{ mode = $script:MANIFEST_MODE_UNRECOGNIZED; reason = ("schema_version is '" + $svText + "'") }
+}
+
+# RV 1 fail-close status. One reason string for the whole unrecognized branch, kept separate from
+# the mode-MISMATCH reason below: "this manifest cannot be read at all" and "this manifest is the
+# other mode" are different verdicts and may not be spelled the same way.
+function Stop-UnrecognizedManifest {
+    param($ModeResult)
+    $why = $script:MANIFEST_MODE_UNRECOGNIZED_REASON
+    if ($ModeResult -and $ModeResult.reason) { $why = $why + ' (' + [string]$ModeResult.reason + ')' }
+    Stop-Launcher 'fail_gate_verify' $why
+}
+
+function Stop-ModeMismatch {
+    param([string] $Existing, [string] $Requested)
+    Stop-Launcher 'fail_gate_verify' ('mode: existing artifacts are ' + $Existing + ', requested ' + $Requested)
+}
+
+# RV 2-3. The virtual counterpart of the 7-item gate. Same discipline, different evidence: there is
+# no experts.bin to bind, so the binding is plan_report.json <-> manifest.json <-> the catalog.
+# Every item fails closed and the order is the contract (the first failure is the reason reported).
+#
+# What this gate does NOT do: re-run validate_manifest_v3. The engine checks every one of those
+# invariants before it acquires a single resource (:2284, :2404, :8888), so the terminal fail-close
+# already exists. The launcher owns exactly two things - the type/positivity of the fields IT
+# consumes before the engine runs, and the plan-report binding below.
+function Assert-VirtualPlanGate {
+    param([string] $OutputDir, [string] $ProfileId, [string] $ExpectSha)
+
+    $manifestPath = Join-Path $OutputDir 'manifest.json'
+    $reportPath   = Join-Path $OutputDir 'plan_report.json'
+
+    # (v1) no bin artifact may sit in a virtual output directory. FileNotFound is the ONLY proof of
+    # absence - a permission or IO error is "cannot prove absent", never "absent"
+    # (repack_experts.py:3880, engine :8913, and the LS 3 item 1 rule Get-FileAbsenceState encodes).
+    foreach ($n in @('experts.bin', 'experts.bin.partial')) {
+        $st = Get-FileAbsenceState -Path (Join-Path $OutputDir $n)
+        if ($st.state -eq 'present') {
+            Stop-Launcher 'fail_gate_verify' ('vgate 1: ' + $n + ' present in a virtual output directory')
+        }
+        if ($st.state -ne 'absent') {
+            Stop-Launcher 'fail_gate_verify' ('vgate 1: ' + $n + ' absence not provable - ' + $st.reason)
+        }
+    }
+
+    # (v2) plan_report.json is a SINGLE JSON object, not the JSONL verify_report is - so it is read
+    # whole and parsed strictly, with no last-record rule.
+    $pr = Read-JsonFileStrict -Path $reportPath
+    if (-not $pr.ok) { Stop-Launcher 'fail_gate_verify' ('vgate 2: plan_report.json - ' + $pr.reason) }
+    $rec = $pr.value
+    if (-not ($rec -is [System.Management.Automation.PSCustomObject])) {
+        Stop-Launcher 'fail_gate_verify' 'vgate 2: plan_report.json root is not a JSON object'
+    }
+
+    # (v3) the report says which mode produced it
+    if (-not (Test-JsonHas -Obj $rec -Name 'mode')) { Stop-Launcher 'fail_gate_verify' 'vgate 3: mode key missing' }
+    $mv = Get-JsonValue -Obj $rec -Name 'mode'
+    if (-not (Test-JsonNonEmptyString $mv))         { Stop-Launcher 'fail_gate_verify' 'vgate 3: mode is not a JSON string' }
+    if ([string]$mv -cne $script:MANIFEST_MODE_VIRTUAL) {
+        Stop-Launcher 'fail_gate_verify' ("vgate 3: plan_report.mode is '" + [string]$mv + "', not 'virtual'")
+    }
+
+    # (v4) pass must be JSON boolean true
+    if (-not (Test-JsonHas -Obj $rec -Name 'pass')) { Stop-Launcher 'fail_gate_verify' 'vgate 4: pass key missing' }
+    $passVal = Get-JsonValue -Obj $rec -Name 'pass'
+    if (-not (Test-JsonBoolean $passVal))     { Stop-Launcher 'fail_gate_verify' 'vgate 4: pass is not a JSON boolean' }
+    if (-not (Test-JsonBooleanTrue $passVal)) { Stop-Launcher 'fail_gate_verify' 'vgate 4: pass is false' }
+
+    # (v5) problems present, a JSON array, and empty (a missing key is NOT an empty array)
+    if (-not (Test-JsonHas -Obj $rec -Name 'problems')) {
+        Stop-Launcher 'fail_gate_verify' 'vgate 5: problems missing (missing key is not an empty array)'
+    }
+    $probs = Get-JsonValue -Obj $rec -Name 'problems'
+    if (-not (Test-JsonArray $probs))      { Stop-Launcher 'fail_gate_verify' 'vgate 5: problems is not a JSON array' }
+    if (-not (Test-JsonEmptyArray $probs)) { Stop-Launcher 'fail_gate_verify' 'vgate 5: problems is not empty' }
+
+    # (v6) cache-key binding: the report names the manifest it belongs to, and that name is the
+    # real bytes on disk - not a value copied out of the manifest itself.
+    if (-not (Test-JsonHas -Obj $rec -Name 'manifest_sha256')) {
+        Stop-Launcher 'fail_gate_verify' 'vgate 6: manifest_sha256 missing (report not bound to a manifest)'
+    }
+    $repSha = Get-JsonValue -Obj $rec -Name 'manifest_sha256'
+    if (-not (Test-Sha256Hex $repSha)) { Stop-Launcher 'fail_gate_verify' 'vgate 6: manifest_sha256 is not a 64 hex string' }
+    $realSha = Get-FileSha256Lower -Path $manifestPath
+    if (-not $realSha.ok) { Stop-Launcher 'fail_gate_verify' ('vgate 6: manifest.json re-hash failed - ' + $realSha.reason) }
+    if ($realSha.sha -ne ([string]$repSha).ToLowerInvariant()) {
+        Stop-Launcher 'fail_gate_verify' 'vgate 6: manifest_sha256 != real manifest.json bytes (report belongs to a different artifact)'
+    }
+
+    # (v7) reference_lock three-way: manifest, plan report and the catalog say the same thing
+    $mr = Read-JsonFileStrict -Path $manifestPath
+    if (-not $mr.ok) { Stop-Launcher 'fail_gate_verify' ('vgate 7: manifest.json unreadable - ' + $mr.reason) }
+    $mLock = Get-JsonValue -Obj $mr.value -Name 'reference_lock'
+    $rLock = Get-JsonValue -Obj $rec -Name 'reference_lock'
+    foreach ($pair in @(@('manifest', $mLock), @('plan_report', $rLock))) {
+        $lock = $pair[1]
+        if ($null -eq $lock) { Stop-Launcher 'fail_gate_verify' ('vgate 7: ' + $pair[0] + '.reference_lock missing') }
+        if (-not (Test-JsonNonEmptyString (Get-JsonValue -Obj $lock -Name 'profile_id'))) {
+            Stop-Launcher 'fail_gate_verify' ('vgate 7: ' + $pair[0] + '.reference_lock.profile_id missing or not a string')
+        }
+        if (-not (Test-Sha256Hex (Get-JsonValue -Obj $lock -Name 'expect_sha256'))) {
+            Stop-Launcher 'fail_gate_verify' ('vgate 7: ' + $pair[0] + '.reference_lock.expect_sha256 missing or not 64 hex')
+        }
+    }
+    $mPid = [string](Get-JsonValue -Obj $mLock -Name 'profile_id')
+    $rPid = [string](Get-JsonValue -Obj $rLock -Name 'profile_id')
+    $mSha = ([string](Get-JsonValue -Obj $mLock -Name 'expect_sha256')).ToLowerInvariant()
+    $rSha = ([string](Get-JsonValue -Obj $rLock -Name 'expect_sha256')).ToLowerInvariant()
+    $cSha = $ExpectSha.ToLowerInvariant()
+    if (-not ($mPid -ceq $ProfileId -and $rPid -ceq $ProfileId)) {
+        Stop-Launcher 'fail_gate_verify' ("vgate 7: reference_lock.profile_id three-way mismatch (manifest=" + $mPid +
+            " plan_report=" + $rPid + " selected=" + $ProfileId + ")")
+    }
+    if (-not ($mSha -eq $cSha -and $rSha -eq $cSha)) {
+        Stop-Launcher 'fail_gate_verify' 'vgate 7: reference_lock.expect_sha256 three-way mismatch against the catalog expect hash'
+    }
+
+    # (v8) cardinality: a non-negative integer AND the same count the manifest's own totals state.
+    # The equality is the load-bearing half - the engine's caller performs it (:8955), and a report
+    # whose record count disagrees with its manifest describes a different plan.
+    $card = Get-JsonValue -Obj $rec -Name 'cardinality'
+    if ($null -eq $card) { Stop-Launcher 'fail_gate_verify' 'vgate 8: cardinality missing' }
+    if (-not (Test-JsonHas -Obj $card -Name 'records')) { Stop-Launcher 'fail_gate_verify' 'vgate 8: cardinality.records missing' }
+    $recs = Get-JsonValue -Obj $card -Name 'records'
+    if (-not (Test-JsonNonNegativeInteger $recs)) {
+        Stop-Launcher 'fail_gate_verify' 'vgate 8: cardinality.records is not a non-negative integer'
+    }
+    $totals = Get-JsonValue -Obj $mr.value -Name 'totals'
+    if ($null -eq $totals) { Stop-Launcher 'fail_gate_verify' 'vgate 8: manifest totals missing' }
+    if (-not (Test-JsonHas -Obj $totals -Name 'n_records')) { Stop-Launcher 'fail_gate_verify' 'vgate 8: manifest totals.n_records missing' }
+    $nrec = Get-JsonValue -Obj $totals -Name 'n_records'
+    if (-not (Test-JsonNonNegativeInteger $nrec)) {
+        Stop-Launcher 'fail_gate_verify' 'vgate 8: manifest totals.n_records is not a non-negative integer'
+    }
+    if ([long]$recs -ne [long]$nrec) {
+        Stop-Launcher 'fail_gate_verify' ('vgate 8: cardinality.records(' + [long]$recs +
+            ') != manifest totals.n_records(' + [long]$nrec + ')')
+    }
+
+    Write-Diag -Kind 'VIRTUAL_PLAN_GATE_OK' -Data @{ out = $OutputDir; profile = $ProfileId; mode = $script:MANIFEST_MODE_VIRTUAL
+        records = [long]$recs; manifest_sha256 = $realSha.sha }
+    Write-Line ('[gate] virtual plan gate PASS (8/8) - mode=virtual, records {0}, manifest {1}' -f `
+                ([long]$recs), $realSha.sha.Substring(0, 12))
+    # Same ABI as Assert-VerifyGate's return, minus the pairs count that has no virtual meaning:
+    # the callers consume manifest_sha256 (warmstart binding, smoke item 5) and checked_at.
+    return @{ records = [long]$recs; manifest_sha256 = $realSha.sha
+              checked_at = [string](Get-JsonValue -Obj $rec -Name 'checked_at') }
+}
+
+# RV 1-1 [3] - the virtual disposition table. Returns $true when the caller must repack; every row
+# whose disposition is "stop" terminates inside this function, so the caller never has to decide.
+#
+#   manifest VIRTUAL + gate PASS   -> reuse            (the repacker is not run at all)
+#   manifest VIRTUAL + gate FAIL   -> stop             (a verification failure is not overwritten)
+#   manifest BIN                   -> stop             (mode mismatch, both directions)
+#   manifest unreadable/unknown    -> stop             (fail-close, its own reason)
+#   bin residue, no virtual manifest -> stop           (no virtual output on top of bin leftovers)
+#   plan_report or manifest.json.partial alone -> cleanup, then repack
+#   nothing                        -> repack
+#
+# The bin .partial confirm/cleanup flow (Invoke-PartialCleanup) is NOT run here: it deletes
+# manifest.json among four bin artifacts, which is the opposite disposition to v1's "a bin artifact
+# in this directory is a hard stop". One file, one verdict.
+function Resolve-VirtualArtifactState {
+    param([string] $OutputDir, [string] $ProfileId, [string] $ExpectSha)
+    $manifestPath = Join-Path $OutputDir 'manifest.json'
+
+    # Existence is decided by the FileNotFound-only rule for every file below, manifest and report
+    # included: an ACL or IO error must not be read as "absent" and silently trigger a fresh repack.
+    $mSt = Get-FileAbsenceState -Path $manifestPath
+    if ($mSt.state -eq 'unknown') { Stop-Launcher 'fail_gate_verify' ('manifest.json absence not provable - ' + $mSt.reason) }
+
+    if ($mSt.state -eq 'present') {
+        $mode = Get-ManifestMode -ManifestPath $manifestPath
+        if ([string]$mode.mode -ceq $script:MANIFEST_MODE_UNRECOGNIZED) { Stop-UnrecognizedManifest -ModeResult $mode }
+        if ([string]$mode.mode -cne $script:MANIFEST_MODE_VIRTUAL) {
+            Stop-ModeMismatch -Existing ([string]$mode.mode) -Requested $script:REPACK_MODE_VIRTUAL
+        }
+        # A virtual manifest is here. The gate decides whether it may be served; it never decides
+        # whether to rebuild - a FAIL stops, because regenerating over a failed verification would
+        # destroy the evidence of what failed.
+        [void](Assert-VirtualPlanGate -OutputDir $OutputDir -ProfileId $ProfileId -ExpectSha $ExpectSha)
+        Write-Line '[repack] reusing the existing virtual plan in this output directory.'
+        Write-Diag -Kind 'VIRTUAL_ARTIFACTS_REUSED' -Data @{ out = $OutputDir }
+        return $false
+    }
+
+    # No manifest. Bin leftovers are checked BEFORE the incomplete-production rows: a directory that
+    # still holds experts.bin is a bin directory, and this run may neither serve nor tidy it.
+    foreach ($n in @('experts.bin', 'experts.bin.partial')) {
+        $b = Get-FileAbsenceState -Path (Join-Path $OutputDir $n)
+        if ($b.state -eq 'present') {
+            Stop-Launcher 'fail_gate_verify' ('vgate 1: ' + $n + ' present in a virtual output directory')
+        }
+        if ($b.state -ne 'absent') {
+            Stop-Launcher 'fail_gate_verify' ('vgate 1: ' + $n + ' absence not provable - ' + $b.reason)
+        }
+    }
+
+    $incomplete = @()
+    foreach ($n in $script:VIRTUAL_PARTIAL_DELETE_SET) {
+        $st = Get-FileAbsenceState -Path (Join-Path $OutputDir $n)
+        if ($st.state -eq 'unknown') { Stop-Launcher 'fail_gate_verify' ($n + ' absence not provable - ' + $st.reason) }
+        if ($st.state -eq 'present') { $incomplete += $n }
+    }
+    if ($incomplete.Count -gt 0) {
+        Write-Diag -Kind 'VIRTUAL_INCOMPLETE_DETECTED' -Data @{ out = $OutputDir; present = $incomplete }
+        Invoke-VirtualPartialCleanup -OutputDir $OutputDir
+    }
+    return $true
 }
 
 # endregion
@@ -4846,6 +5534,14 @@ function Test-OverrideValue {
         }
         return @{ ok = $true; value = [string]$m }
     }
+    # P4 4: 'prefetch' is a closed three-value enum, so it takes neither the on/off spellings nor the
+    # numeric branch. Same discipline as every other key: raw string in, normalised value out, a
+    # rejection is fail_custom_args when non-interactive and a re-loop when interactive.
+    if ($Key -eq 'prefetch') {
+        $v = ([string]$Value).Trim().ToLowerInvariant()
+        if ($script:PREFETCH_REQUEST_VALUES -ccontains $v) { return @{ ok = $true; value = $v } }
+        return @{ ok = $false; reason = ("prefetch must be one of " + ($script:PREFETCH_REQUEST_VALUES -join '|')) }
+    }
     # LS 13-2: 'warmstart' reuses the existing on/off branch byte for byte - same accepted spellings,
     # same rejection, and therefore the same fail_custom_args / interactive re-loop behaviour.
     if ($Key -eq 'warmup' -or $Key -eq 'warmstart') {
@@ -4917,21 +5613,293 @@ function Remove-ArgvPair {
     return , $out
 }
 
-# LS 1-2 table: this is the only place that decides live prefetch behaviour.
-function Resolve-EffectivePrefetch {
-    param($Profile, [bool] $ProbeOk)
-    $st = [string](Get-JsonValue -Obj $Profile -Name 'prefetch_state')
-    if ($st -ceq 'validated') {
-        if ($ProbeOk) {
-            $pf = Get-JsonValue -Obj $Profile -Name 'prefetch'
-            return @{ on = $true; echo = $script:PREFETCH_ECHO_ON
-                      k = [long](Get-JsonValue -Obj $pf -Name 'k'); n = [long](Get-JsonValue -Obj $pf -Name 'n') }
-        }
-        return @{ on = $false; echo = $script:PREFETCH_ECHO_PROBE_FAILED; degraded = $true }
+# =============================================================================================
+# P4 1 / 2 - the three-axis prefetch state machine.
+#
+# Axis ownership (PI 3): capability is a SEAL-TIME runtime result and is never stored or decided
+# here; evidence and activation are catalog-stored; the opt-in arm is a runtime input. This
+# launcher therefore decides a CANDIDATE and nothing more - the final activation authority is the
+# engine seal, exactly as it was in v0.4.
+# =============================================================================================
+
+# The semantic reader. It never terminates: a row it cannot make sense of comes back marked
+# semantic_invalid, and the resolver turns that row's prefetch off with a reason (P4 1-b).
+function Get-PrefetchCatalogAxes {
+    param($Profile)
+    $out = @{ evidence = ''; activation = ''; hold = $false; k = $null; n = $null
+              semantic_invalid = $false; detail = $null }
+    $ev  = Get-JsonValue -Obj $Profile -Name 'prefetch_evidence'
+    $act = Get-JsonValue -Obj $Profile -Name 'prefetch_activation'
+    $out.evidence   = [string]$ev
+    $out.activation = [string]$act
+    if (Test-JsonHas -Obj $Profile -Name 'prefetch_promotion_hold') {
+        $out.hold = [bool](Test-JsonBooleanTrue (Get-JsonValue -Obj $Profile -Name 'prefetch_promotion_hold'))
     }
-    if ($st -ceq 'reference-only') { return @{ on = $false; echo = $script:PREFETCH_ECHO_REFERENCE_ONLY } }
-    if ($st -ceq 'disabled')       { return @{ on = $false; echo = $script:PREFETCH_ECHO_CATALOG_DISABLED } }
-    Stop-Launcher 'fail_gate_catalog' ('prefetch_state unknown at resolve time: ' + $st)
+    $pf = Get-JsonValue -Obj $Profile -Name 'prefetch'
+    $tupleOk = $false
+    if ($null -ne $pf) {
+        $kv = Get-JsonValue -Obj $pf -Name 'k'
+        $nv = Get-JsonValue -Obj $pf -Name 'n'
+        if ((Test-JsonNonNegativeInteger $kv) -and (Test-JsonNonNegativeInteger $nv)) {
+            $out.k = [long]$kv; $out.n = [long]$nv; $tupleOk = $true
+        }
+    }
+
+    function Set-Invalid { param($Bag, [string] $Why) ; $Bag.semantic_invalid = $true ; $Bag.detail = $Why }
+
+    if ($script:PREFETCH_EVIDENCE_VALUES -cnotcontains $out.evidence) {
+        Set-Invalid -Bag $out -Why ('unknown prefetch_evidence: ' + $out.evidence) ; return $out
+    }
+    if ($script:PREFETCH_ACTIVATION_RUNTIME -ccontains $out.activation) {
+        # PI 3 invariant 3: an opt-in activation is produced by an opt-in, never read out of a file.
+        Set-Invalid -Bag $out -Why ('prefetch_activation ' + $out.activation + ' is a runtime value and may not be stored') ; return $out
+    }
+    if ($script:PREFETCH_ACTIVATION_STORED -cnotcontains $out.activation) {
+        Set-Invalid -Bag $out -Why ('unknown prefetch_activation: ' + $out.activation) ; return $out
+    }
+    # P4 1 closure rule, both directions of "catalog-fixed <=> paired-live AND a valid tuple".
+    if ($out.activation -ceq 'catalog-fixed') {
+        if ($out.evidence -cne 'paired-live') {
+            # Evidence regression: the row claims the validated activation on weaker evidence.
+            Set-Invalid -Bag $out -Why ('catalog-fixed requires prefetch_evidence=paired-live, not ' + $out.evidence) ; return $out
+        }
+        if (-not $tupleOk) {
+            Set-Invalid -Bag $out -Why 'catalog-fixed requires a valid prefetch {k,n} tuple' ; return $out
+        }
+    } else {
+        if ($null -ne $pf) {
+            Set-Invalid -Bag $out -Why 'prefetch_activation=off requires prefetch=null (stray tuple)' ; return $out
+        }
+        if ($out.evidence -ceq 'paired-live') {
+            # The other direction of the same closure rule. paired-live is the evidence that
+            # catalog-fixed is made of, so a paired-live row parked on 'off' is an authoring state
+            # the total function of P4 1 does not contain - and it is the one evidence value the
+            # not_opted_in_* token set deliberately has no member for.
+            Set-Invalid -Bag $out -Why 'prefetch_evidence=paired-live with prefetch_activation=off is not a closed state' ; return $out
+        }
+    }
+    return $out
+}
+
+# P4 4: the public enum -> internal arm mapping, written exactly once. 'catalog' and absence are
+# the SAME request (the v0.4 behaviour), and both mean "no opt-in".
+function ConvertTo-PrefetchOptIn {
+    param([string] $Request)
+    $r = [string]$Request
+    if ($r.Length -eq 0) { $r = $script:PREFETCH_REQUEST_DEFAULT }
+    if ($r -ceq 'catalog') { return $script:PREFETCH_ARM_NONE }
+    if ($r -ceq 'init')    { return $script:PREFETCH_ARM_INIT }
+    if ($r -ceq 'adapt')   { return 'adapt' }
+    # Unreachable: Test-OverrideValue is the only producer and it rejects everything else.
+    return $script:PREFETCH_ARM_NONE
+}
+
+# P4 5: adapt is refused on every path in Phase 4, and the two refusals say different true things.
+function Get-PrefetchAdaptRefusal {
+    param([bool] $ReproOrBench)
+    if ($ReproOrBench) { return 'adapt_forbidden_in_repro_bench' }
+    return 'adapt_controller_not_shipped_phase5'
+}
+
+# PI 2: N0 = min(4, QD-1, max(1, floor(QD/2))). QD1 has no legal N (N < QD is an admission
+# invariant), so QD1 is OFF rather than N0. The cap of 4 is the outer edge of the evidence, not a
+# claim that 4 is optimal.
+function Get-PrefetchInitN {
+    param([int] $EffectiveQd)
+    if ([int]$EffectiveQd -lt 2) { return $null }
+    $half = [int][math]::Floor([double]$EffectiveQd / 2.0)
+    if ($half -lt 1) { $half = 1 }
+    $n = $script:PREFETCH_INIT_N_CAP
+    if (($EffectiveQd - 1) -lt $n) { $n = $EffectiveQd - 1 }
+    if ($half -lt $n) { $n = $half }
+    return [long]$n
+}
+
+# ---------------------------------------------------------------------------------------------
+# P4 2 - the resolution order, as a total function over (row axes x opt-in x identity x probe x QD).
+# Every branch is fail-close and every OFF carries exactly one reason from the closed enum, the
+# first one that matched.
+#
+#   0. the row cannot be read                -> catalog_semantic_invalid
+#   0b. a derived row whose plan text and GGUF header disagree about t -> derived_t_mismatch
+#   1. activation=catalog-fixed              -> adapt refused / identity gate / probe / ON
+#   2. activation=off, no opt-in             -> not_opted_in_evidence_<evidence>
+#   3. activation=off, init opt-in           -> hold / t range / engine floor / probe / init_v1
+#   4. adapt opt-in                          -> refused (P4 5)
+#
+# -EffectiveQd is only read by the init arm (the catalog arm's K/N come from the tuple and the
+# QD relation is re-checked downstream by Resolve-PrefetchForQd, on every config rebuild).
+# -DerivedHeaderExpertUsed is supplied only on the derived path, where the profile's t comes from
+# the repacker's plan text instead of the catalog. On the catalog path the structural prefilter has
+# already compared identify.n_expert_used with the GGUF header, so there is nothing left to check
+# and no second GGUF parser is introduced here.
+# ---------------------------------------------------------------------------------------------
+function Resolve-EffectivePrefetch {
+    param($Profile, [bool] $ProbeOk, [string] $OptIn = 'none', [int] $EffectiveQd = 0,
+          [string] $IdentityVerdict = 'unpinned', $DerivedHeaderExpertUsed = $null,
+          [bool] $ReproOrBench = $false, [string] $Request = '')
+
+    $axes = Get-PrefetchCatalogAxes -Profile $Profile
+    $req = [string]$Request
+    if ($req.Length -eq 0) { $req = $script:PREFETCH_REQUEST_DEFAULT }
+
+    # The echo fields every branch carries, so a consumer never has to ask a second function what
+    # the row said (P4 3 mandatory echo).
+    function New-PfBase {
+        param($Axes, [string] $Req, [string] $Identity)
+        return @{ request = $Req; evidence = $Axes.evidence; activation = $Axes.activation
+                  promotion_hold = [bool]$Axes.hold; identity = $Identity
+                  init_version = $script:PREFETCH_INIT_VERSION
+                  provenance = $null; warning = $null; off_reason = $null
+                  candidate_activation = 'off' }
+    }
+    function New-PfOff {
+        param($Base, [string] $Reason)
+        $o = @{}
+        foreach ($k in $Base.Keys) { $o[$k] = $Base[$k] }
+        $o['on'] = $false
+        $o['off_reason'] = $Reason
+        $o['echo'] = (Get-PrefetchOffEcho -Reason $Reason)
+        $o['candidate_activation'] = 'off'
+        return $o
+    }
+
+    $base = New-PfBase -Axes $axes -Req $req -Identity $IdentityVerdict
+
+    # 0. semantic failure - before every arm, so a broken row can never reach an opt-in path.
+    if ($axes.semantic_invalid) {
+        Write-Diag -Kind 'PREFETCH_CATALOG_SEMANTIC_INVALID' -Data @{
+            profile = [string](Get-JsonValue -Obj $Profile -Name 'profile_id'); detail = $axes.detail }
+        return (New-PfOff -Base $base -Reason 'catalog_semantic_invalid')
+    }
+
+    # 0b. derived t cross-check (P4 3). The plan summary and the header are two independent reads
+    # of the same fact; when they disagree there is no t this launcher is entitled to use.
+    if ($null -ne $DerivedHeaderExpertUsed) {
+        $tProfile = Get-JsonValue -Obj (Get-JsonValue -Obj $Profile -Name 'identify') -Name 'n_expert_used'
+        if ((-not (Test-JsonNonNegativeInteger $tProfile)) -or
+            ([long]$tProfile -ne [long]$DerivedHeaderExpertUsed)) {
+            return (New-PfOff -Base $base -Reason 'derived_t_mismatch')
+        }
+    }
+
+    # 1. the catalog-fixed row.
+    if ($axes.activation -ceq 'catalog-fixed') {
+        # ORDER IS THE CONTRACT, not a tie-break. P4 2 step 2 reads "identity 3-gate -> on pass,
+        # the v0.4 validated path; init ignored, adapt refused", and P4 2's closing rule fixes the
+        # observable reason priority to that same sequence ("only the first matched reason is
+        # echoed"). So the identity gate answers first: a row whose model is not the catalog's
+        # model has nothing to grant or refuse an opt-in about. Reachable counter-example that
+        # decides it: K2.6 is unpinned today, so `-Prefetch adapt` on it must echo
+        # identity_not_exact, not an adapt reason.
+        # P4 2.5: exact catalog identity, not a structural fingerprint. Absent pin and empty pin
+        # array are the same state (unpinned) and both land here, as does a pin that disagreed.
+        if ($IdentityVerdict -cne $script:PREFETCH_IDENTITY_EXACT) {
+            return (New-PfOff -Base $base -Reason 'identity_not_exact')
+        }
+        if ($OptIn -ceq 'adapt') {
+            return (New-PfOff -Base $base -Reason (Get-PrefetchAdaptRefusal -ReproOrBench $ReproOrBench))
+        }
+        if (-not $ProbeOk) {
+            $o = New-PfOff -Base $base -Reason 'probe_failed'
+            $o['degraded'] = $true
+            return $o
+        }
+        $o = @{}
+        foreach ($k in $base.Keys) { $o[$k] = $base[$k] }
+        $o['on'] = $true
+        $o['echo'] = $script:PREFETCH_ECHO_ON
+        $o['k'] = [long]$axes.k
+        $o['n'] = [long]$axes.n
+        $o['provenance'] = $script:PREFETCH_PROVENANCE_CATALOG
+        $o['candidate_activation'] = 'catalog-fixed'
+        if ($OptIn -ceq $script:PREFETCH_ARM_INIT) {
+            # P4 2 step 2: the request is IGNORED, loudly. The measured pair keeps its provenance -
+            # a request that changed nothing may not demote what was validated.
+            $o['warning'] = 'prefetch=init ignored: this profile is catalog-fixed (validated K/N); the measured pair is kept'
+        }
+        return $o
+    }
+
+    # 2. activation=off and no opt-in - the ordinary shipped state for five of the six rows.
+    if ($OptIn -ceq $script:PREFETCH_ARM_NONE) {
+        $token = 'not_opted_in_evidence_' + ($axes.evidence -replace '-', '_')
+        return (New-PfOff -Base $base -Reason $token)
+    }
+
+    # 3. activation=off with the init opt-in.
+    if ($OptIn -ceq $script:PREFETCH_ARM_INIT) {
+        if ($axes.hold) {
+            # A Phase 4 lock only. It does not answer whether a sealed opt-in may ever be allowed
+            # for this row, nor whether the row can be promoted - both are a later round's question.
+            return (New-PfOff -Base $base -Reason 'phase4_hold_unresolved')
+        }
+        $tRaw = Get-JsonValue -Obj (Get-JsonValue -Obj $Profile -Name 'identify') -Name 'n_expert_used'
+        if (-not (Test-JsonNonNegativeInteger $tRaw)) {
+            return (New-PfOff -Base $base -Reason 'init_t_out_of_range')
+        }
+        $t = [long]$tRaw
+        if ($t -lt $script:PREFETCH_INIT_T_MIN -or $t -gt $script:PREFETCH_INIT_T_MAX) {
+            return (New-PfOff -Base $base -Reason 'init_t_out_of_range')
+        }
+        if ($t -lt [long]$script:ENGINE_ENV_K_FLOOR) {
+            # Not a capability verdict - a refusal to print a candidate ON that the engine's current
+            # env parser would reject outright.
+            return (New-PfOff -Base $base -Reason 'engine_env_k_floor_8_pre_p4a')
+        }
+        # PI 4-2 step 5: a failed probe is the degraded path and an override may not revive it.
+        if (-not $ProbeOk) {
+            $o = New-PfOff -Base $base -Reason 'probe_failed'
+            $o['degraded'] = $true
+            return $o
+        }
+        $n0 = Get-PrefetchInitN -EffectiveQd $EffectiveQd
+        if ($null -eq $n0) {
+            return (New-PfOff -Base $base -Reason 'qd_below_prefetch_depth')
+        }
+        $o = @{}
+        foreach ($k in $base.Keys) { $o[$k] = $base[$k] }
+        $o['on'] = $true
+        $o['echo'] = $script:PREFETCH_ECHO_ON
+        $o['k'] = [long]$t
+        $o['n'] = [long]$n0
+        $o['provenance'] = $script:PREFETCH_PROVENANCE_INIT
+        $o['candidate_activation'] = 'opt-in-fixed'
+        $o['warning'] = ('prefetch_init_v1 is an unvalidated starting point (K=n_expert_used, ' +
+                         'N=min(4,QD-1,floor(QD/2))): no performance claim is made for this pair')
+        return $o
+    }
+
+    # 4. the adapt opt-in on a non-catalog-fixed row.
+    if ($OptIn -ceq 'adapt') {
+        return (New-PfOff -Base $base -Reason (Get-PrefetchAdaptRefusal -ReproOrBench $ReproOrBench))
+    }
+
+    # 5. total-function tail: an arm nothing above claimed is treated like an unreadable row.
+    return (New-PfOff -Base $base -Reason 'catalog_semantic_invalid')
+}
+
+# ---------------------------------------------------------------------------------------------
+# P4 2 "arm selection happens BEFORE the QD is chosen". This answers one question only - which arm
+# the QD sweep should prefer - and it must agree with Resolve-EffectivePrefetch on every refusal,
+# because a refused opt-in that still moved the QD would change the run it was refused for.
+# It reads no QD and produces no K/N.
+# ---------------------------------------------------------------------------------------------
+function Resolve-PrefetchArm {
+    param($Profile, [string] $OptIn = 'none', [string] $IdentityVerdict = 'unpinned',
+          $DerivedHeaderExpertUsed = $null, [bool] $ReproOrBench = $false)
+    # Two placeholders, both deliberate. Probe success is assumed because a probe FAILURE only ever
+    # turns the arm off and the sweep's own degraded path already forces QD1 - so it cannot change
+    # the answer this function exists to give, and the probe result does not exist yet anyway.
+    # EffectiveQd=2 is the smallest depth at which the init formula yields a pair; the arm question
+    # itself is QD-independent, and using the real QD here would be the circular dependency PI 4-2
+    # step 5 exists to avoid.
+    $d = Resolve-EffectivePrefetch -Profile $Profile -ProbeOk $true -OptIn $OptIn `
+             -EffectiveQd 2 -IdentityVerdict $IdentityVerdict `
+             -DerivedHeaderExpertUsed $DerivedHeaderExpertUsed -ReproOrBench $ReproOrBench
+    if (-not $d.on) { return $script:PREFETCH_ARM_NONE }
+    if ([string]$d.candidate_activation -ceq 'catalog-fixed') { return $script:PREFETCH_ARM_CATALOG }
+    return $script:PREFETCH_ARM_INIT
 }
 
 # LS 1-2 (R6 revision) - the QD-dependent row of the same table, kept separate because effective_qd
@@ -4943,9 +5911,32 @@ function Resolve-PrefetchForQd {
     param($Decision, [int] $EffectiveQd)
     if ($null -eq $Decision -or -not $Decision.on) { return $Decision }
     if ([long]$EffectiveQd -ge ([long]$Decision.n + 1)) { return $Decision }
-    return @{ on = $false; echo = $script:PREFETCH_ECHO_QD_BELOW_DEPTH
-              qd_demoted = $true; catalog_k = $Decision.k; catalog_n = $Decision.n
-              effective_qd = [int]$EffectiveQd }
+    # P4 3 mandatory echo: a demotion changes the verdict, not the row's story. The catalog axes,
+    # the request and the identity verdict travel with the demoted decision so the status screen and
+    # the EFFECTIVE record still say WHICH row was demoted and what had been asked for.
+    $o = @{}
+    foreach ($k in $Decision.Keys) { $o[$k] = $Decision[$k] }
+    $o['on'] = $false
+    $o['echo'] = $script:PREFETCH_ECHO_QD_BELOW_DEPTH
+    $o['off_reason'] = 'qd_below_prefetch_depth'
+    $o['candidate_activation'] = 'off'
+    $o['provenance'] = $null
+    $o['qd_demoted'] = $true
+    $o['catalog_k'] = $Decision.k
+    $o['catalog_n'] = $Decision.n
+    $o['effective_qd'] = [int]$EffectiveQd
+    $o.Remove('k') | Out-Null
+    $o.Remove('n') | Out-Null
+    return $o
+}
+
+# The one place that folds a QD override into the swept default. P4 2 puts the init N0 derivation
+# on the FINAL effective QD, so the resolver and this builder have to agree on that number exactly -
+# which they only do if they compute it the same way, here.
+function Get-EffectiveQd {
+    param($Overrides, [int] $Qd)
+    if ($null -ne $Overrides -and $Overrides.ContainsKey('qd')) { return [int]$Overrides['qd'] }
+    return [int]$Qd
 }
 
 function Build-EffectiveConfig {
@@ -5048,8 +6039,7 @@ function Build-EffectiveConfig {
               -WarmPath (Test-WarmPathBaseline -Config @{ warmup = $warmFinal })
     $budget = [long]$bt.budget_mb
     $env0[$script:ENV_BUDGET_MB] = [string]$budget
-    $qdEff = $Qd
-    if ($Overrides.ContainsKey('qd')) { $qdEff = [int]$Overrides['qd'] }
+    $qdEff = Get-EffectiveQd -Overrides $Overrides -Qd $Qd
     $env0[$script:ENV_QD] = [string]$qdEff
 
     # Default metrics accounting log (LAUNCHER_SPEC 8b: stop -> "graceful cleanup(metrics summary
@@ -5129,14 +6119,27 @@ function Build-EffectiveConfig {
 # LS 13-2: performance-neutral override keys do not make a configuration "custom". They change no
 # argv, no env and no measurement condition, so demoting the performance gate for them would punish
 # a user for following the README.
-# UX 1-4 adds ONE value-equivalence exception, and deliberately only one. Custom provenance is still
-# decided by KEY PRESENCE everywhere else; for 'warmup' alone it is decided by the final VALUE,
-# because the v0.2.2 advice was "switch warmup on" and that stored key is now the product default -
-# a user who followed the README must not be reclassified as custom by the default reversal itself.
+# Separate workstreams then added VALUE-dependent members to that idea, and the rule that admits one
+# is narrow: KEY PRESENCE stays the general test, and a key is exempted only where its final VALUE
+# proves the run still sits on the measured condition. Each exemption carries that proof at its own
+# key below; this is not a closed list, and nothing joins it without one.
+#   'prefetch' (P4 4) normally IS a performance condition (an init opt-in injects a K/N pair the
+#   catalog never measured), but two of its outcomes change nothing at all: an explicit 'catalog'
+#   request is the default behaviour spelled out, and a request the resolver IGNORED (init on a
+#   catalog-fixed row) leaves the measured pair exactly where it was. Demoting the published numbers
+#   for a request that changed no argv and no env would be a false statement in the other direction.
+#   'warmup' (UX 1-4) is decided by the final value because the v0.2.2 advice was "switch warmup on"
+#   and that stored key is now the product default - a user who followed the README must not be
+#   reclassified as custom by the default reversal itself.
+$script:PrefetchRequestIgnored = $false
 function Test-CustomProvenance {
     param($Overrides)
     foreach ($k in $Overrides.Keys) {
         if ($script:PERF_NEUTRAL_OVERRIDE_KEYS -contains [string]$k) { continue }
+        if ([string]$k -ceq 'prefetch') {
+            if ([string]$Overrides[$k] -ceq 'catalog') { continue }
+            if ($script:PrefetchRequestIgnored) { continue }
+        }
         if ([string]$k -ceq 'warmup' -and (Test-WarmupOverrideNeutral -Value ([string]$Overrides[$k]))) { continue }
         return $true
     }
@@ -6916,7 +7919,12 @@ function Show-Status {
     # one puts the run off the measured operating point, so it demotes this axis for the same reason
     # a custom edit does. The rows stay ordered custom -> auto -> catalog: a custom edit is the
     # stronger statement about provenance and keeps its own wording.
-    if ($Custom) {
+    # P4 2.5 goes FIRST in this ladder: the other three rows all describe a configuration applied to
+    # the catalog's model, while this one says the model itself is not the measured file. Nothing
+    # below it could be a true statement about this run.
+    if ($script:PinMismatchLatch) {
+        Write-Line '  performance gate : [unmeasured] (the catalog source pin does not match this file)'
+    } elseif ($Custom) {
         Write-Line '  performance gate : [unmeasured] (custom configuration)'
     } elseif ($Config.budget_unmeasured) {
         Write-Line '  performance gate : [unmeasured] (auto budget differs from the measured configuration)'
@@ -6980,10 +7988,27 @@ function Show-Status {
     if (Test-AutosaveActive) { $asTxt = ('on (every {0} min)' -f [int]$script:WarmstartCtx.autosave_minutes) }
     elseif ($script:WarmstartCtx.autosave_enabled) { $asTxt = 'off (warmstart is off)' }
     Write-Line ('  autosave         : {0}' -f $asTxt)
-    Write-Line ('  effective_prefetch: {0}   [catalog prefetch_state={1}]' -f $Config.prefetch.echo,
-                                                    [string](Get-JsonValue -Obj $Profile -Name 'prefetch_state'))
-    if ([string](Get-JsonValue -Obj $Profile -Name 'prefetch_state') -ceq 'reference-only') {
-        Write-Line '                     reference-only = offline signal eligibility only; live prefetch is NOT verified and is forbidden.'
+    # P4 3 mandatory pre-seal echo. Every field the spec names is printed on EVERY run under the
+    # spec's own field name, including the ones that are null - a field that disappears when it is
+    # empty cannot be consumed as a contract, because its absence and a parse failure look the same
+    # to the reader. The activation field says "candidate" on purpose: the launcher proposes K/N,
+    # and the engine seal is what makes an activation real.
+    $pfd = $Config.prefetch
+    function Format-PfField { param($V) ; if ($null -eq $V -or [string]$V -eq '') { return '(null)' } ; return [string]$V }
+    Write-Line ('  effective_prefetch: {0}   [catalog evidence={1} activation={2}]' -f
+                $pfd.echo, [string]$pfd.evidence, [string]$pfd.activation)
+    Write-Line ('                     prefetch_request={0} catalog_evidence={1} catalog_activation={2}' -f
+                (Format-PfField $pfd.request), (Format-PfField $pfd.evidence), (Format-PfField $pfd.activation))
+    Write-Line ('                     launcher_candidate_activation={0} prefetch_identity={1}' -f
+                (Format-PfField $pfd.candidate_activation), (Format-PfField $pfd.identity))
+    Write-Line ('                     requested_k={0} requested_n={1} requested_qd={2}' -f
+                (Format-PfField $pfd.k), (Format-PfField $pfd.n), (Format-PfField $Config.qd))
+    Write-Line ('                     prefetch_provenance={0} prefetch_init_version={1}' -f
+                (Format-PfField $pfd.provenance), (Format-PfField $pfd.init_version))
+    Write-Line ('                     off_reason={0}' -f (Format-PfField $pfd.off_reason))
+    Write-Line ('                     warning={0}' -f (Format-PfField $pfd.warning))
+    if ($pfd.on) {
+        Write-Line '                     candidate only - the engine seal decides the final activation.'
     }
     if ($RamVerdict -and $RamVerdict.verdict -eq 'unmeasured') {
         Write-Line ('  ram verdict      : [unmeasured] ({0})' -f $RamVerdict.reason)
@@ -8354,6 +9379,11 @@ function Invoke-Repacker {
         $args0 += $s
     }
     if ($PlanOnly) { $args0 += '--plan' }
+    # RV 1-1 [4]: the SINGLE owner of --mode. It is read from the resolved run mode instead of being
+    # taken as a parameter precisely so that no call site can decide it - the catalog plan run and
+    # the real repack run are given the same mode by construction, not by two callers agreeing.
+    # packed inserts nothing at all, which is what keeps the no-flag argv byte-identical (RV 4).
+    if (Test-VirtualRepack) { $args0 += @('--mode', $script:REPACK_MODE_VIRTUAL) }
     if ($ArchTemplate) {
         # Two omissions, both required by the repacker's own CLI contract:
         #   --profile  is REJECTED together with --experimental-arch-template (repack_experts.py:
@@ -8449,8 +9479,14 @@ function Invoke-Repacker {
         Stop-Launcher $FailStatus ($what + ' exited abnormally (code=' + (Format-ExitCode $code) + '); see ' + $errLog)
     }
     if ($PlanOnly) { return @{ exit_code = $code; text = $text; out_log = $outLog; err_log = $errLog } }
-    if (-not (Test-Path -LiteralPath (Join-Path $OutputDir 'verify_report.json') -PathType Leaf)) {
-        Stop-Launcher 'fail_repack' 'repacker finished but verify_report.json was not produced'
+    # RV 1-1 [5]: the postcondition is mode-specific because the two modes produce different
+    # evidence. bin ends with verify_report.json (the copy verifier's JSONL); virtual moves no bytes
+    # and therefore has no copy to verify - its evidence is plan_report.json, and requiring a verify
+    # report there would fail every first virtual creation.
+    $postFile = 'verify_report.json'
+    if (Test-VirtualRepack) { $postFile = 'plan_report.json' }
+    if (-not (Test-Path -LiteralPath (Join-Path $OutputDir $postFile) -PathType Leaf)) {
+        Stop-Launcher 'fail_repack' ('repacker finished but ' + $postFile + ' was not produced')
     }
     return @{ exit_code = $code; text = $text; out_log = $outLog; err_log = $errLog }
 }
@@ -8809,6 +9845,69 @@ function Invoke-SmokeStream {
 # produces a status line instead of a bare exit 1 with zero wire output.
 $script:ActionResolved = 'start'
 $script:RunSecondsResolved = 0
+# RV 3: resolved once at the top of the run and read everywhere else. Initialised here so the
+# dot-sourced -LibraryMode path (launcher_selftest.ps1) always has a defined mode.
+$script:RepackModeResolved = 'packed'
+# RV 2-4 (2): the preset read the virtual path performs EARLY, kept so the v0.4 merge point reuses
+# it instead of reading - and logging - the same preset a second time.
+$script:VirtualPresetEarly = $null
+
+function Test-VirtualRepack {
+    return ([string]$script:RepackModeResolved -ceq $script:REPACK_MODE_VIRTUAL)
+}
+
+# RV 3: same discipline as -Action - a raw string, trimmed and lower-cased, validated here so an
+# invalid value still produces a status line instead of a binder death with no wire output.
+function Resolve-RepackMode {
+    # The early-preset slot belongs to ONE run; clearing it here means a dot-sourced host that
+    # drives this function twice cannot inherit the previous run's preset.
+    $script:VirtualPresetEarly = $null
+    $raw = ([string]$RepackMode).Trim()
+    if ($raw.Length -eq 0) { $script:RepackModeResolved = $script:REPACK_MODE_DEFAULT; return }
+    $v = $raw.ToLowerInvariant()
+    if ($script:REPACK_MODE_VALUES -cnotcontains $v) {
+        Stop-Launcher 'fail_custom_args' ("invalid -RepackMode '" + $RepackMode + "': expected packed or virtual")
+    }
+    $script:RepackModeResolved = $v
+}
+
+# RV 2-4: the CLI half of the pinned-shape refusal. Timing is the contract, not a preference: it
+# runs after the mode is fixed and while the RAW values still exist, because Get-CliOverrides
+# silently drops an out-of-bounds value on an interactive run - after it, a refused -QD and an
+# absent one are indistinguishable. A silent ignore is exactly what this must not do.
+#
+# -Prefetch is judged on the REQUEST enum (catalog | init | adapt): 'catalog-fixed' is a resolver
+# RESULT and never an accepted request. Absent and 'catalog' pass; anything else stops.
+function Assert-VirtualCliPins {
+    if (-not (Test-VirtualRepack)) { return }
+    if ($null -ne $QD -and ([string]$QD).Trim().Length -gt 0) {
+        Stop-Launcher 'fail_custom_args' ("-QD '" + $QD + "' is not accepted with -RepackMode virtual: " + $script:VIRTUAL_PIN_REASON)
+    }
+    $pf = ([string]$Prefetch).Trim()
+    if ($pf.Length -gt 0 -and $pf.ToLowerInvariant() -cne $script:PREFETCH_REQUEST_DEFAULT) {
+        Stop-Launcher 'fail_custom_args' ("-Prefetch '" + $Prefetch + "' is not accepted with -RepackMode virtual: " + $script:VIRTUAL_PIN_REASON)
+    }
+}
+
+# RV 2-4: the same refusal for the two override MAP layers - the stored preset and the interactive
+# custom editor. Both call sites invoke this before anything downstream can act on the value: the
+# preset before the partial cleanup, the preflight, the plan and the repack; the custom editor
+# before the prefetch re-resolve, the config rebuild and the preset save.
+function Assert-VirtualOverridePins {
+    param($Overrides, [string] $Origin)
+    if (-not (Test-VirtualRepack)) { return }
+    if ($null -eq $Overrides) { return }
+    if ($Overrides.ContainsKey('qd')) {
+        Stop-Launcher 'fail_custom_args' ('qd from ' + $Origin + ' is not accepted with -RepackMode virtual: ' + $script:VIRTUAL_PIN_REASON)
+    }
+    if ($Overrides.ContainsKey('prefetch')) {
+        $v = ([string]$Overrides['prefetch']).Trim().ToLowerInvariant()
+        if ($v -cne $script:PREFETCH_REQUEST_DEFAULT) {
+            Stop-Launcher 'fail_custom_args' ("prefetch '" + $v + "' from " + $Origin +
+                ' is not accepted with -RepackMode virtual: ' + $script:VIRTUAL_PIN_REASON)
+        }
+    }
+}
 
 function Resolve-ExtraCliArgs {
     $a = ([string]$Action).Trim().ToLowerInvariant()
@@ -8834,7 +9933,8 @@ function Get-CliOverrides {
     $ov = @{}
     $pairs = @(@('port', $Port), @('ctx', $Ctx), @('threads', $Threads),
                @('budget_mb', $BudgetMB), @('qd', $QD), @('warmup', $Warmup),
-               @('warmstart', $Warmstart), @('autosave', $Autosave))
+               @('warmstart', $Warmstart), @('autosave', $Autosave),
+               @('prefetch', $Prefetch))
     foreach ($p in $pairs) {
         $k = $p[0]; $v = $p[1]
         if ($null -eq $v -or ([string]$v).Trim().Length -eq 0) { continue }
@@ -8859,7 +9959,14 @@ function Get-CliOverrides {
 function Resolve-OutputDirectory {
     param([string] $ModelPath)
     $outputDir = $OutDir
-    if (-not $outputDir) { $outputDir = Join-Path ([System.IO.Path]::GetDirectoryName($ModelPath)) 'repack' }
+    if (-not $outputDir) {
+        # RV 1-1 [2]: the two modes get separate default directories, so an opt-in run never lands
+        # on the other mode's artifacts by accident. An explicit -OutDir still wins, and the
+        # mode-intent check on the existing artifacts is what covers that case instead.
+        $leaf = $script:REPACK_DIR_PACKED
+        if (Test-VirtualRepack) { $leaf = $script:REPACK_DIR_VIRTUAL }
+        $outputDir = Join-Path ([System.IO.Path]::GetDirectoryName($ModelPath)) $leaf
+    }
     try {
         if (-not [System.IO.Path]::IsPathRooted($outputDir)) {
             $outputDir = Join-Path (Get-Location).ProviderPath $outputDir
@@ -8936,6 +10043,25 @@ function Complete-PreSpawnConfig {
                                           sweep_from_binding = $Sweep.from_binding
                                           binding_persist = $(if ($Sweep.persist_failed) { 'failed' } else { 'ok' })
                                           effective_prefetch = $config.prefetch.echo
+                                          # P4 3: the mandatory pre-seal echo, one field per
+                                          # question. 'launcher_candidate_activation' is
+                                          # deliberately not called an effective activation - the
+                                          # engine seal owns that word.
+                                          prefetch_request = [string]$config.prefetch.request
+                                          catalog_evidence = [string]$config.prefetch.evidence
+                                          catalog_activation = [string]$config.prefetch.activation
+                                          launcher_candidate_activation = [string]$config.prefetch.candidate_activation
+                                          prefetch_identity = [string]$config.prefetch.identity
+                                          requested_k = $config.prefetch.k
+                                          requested_n = $config.prefetch.n
+                                          requested_qd = [int]$config.qd
+                                          prefetch_provenance = $config.prefetch.provenance
+                                          prefetch_init_version = [string]$config.prefetch.init_version
+                                          # P4 3 names this field 'warning', not 'prefetch_warning':
+                                          # the mandatory echo is a field-name contract, so the
+                                          # record has to be readable by the name the spec gives.
+                                          warning = $config.prefetch.warning
+                                          off_reason = $config.prefetch.off_reason
                                           warmstart_mode = $script:WarmstartCtx.mode
                                           warmstart_override = $script:WarmstartCtx.override
                                           warmstart_state = (Get-WarmstartState)
@@ -8961,7 +10087,11 @@ function Complete-PreSpawnConfig {
                                           # carries the same name as the screen's row, so it may not
                                           # answer 'true' while the screen prints [unmeasured]
                                           # (product warm-path baseline). One predicate, both writers.
-                                          performance_gate = $(if ($Custom -or $config.budget_unmeasured -or (Test-WarmPathBaseline -Config $config)) { 'unmeasured' } else { (Test-JsonBooleanTrue (Get-JsonValue -Obj (Get-JsonValue -Obj $Profile -Name 'gates') -Name 'performance_validated')) }) }
+                                          # The disjunction therefore carries EVERY demoting term the
+                                          # screen ladder tests, in the ladder's own order (P4 2.5 pin
+                                          # mismatch, custom, auto budget, warm path). Dropping a term
+                                          # here republishes an unmeasured number as measured.
+                                          performance_gate = $(if ($script:PinMismatchLatch -or $Custom -or $config.budget_unmeasured -or (Test-WarmPathBaseline -Config $config)) { 'unmeasured' } else { (Test-JsonBooleanTrue (Get-JsonValue -Obj (Get-JsonValue -Obj $Profile -Name 'gates') -Name 'performance_validated')) }) }
     return $config
 }
 
@@ -8974,6 +10104,11 @@ function Invoke-LauncherMain {
     # (0) launcher-owned CLI validation before anything else can fail without a status line
     Set-FailureStage 'fail_custom_args'
     Resolve-ExtraCliArgs
+    # RV 3 / RV 2-4: the run mode is fixed before anything can read it, and the CLI half of the
+    # pinned-shape refusal runs immediately after - while the raw -QD / -Prefetch strings still
+    # exist. Both are launcher-owned CLI validation, so they belong in this step with -Action.
+    Resolve-RepackMode
+    Assert-VirtualCliPins
     # UX 1-1-2: the arch-template answer is latched HERE, at the top of the run. It has to be
     # decided before the model selection menu offers its toggle and long before the selection call
     # consumes it, and its only inputs (CLI, the global preference file) are all available now.
@@ -9019,6 +10154,16 @@ function Invoke-LauncherMain {
     # locks - so a run with an out-of-bounds override still terminates as fail_custom_args without
     # having created the output directory or the lock file.
     if ($selection.kind -ceq 'template') {
+        # RV 0: the derived/template path parses the repacker's PLAN TEXT, and those regexes are
+        # bin-only (ConvertFrom-TemplatePlanText :2586 / the derive plan :2889, against the
+        # repacker's own template branch repack_experts.py:4145). A virtual plan prints a different
+        # summary, so the combination cannot be consumed - support for it is outside this preview.
+        # Refused HERE, before the derive-plan runs, so no output directory is created, no lock is
+        # taken and no plan text is produced for a run that cannot finish.
+        if (Test-VirtualRepack) {
+            Set-FailureStage 'fail_custom_args'
+            Stop-Launcher 'fail_custom_args' 'derived/template profiles do not support -RepackMode virtual in this preview'
+        }
         $outputDir = Resolve-OutputDirectory -ModelPath $modelPath
         Set-FailureStage 'fail_instance_lock'
         Acquire-LauncherLocks -OutputDir $outputDir
@@ -9060,9 +10205,23 @@ function Invoke-LauncherMain {
     Set-FailureStage 'fail_custom_args'
     $cliOverrides = Get-CliOverrides -Bounds $bounds
 
+    # RV 2-4 (2): the preset half of the pinned-shape refusal. The v0.4 order reads the preset AFTER
+    # the repack and the gate, which would let a stored qd be refused only once the run had already
+    # cleaned up, planned and repacked - the side effects would land before the refusal. Virtual
+    # therefore reads the preset HERE, after -ResetPreset has been honoured and before any of that,
+    # and the read is kept so the merge point below reuses it rather than reading (and logging) the
+    # same file twice. The packed path is untouched: nothing above runs for it.
+    if (Test-VirtualRepack) {
+        if ($ResetPreset) { Remove-UserPreset }
+        $script:VirtualPresetEarly = Read-UserPreset -SourceTag $sourceTag -ProfileId $profileId `
+                                         -ExpectDigest $expectSha -Bounds $bounds
+        Assert-VirtualOverridePins -Overrides $script:VirtualPresetEarly.overrides -Origin 'the stored preset'
+    }
+
     if ($null -eq $outputDir) { $outputDir = Resolve-OutputDirectory -ModelPath $modelPath }
     Write-Diag -Kind 'PATHS' -Data @{ model = $modelPath; out = $outputDir; bundle = $root; expect = $expectPath
-                                      selection = $selection.kind; lock_id = $lockId }
+                                      selection = $selection.kind; lock_id = $lockId
+                                      repack_mode = [string]$script:RepackModeResolved }
 
     # (4) locks stage 1: instance + profile + output. The effective-port lock is deliberately NOT
     # taken here - the port is not final until preset and CLI overrides have been bound (R1-1).
@@ -9081,11 +10240,26 @@ function Invoke-LauncherMain {
     }
     Assert-NotCancelledPreReady
 
-    # (5) .partial handling (LS 2)
+    # (5) .partial handling (LS 2) / RV 1-1 [3] artifact lifecycle
     Set-FailureStage 'fail_gate_verify'
+    $needRepack = $true
+    $staleArtifacts = $false
+    if (Test-VirtualRepack) {
+        # RV 1-1 [3]: the whole virtual disposition table lives in one function, and the bin
+        # .partial flow below is NOT run - it deletes manifest.json, which is the opposite verdict
+        # to the virtual gate's "a bin artifact here is a hard stop". Stale-artifact replacement is
+        # likewise not introduced: the engine's own source binding (:2186) is the terminal authority
+        # on whether a plan still describes the model being served, and duplicating it here would
+        # add a second, weaker opinion.
+        # The ambient stage stays fail_gate_verify: every disposition that terminates in there names
+        # its own status explicitly (fail_gate_verify, cancelled_user, fail_partial_cleanup), so the
+        # ambient one only covers an UNEXPECTED fault - and a gate fault is not a user cancellation.
+        $needRepack = Resolve-VirtualArtifactState -OutputDir $outputDir -ProfileId $lockId -ExpectSha $expectSha
+    } else {
+    # --- packed (v0.4) branch, deliberately left at its original indentation so the differential
+    #     review sees an unchanged block rather than a re-indented one. Ends at "end packed branch".
     $pm = Get-PartialMarkerState -OutputDir $outputDir
     if ($pm.state -eq 'unknown') { Stop-Launcher 'fail_gate_verify' ('experts.bin.partial absence not provable - ' + $pm.reason) }
-    $needRepack = $true
     if ($pm.state -eq 'present') {
         Set-FailureStage 'cancelled_user'
         Invoke-PartialCleanup -OutputDir $outputDir
@@ -9096,7 +10270,36 @@ function Invoke-LauncherMain {
             if (-not (Test-Path -LiteralPath (Join-Path $outputDir $n) -PathType Leaf)) { $have = $false }
         }
         $needRepack = (-not $have)
+        # RV 1-1 [3], the OTHER direction of the mode-intent binding. A complete bin artifact set is
+        # a v2 manifest by construction (one trusted producer wrote all three), so the detector is
+        # only consulted where the set is INCOMPLETE and a manifest is nevertheless present - which
+        # is what an explicit -OutDir pointing at a virtual output directory looks like. A healthy
+        # packed directory never reaches it, so the no-flag path keeps its reuse verdict, its cost
+        # and its failure surface unchanged (RV 4). Only the VIRTUAL verdict stops here: an
+        # unreadable v2 manifest is hand-edit damage, outside the threat model, and is left to the
+        # gate that already reports it.
+        if (-not $have) {
+            $mSt = Get-FileAbsenceState -Path (Join-Path $outputDir 'manifest.json')
+            if ($mSt.state -eq 'present') {
+                $existingMode = Get-ManifestMode -ManifestPath (Join-Path $outputDir 'manifest.json')
+                if ([string]$existingMode.mode -ceq $script:MANIFEST_MODE_VIRTUAL) {
+                    Stop-ModeMismatch -Existing $script:MANIFEST_MODE_VIRTUAL -Requested $script:REPACK_MODE_PACKED
+                }
+            }
+        }
+        # P4 2.5 (b): see Remove-StaleRepackArtifacts. A mismatch run may not reuse artifacts whose
+        # binding to the CURRENT bytes nothing can establish - the manifest records no source digest.
+        # Presence therefore stops being evidence on this path, and only on this path.
+        if ($have -and ([string]$selection.kind -ceq 'mismatch')) {
+            $staleArtifacts = $true
+            $needRepack = $true
+            Write-Line '[stale] This file is not the bytes the catalog profile pins, and the repack artifacts'
+            Write-Line '        already in this directory cannot be shown to have been built from it.'
+            Write-Diag -Kind 'STALE_ARTIFACTS_DETECTED' -Data @{ out = $outputDir; selection = [string]$selection.kind
+                                                                 reason = 'identity_mismatch_no_source_binding' }
+        }
     }
+    }   # end packed branch
 
     $preliminaryBudget = [long](Get-JsonValue -Obj $profile -Name 'min_budget_mb')
     if ($cliOverrides.ContainsKey('budget_mb')) { $preliminaryBudget = [long]$cliOverrides['budget_mb'] }
@@ -9108,8 +10311,20 @@ function Invoke-LauncherMain {
     Set-FailureStage 'fail_resource'
     $expectedBytes = [long](-1)
     if ($null -ne $derived) { $expectedBytes = [long]$derived.expected_bytes }
+    # RV 2-5: a virtual repack moves 0 bytes of expert data. Sizing it from the expect's
+    # expert_bytes_total (~65 GiB on the preview's model) would be a reachable FALSE refusal, so the
+    # requirement is the reservation constant instead - the output is manifest.json + plan_report.json.
+    elseif (Test-VirtualRepack) { $expectedBytes = [long]$script:VIRTUAL_REPACK_RESERVE_MB * 1MB }
+    # r3 C-1: a stale replacement frees what it is about to overwrite. Measured here, BEFORE the
+    # gate and long before the deletion, and only on the path that will actually delete something.
+    $reclaimableMb = [long]0
+    if ($staleArtifacts) {
+        # r4: Floor, not the rounding a bare [long] cast performs (see Get-StaleArtifactReclaimMb).
+        $reclaimableMb = Get-StaleArtifactReclaimMb -OutputDir $outputDir
+        Write-Diag -Kind 'STALE_ARTIFACT_RECLAIM' -Data @{ out = $outputDir; reclaimable_mb = $reclaimableMb }
+    }
     $pre = Invoke-Preflight -OutputDir $outputDir -ExpectPath $expectPath -BudgetMb $preliminaryBudget `
-               -NeedsRepack $needRepack -ExpectedBytes $expectedBytes
+               -NeedsRepack $needRepack -ExpectedBytes $expectedBytes -ReclaimableMb $reclaimableMb
 
     # (7) plan + explicit confirmation, then probe + repack (first run only)
     $probe = $null
@@ -9135,6 +10350,23 @@ function Invoke-LauncherMain {
         Write-Line ('  repack cache directory : {0}' -f $outputDir)
         Write-Line ('  free space on volume   : {0} MB' -f $pre.disk.free_mb)
         Write-Line '  v1 has no resume: an interrupted repack restarts from the beginning.'
+        # P4 2.5 (b): the confirmation below is the ONLY consent point, so what it consents to is
+        # stated here - the artifacts of whatever was repacked in this directory before will be
+        # deleted. Declining leaves them untouched (cancelled_user).
+        if ($staleArtifacts) {
+            Write-Line '  ---------------------------------------------------------------'
+            # r3 C-2: state the epistemic position, not a fact about provenance. After an accepted
+            # replacement the artifacts here WERE built from this file - the launcher simply has no
+            # way to know that (the manifest records no source digest), so it treats them as stale
+            # again. "was not built from this file" would be a false claim on exactly that cycle.
+            Write-Line '  STALE ARTIFACTS: this directory already holds a repack, and nothing here can bind it'
+            Write-Line '  to this file (the catalog pin does not match these bytes, and the manifest records no'
+            Write-Line '  source digest). It may or may not have come from this file - that cannot be proven,'
+            Write-Line '  so it is treated as stale. Proceeding DELETES:'
+            foreach ($n in $script:PARTIAL_DELETE_SET) { Write-Line ('    - ' + (Join-Path $outputDir $n)) }
+            Write-Line '  Answer N and re-run with -OutDir <other path> to keep them.'
+            Write-Line '  ---------------------------------------------------------------'
+        }
         if ($null -ne $derived) {
             Write-Line ('  {0}' -f $script:TEMPLATE_COPY_SENTENCE)
             Write-Line '  This model is EXPERIMENTAL: no published measurement covers it.'
@@ -9150,6 +10382,10 @@ function Invoke-LauncherMain {
         if (-not (Confirm-User -Question 'Proceed with the repack now? [y/N] ')) {
             Stop-Launcher 'cancelled_user' 'user declined the repack plan'
         }
+        Set-FailureStage 'fail_partial_cleanup'
+        # P4 2.5 (b): after consent, before the repacker - repack_experts.py:1030 aborts while
+        # experts.bin / manifest.json survive without --force, so the stale set is cleared here.
+        if ($staleArtifacts) { Remove-StaleRepackArtifacts -OutputDir $outputDir }
         Set-FailureStage 'fail_repack'
         $probe = Invoke-StartupProbe -OutputDir $outputDir
         Write-ProbeBinding -SourceTag $sourceTag -ProfileId $profileId -ExpectDigest $expectSha -OutputDir $outputDir -Result $probe
@@ -9185,35 +10421,102 @@ function Invoke-LauncherMain {
         if (-not $dh.ok) { Stop-Launcher 'fail_gate_verify' ('the derived expect could not be hashed - ' + $dh.reason) }
         $gateExpectSha = $dh.sha
     }
+    # RV 1-1 [6]: after the artifacts exist the mode is detected AGAIN, and the gate is chosen from
+    # that answer rather than from the request - a repacker that produced the wrong shape must not
+    # be met by the gate that would accept it. Only the virtual path re-detects: a bin run's v2
+    # manifest is produced by the same trusted tool that wrote its verify report, and adding a
+    # second detection there would put a new failure on the packed success path for no gain (RV 4).
+    $gateInfo = $null
+    if (Test-VirtualRepack) {
+        $producedMode = Get-ManifestMode -ManifestPath (Join-Path $outputDir 'manifest.json')
+        if ([string]$producedMode.mode -ceq $script:MANIFEST_MODE_UNRECOGNIZED) { Stop-UnrecognizedManifest -ModeResult $producedMode }
+        if ([string]$producedMode.mode -cne $script:MANIFEST_MODE_VIRTUAL) {
+            Stop-ModeMismatch -Existing ([string]$producedMode.mode) -Requested $script:REPACK_MODE_VIRTUAL
+        }
+        $gateInfo = Assert-VirtualPlanGate -OutputDir $outputDir -ProfileId $lockId -ExpectSha $gateExpectSha
+    } else {
     $gateInfo = Assert-VerifyGate -OutputDir $outputDir -ProfileId $lockId -ExpectSha $gateExpectSha
+    }
     # WARMSTART A-4: the sidecar binding axes. The repack axis comes from the gate that just ran
     # (manifest.json's real bytes), the engine axis from the bundle manifest the integrity gate
     # already verified, and the model axis from the identified shard set.
     Set-WarmstartBindings -Root $root -ManifestSha $gateInfo.manifest_sha256 -ModelSet $modelSet
 
-    # (8b) LS 12 QD sweep - the single measurement authority for the automatic QD default. It runs
-    # after the verify gate, on the sealed experts.bin, read-only. Every failure inside is
-    # non-terminal (degraded QD1 / conservative default, RS 5).
-    Set-FailureStage 'fail_gate_verify'
-    $sweep = Resolve-QdSweep -OutputDir $outputDir -SourceTag $sourceTag -ProfileId $profileId `
-                 -ExpectDigest $expectSha -ManifestSha256 $gateInfo.manifest_sha256 `
-                 -CheckedAt $gateInfo.checked_at -Profile $profile
-
-    # (9) prefetch decision + preset + effective config
-    Set-FailureStage 'fail_gate_catalog'
-    $prefetch = Resolve-EffectivePrefetch -Profile $profile -ProbeOk ([bool]$sweep.ok)
-    $qd = [int]$sweep.qd
-    if (-not $sweep.ok) { $qd = [int]$script:QD_DEGRADED }
-
+    # -----------------------------------------------------------------------------------------
+    # (8b) P4 2 execution order. The v0.4 order swept first and read the preset afterwards, which
+    # cannot work once the opt-in lives in the preset: the arm the sweep prefers is decided BY the
+    # opt-in. The order is therefore:
+    #   preset reset/read -> preset < CLI merge -> opt-in normalisation -> arm selection ->
+    #   sweep (S90 / q_base with that arm) -> QD override -> K/N at the FINAL QD ->
+    #   Resolve-PrefetchForQd invariant re-check (inside Build-EffectiveConfig, on every rebuild)
+    # Every refusal (semantic, derived t, identity, hold, engine floor, t range, adapt) lands on
+    # arm 'none' BEFORE the sweep runs, so a refused request cannot move the QD of the run it was
+    # refused for.
+    # -----------------------------------------------------------------------------------------
     Set-FailureStage 'fail_custom_args'
+    # RV 2-4 (2): virtual already read the preset - and already honoured -ResetPreset - before the
+    # cleanup/preflight/plan/repack sequence, so that a stored qd could be refused before any of
+    # those had happened. Reusing that read here keeps it at one read and one log line per run; the
+    # packed path takes the v0.4 branch unchanged.
+    $preset = $script:VirtualPresetEarly
+    if ($null -eq $preset) {
     if ($ResetPreset) { Remove-UserPreset }
     $preset = Read-UserPreset -SourceTag $sourceTag -ProfileId $profileId -ExpectDigest $expectSha -Bounds $bounds
+    }
     $overrides = @{}
     foreach ($k in $preset.overrides.Keys) { $overrides[$k] = $preset.overrides[$k] }
     foreach ($k in $cliOverrides.Keys) { $overrides[$k] = $cliOverrides[$k] }
 
+    Set-FailureStage 'fail_gate_catalog'
+    $prefetchRequest = $script:PREFETCH_REQUEST_DEFAULT
+    if ($overrides.ContainsKey('prefetch')) { $prefetchRequest = [string]$overrides['prefetch'] }
+    $prefetchOptIn = ConvertTo-PrefetchOptIn -Request $prefetchRequest
+    # PI 3 / P4 4: -Repro and -Smoke are the two flags that make a run a benchmark or reproduction
+    # run, and P4 5 refuses adapt on those with its own reason.
+    $reproOrBench = ([bool]$Repro -or [bool]$Smoke)
+    # P4 3: the derived path is the only one where the profile's t did not come from the GGUF header,
+    # so it is the only one that needs the cross-check. The catalog path's structural prefilter has
+    # already compared identify.n_expert_used against the header.
+    $derivedHeaderT = $null
+    if ($null -ne $derived) { $derivedHeaderT = Get-ArchMetaLong -ModelSet $modelSet -Suffix '.expert_used_count' }
+    $prefetchArm = Resolve-PrefetchArm -Profile $profile -OptIn $prefetchOptIn `
+                       -IdentityVerdict ([string]$selection.kind) `
+                       -DerivedHeaderExpertUsed $derivedHeaderT -ReproOrBench $reproOrBench
+    Write-Diag -Kind 'PREFETCH_ARM' -Data @{ request = $prefetchRequest; opt_in = $prefetchOptIn
+                                              arm = $prefetchArm; identity = [string]$selection.kind
+                                              repro_or_bench = $reproOrBench }
+
+    # LS 12 QD sweep - the single measurement authority for the automatic QD default. It runs after
+    # the verify gate, on the sealed experts.bin, read-only. Every failure inside is non-terminal
+    # (degraded QD1 / conservative default, RS 5).
+    Set-FailureStage 'fail_gate_verify'
+    # RV 2-4: virtual has no experts.bin to sweep, and a swept-and-failed verdict is NOT the same
+    # as "not swept" - the first turns the catalog prefetch row off. See New-VirtualPinnedQd.
+    if (Test-VirtualRepack) {
+        $sweep = New-VirtualPinnedQd
+    } else {
+    $sweep = Resolve-QdSweep -OutputDir $outputDir -SourceTag $sourceTag -ProfileId $profileId `
+                 -ExpectDigest $expectSha -ManifestSha256 $gateInfo.manifest_sha256 `
+                 -CheckedAt $gateInfo.checked_at -Profile $profile -PrefetchArm $prefetchArm
+    }
+
+    # (9) prefetch decision at the FINAL effective QD + effective config
+    Set-FailureStage 'fail_gate_catalog'
+    $qd = [int]$sweep.qd
+    if (-not $sweep.ok) { $qd = [int]$script:QD_DEGRADED }
+    $prefetchDecision = Resolve-EffectivePrefetch -Profile $profile -ProbeOk ([bool]$sweep.ok) `
+                            -OptIn $prefetchOptIn -EffectiveQd (Get-EffectiveQd -Overrides $overrides -Qd $qd) `
+                            -IdentityVerdict ([string]$selection.kind) `
+                            -DerivedHeaderExpertUsed $derivedHeaderT -ReproOrBench $reproOrBench `
+                            -Request $prefetchRequest
+    # P4 4: a request that changed nothing may not demote the published numbers (see
+    # Test-CustomProvenance). This is the only writer of that latch.
+    $script:PrefetchRequestIgnored = ($prefetchOptIn -ceq $script:PREFETCH_ARM_INIT -and
+                                      [string]$prefetchDecision.candidate_activation -ceq 'catalog-fixed')
+
+    Set-FailureStage 'fail_custom_args'
     $config = Build-EffectiveConfig -Catalog $catalog -Profile $profile -Root $root -OutputDir $outputDir `
-                  -ModelPath $modelPath -Overrides $overrides -PrefetchDecision $prefetch -Qd $qd
+                  -ModelPath $modelPath -Overrides $overrides -PrefetchDecision $prefetchDecision -Qd $qd
     $custom = Test-CustomProvenance -Overrides $overrides
     $qdSource = Get-QdSource -Overrides $overrides -Sweep $sweep
 
@@ -9235,10 +10538,24 @@ function Invoke-LauncherMain {
         if ($choice -eq 'stop') { Stop-Launcher 'cancelled_user' 'user selected stop before start' }
         if ($choice -eq 'custom') {
             $overrides = Invoke-CustomEditor -Overrides $overrides -Bounds $bounds
-            $custom = Test-CustomProvenance -Overrides $overrides
             Set-FailureStage 'fail_custom_args'
+            # RV 2-4 (3): the third QD request path. Refused the moment the editor returns - before
+            # the prefetch decision is re-resolved, before the config is rebuilt and before the
+            # preset is saved - so a pinned-shape violation can neither reach an output nor be
+            # written back for the next run to inherit.
+            Assert-VirtualOverridePins -Overrides $overrides -Origin 'the custom editor'
+            $custom = Test-CustomProvenance -Overrides $overrides
+            # P4 2: the custom editor cannot change the prefetch REQUEST (it is not offered there and
+            # the sweep is never re-run), but it can change the QD - and the init arm's N0 is derived
+            # from the final QD. So the decision is re-resolved at the new QD on the same inputs; the
+            # arm, the identity verdict and the request are all unchanged by construction.
+            $prefetchDecision = Resolve-EffectivePrefetch -Profile $profile -ProbeOk ([bool]$sweep.ok) `
+                                    -OptIn $prefetchOptIn -EffectiveQd (Get-EffectiveQd -Overrides $overrides -Qd $qd) `
+                                    -IdentityVerdict ([string]$selection.kind) `
+                                    -DerivedHeaderExpertUsed $derivedHeaderT -ReproOrBench $reproOrBench `
+                                    -Request $prefetchRequest
             $config = Build-EffectiveConfig -Catalog $catalog -Profile $profile -Root $root -OutputDir $outputDir `
-                          -ModelPath $modelPath -Overrides $overrides -PrefetchDecision $prefetch -Qd $qd
+                          -ModelPath $modelPath -Overrides $overrides -PrefetchDecision $prefetchDecision -Qd $qd
             # LS 12-1: a custom edit can only move the QD priority between user-override and the
             # measured default - it never re-runs the sweep (one sweep per process, LS 12-4).
             $qdSource = Get-QdSource -Overrides $overrides -Sweep $sweep
@@ -9252,7 +10569,7 @@ function Invoke-LauncherMain {
     Assert-NotCancelledPreReady
 
     $config = Complete-PreSpawnConfig -Catalog $catalog -Profile $profile -Root $root -OutputDir $outputDir `
-                  -ModelPath $modelPath -Overrides $overrides -PrefetchDecision $prefetch -Qd $qd `
+                  -ModelPath $modelPath -Overrides $overrides -PrefetchDecision $prefetchDecision -Qd $qd `
                   -Sweep $sweep -QdSource $qdSource -Custom $custom
 
     # (11) start the server child

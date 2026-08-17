@@ -1,6 +1,6 @@
 {
-  "catalog_schema_version": 1,
-  "source_tag": "moe-direct-v0.2.1-src-32a97db0",
+  "catalog_schema_version": 2,
+  "source_tag": "moe-direct-v0.3-preview-src-0e98704b",
   "runtime": {
     "server_exe": "llama-server.exe",
     "repacker_exe": "repacker/python/python.exe",
@@ -24,7 +24,12 @@
         "n_expert_used": 8
       },
       "min_budget_mb": 8192,
-      "prefetch_state": "validated",
+      "source_shards_sha256": [
+        "e6f74fc4e5ff7da7888cb0a135f9fafbf1265b748f5db9f72c7794061a333843",
+        "1c07a0f86507ad661830a2c317f9c4450e40a836bf9133225926054ab0722316"
+      ],
+      "prefetch_evidence": "paired-live",
+      "prefetch_activation": "catalog-fixed",
       "prefetch": { "k": 8, "n": 4 },
       "gates": {
         "format_validated": true,
@@ -80,7 +85,8 @@
         "n_expert_used": 4
       },
       "min_budget_mb": 8192,
-      "prefetch_state": "reference-only",
+      "prefetch_evidence": "observe",
+      "prefetch_activation": "off",
       "prefetch": null,
       "gates": {
         "format_validated": true,
@@ -127,7 +133,8 @@
         "n_expert_used": 8
       },
       "min_budget_mb": 4096,
-      "prefetch_state": "disabled",
+      "prefetch_evidence": "observe",
+      "prefetch_activation": "off",
       "prefetch": null,
       "gates": {
         "format_validated": true,
@@ -183,7 +190,9 @@
         "n_expert_used": 10
       },
       "min_budget_mb": 8192,
-      "prefetch_state": "disabled",
+      "prefetch_evidence": "unverified",
+      "prefetch_activation": "off",
+      "prefetch_promotion_hold": true,
       "prefetch": null,
       "gates": {
         "format_validated": true,
@@ -239,7 +248,8 @@
         "n_expert_used": 8
       },
       "min_budget_mb": 10240,
-      "prefetch_state": "validated",
+      "prefetch_evidence": "paired-live",
+      "prefetch_activation": "catalog-fixed",
       "prefetch": { "k": 8, "n": 4 },
       "gates": {
         "format_validated": true,
@@ -264,7 +274,7 @@
         },
         {
           "model": "Kimi K2.6 447GB mixed-quant (kimi-k2.6-ram-447gb)",
-          "tier": "live B ABBA (official pairing for the prefetch promotion; basis of prefetch_state=validated)",
+          "tier": "live B ABBA (official pairing for the prefetch promotion; basis of prefetch_evidence=paired-live / prefetch_activation=catalog-fixed)",
           "machine_storage": "reference host: Ryzen 7 7800X3D / DDR5 32GB / RTX 5080 16GB / Kioxia EXCERIA PLUS G4 PCIe Gen5 NVMe / Windows 11",
           "budget_qd_prefetch": "budget 10240 MB / QD 8 / prefetch ON K8/N4 vs OFF, A-B-B-A arms, RAMMap before every arm, ISLC off; -ngl 99 --n-cpu-moe 61 (dense on CUDA)",
           "workload_window": "2026-07-31 run k26liveB_20260731T213127, 4 probes x 800 predicted tokens per arm, adjacent-pair readout frozen before the run",
@@ -311,7 +321,8 @@
         "n_expert_used": 6
       },
       "min_budget_mb": 8192,
-      "prefetch_state": "disabled",
+      "prefetch_evidence": "observe",
+      "prefetch_activation": "off",
       "prefetch": null,
       "gates": {
         "format_validated": true,

@@ -145,8 +145,9 @@ Work ships one piece per release, when it is measured, not on a schedule.
   paid the model's size again, just to get the layout the engine wanted. From v0.3 the
   repack can be virtual: a small manifest, no data moved, space cost exactly 1.0x, reading
   experts straight out of the file you already have. And it ships with measured numbers,
-  not promises — in a preregistered A/B, prefetch (on by default for the virtual path)
-  made in-place decode about 14% faster at under 2% extra bytes read.
+  not promises — in a preregistered A/B, prefetch (on by default for the two catalog rows
+  that carry it, the 122B test model among them) made in-place decode about 14% faster at
+  under 2% extra bytes read.
 - **v0.3 is a preview, on purpose.** The honest part: the virtual path is still slower
   than the packed path today — the experts sit scattered through the original file, so
   fetching them costs more, and prefetch claws back only part of that. The packed path

@@ -1,0 +1,117 @@
+MoE-Direct build receipt -- moe-direct-v0.3-preview-win-x64
+==========================================================================
+
+This file binds the binaries in this bundle to the sources they were built
+from (RELEASE_SPEC section 2, item 8). models.json's source_tag names that
+source state in one token; this receipt is what the token stands for.
+Everything below was recorded at assembly time.
+
+Catalog tag : moe-direct-v0.3-preview-src-0e98704b   (models.json source_tag)
+Assembled   : 2026-08-18
+
+Note on the tag's last 8 characters: for v0.2 and v0.2.1 they were the first
+8 of a git tree-id. The v0.3-preview engine tree is not committed, so no
+tree-id exists for it; these 8 are the first 8 of the ggml-moe-direct.cpp
+sha256 below. The tag identifies the whole 7-file state, not that one file.
+
+--------------------------------------------------------------------------
+Engine sources (the state the catalog tag names)
+--------------------------------------------------------------------------
+
+  ggml/src/ggml-moe-direct.cpp                          0e98704b02a84da4cbe33ee3d7d734e58acc0cecf80c3d54a0c7f7012a06197f  768634
+  ggml/include/ggml-moe-direct.h                        4006e47f19aadcec7a25b83be09d3610fc0c20967ebf4c2d05042578f0af51a7  48644
+  ggml/src/ggml-moe-phaseb.cpp                          566ec29df133d66962b5327f906fe7a8095f6a3d7fc20f720ee63964e1419dad  233094
+  ggml/include/ggml-moe-phaseb.h                        86e3d6609ba825017290b62c2563deeb91c5cd9b3cdc40b1b2bb0aa5875c5413  65670
+  tools/moe-direct-selftest/moe-direct-selftest.cpp     227c5b1ad9913313bdd18f580631955486aad65849df2f2033b914c2c6f5d3b2  1336978
+  src/llama-model.cpp                                   0712f4d5126e32e92fe7e69c154988b38e518a205c479f7fd6bde40540bb4dee  139931
+  tools/moe-direct-selftest/openarch_gate_c.py          726b29ec944abe4eb5b58873080cbb1458a270aa88049e4baba68ed172fb0431  9197
+
+--------------------------------------------------------------------------
+Build
+--------------------------------------------------------------------------
+
+  source tree     D:\moe-tools\llama.cpp-src-b10057
+  build directory build-moedirect-s0-cuda
+  toolchain       MSVC 2022 BuildTools (vcvars64) + ninja, CUDA backend
+  verification    engine selftest 1339/1339, exit 0, three consecutive runs
+                  (each run reports 'P43 env: SATISFIED' and
+                  'V3IO3RT reader: EXERCISED')
+                  --filter T 29/29 . OPEN_ARCH Gate C/G 4/4
+                  PBVIRT standing mutation set 7/7 fired
+
+--------------------------------------------------------------------------
+Shipped build outputs (17 built here)
+--------------------------------------------------------------------------
+
+  llama-server.exe            42b82592a11c7d122306542466957057b354c51069c351b3674f776e1c8357b3  10752
+  llama-server-impl.dll       badb28489996f119395feffee72db3907c33de9389de8cfc361935cb537fe7ad  6965248
+  llama-common.dll            720ca86b8ae385a83d59abed2c6c0e3fb0934ad5cc3fdb9c6e615123594647c1  9270784
+  llama.dll                   f6846f3bf39bdf9b3c31f4c3b6b8e6929c3702956473473cfe504d76310acb39  2482688
+  mtmd.dll                    6e99303e56fd72c14ba77483f3ebed58180504516346a7a089af0269f4aea642  990208
+  ggml.dll                    f37a20ef9e900ac8b5b4615125a50fc7a3f17d9b98a9c393c5bdf3e98b5bbf23  66560
+  ggml-base.dll               cbb09a644f8766b05bdab6309f6e997a38057d2eef5b1b2f7350c6a3ce24ff07  1512448
+  ggml-cpu-alderlake.dll      670677ee2779134ffc94d0f3ce7a8a6fbcb7d3f8f37357c5b5d8727837d2d7b5  909312
+  ggml-cpu-cannonlake.dll     c9b49b735e073e3527a177a35f98924c4bd3748d1308c106c98f889a712509c0  1013760
+  ggml-cpu-cascadelake.dll    5b61b13ba55b6c9f330c32c705915321eb730eaad71fb3338d96c79b2583c128  1012736
+  ggml-cpu-haswell.dll        90dfd2d7954310bd761dbcc1592ede837a0e1cbba09847f75dd752740e4a3e19  910848
+  ggml-cpu-icelake.dll        4fe1cea8d6393595a444b00fa789d2f4d9b5282cd6fbe26d522cda1e52e76efd  1012736
+  ggml-cpu-sandybridge.dll    2ef01272c40dab8d6b86d641b6337781b11164e0274a59e35b5b194aa73d554c  854016
+  ggml-cpu-skylakex.dll       8c29e4d5b4c7dade580220f4ebd3333da6408ada5472d38e7aa609af50bf89b2  1013760
+  ggml-cpu-sse42.dll          9a077aae290911b9a775e63c8fd031761837d02f4fb7e33260f362fdf9beac3d  773632
+  ggml-cpu-x64.dll            1b050e741fe9213c2d977cb0591c841f6222a1036f1884edb82f300368224c71  774656
+  ggml-cuda.dll               ec753ead3b028f9eab2d0dfa40d5b9d5bcb776332925eaa872963636a8887571  141106688
+
+CUDA redistributables (3, not built here -- shipped from the staging set that
+every measured run used):
+
+  cublas64_13.dll             f1d500d0cd892f5b8c6b6cdbffd82d0c55d5f5427215668e7ceb55aeeccc1b63  51870320
+  cublasLt64_13.dll           b592cd016d7673e9cb97716a22b27c4010ee635377a3ba28f37070a9bdb76a68  460301424
+  cudart64_13.dll             b00ca6f53699120da815bf3e06e2e4285fae2f201235b883dcbb50eec51e2a2a  551024
+
+--------------------------------------------------------------------------
+ABI probe subject (deliberately NOT shipped)
+--------------------------------------------------------------------------
+
+  moe-direct-selftest.exe
+    f19b78d929278796d410de2512b545f033cb611b2307091be018e6d5365045d0  1859584
+
+  The assembler reads OPEN_ARCH_TEMPLATE_ABI off this binary (axis B) and
+  refuses to build unless all three axes carry the same value. It stays in
+  the staging directory; it is not part of this bundle.
+
+    ABI agreed by 3/3 axes: open-arch-template/1
+      A repacker  repacker/repack_experts.py
+      B engine    moe-direct-selftest.exe (staging)
+      C launcher  Start-MoeDirect.ps1
+
+--------------------------------------------------------------------------
+Assembly
+--------------------------------------------------------------------------
+
+  assembler       make_bundle.ps1
+    4bb76d896b1cf3fc71f4241cb99b722bb4a5975592aee4709500b0da7f657c0c   34923
+  staging dir     D:\moe-tools\llama-moedirect-v03p
+  command         powershell -NoProfile -ExecutionPolicy Bypass -File
+                    make_bundle.ps1 -StagingDir D:\moe-tools\llama-moedirect-v03p
+                    -Version v0.3-preview
+
+  repacker        repacker/repack_experts.py
+    dddf242045384ab34c454e540ef4113c797f7e4b7f58176783790f63874bd894  513108
+  python runtime  CPython 3.11.9 embeddable (pinned by the assembler)
+    009d6bf7e3b2ddca3d784fa09f90fe54336d5b60f0e0f305c37f400bf83cfd3b
+
+--------------------------------------------------------------------------
+Specifications and cross-checks (development repository paths)
+--------------------------------------------------------------------------
+
+  mergeback spec   bench/techdev/repack_space/SPEC_OPENARCH_MERGEBACK_R1.md
+                   (FROZEN v1.0 + section A Amendment 1)
+  engine re-seal   bench/techdev/repack_space/BASELINE_TREE_PBVIRT.md section L
+  catalog origin   bench/moe-direct/launcher/models.provenance.md section 4-2
+  mutation driver  bench/techdev/repack_space/mutations/mutate.py
+  cross-checks     reviews/codex_oamb_impl_r1.md / _r2.md / _r3.md
+                   reviews/codex_bundle_v03p_r1.md
+
+Release notes for this build ship with the release itself. Every file in this
+bundle is hashed in bundle_manifest.json, and the launcher verifies that
+manifest on every start.
