@@ -95,6 +95,8 @@ Assembly
                     make_bundle.ps1 -StagingDir D:\moe-tools\llama-moedirect-v03p
                     -Version v0.3-preview
 
+  launcher        Start-MoeDirect.ps1
+    551ab4c6e591cc7543a28e4a2ebe51b7cd4d1349dcfa1198aa2463649aeee045  660521
   repacker        repacker/repack_experts.py
     dddf242045384ab34c454e540ef4113c797f7e4b7f58176783790f63874bd894  513108
   python runtime  CPython 3.11.9 embeddable (pinned by the assembler)

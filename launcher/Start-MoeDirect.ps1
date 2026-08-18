@@ -359,6 +359,11 @@ $script:VIRTUAL_PARTIAL_DELETE_SET = @('plan_report.json', 'manifest.json.partia
 # construction and not a default that something later can outrank.
 $script:VIRTUAL_PINNED_QD = 8
 $script:VIRTUAL_PIN_REASON = 'virtual preview pins the measured shape'
+# UI-V 1 (Amendment 1, item 3): the one line the repack confirmation screen adds in virtual, so a
+# user who reached this mode from the menu can see WHAT is being approved. Four facts, one row: the
+# mode, the space it costs, that no expert data is copied, and where the prefetch shape comes from.
+# ASCII separators on purpose - LS 8 freezes the output surface as English ASCII.
+$script:VIRTUAL_CONFIRM_LINE = 'mode=virtual - space 1.0x - no data moved - prefetch = catalog policy'
 # RV 2-5 : the disk reservation for a virtual repack. A virtual run moves 0 bytes of expert data;
 # its whole output is manifest.json + plan_report.json (6.11 MiB on the preview's own model), so
 # the bin path's expert_bytes_total (~65 GiB) would be a false resource refusal. 128 MiB is a
@@ -8615,6 +8620,11 @@ function Select-ModelPathInteractive {
             Write-Line ''
             Write-Line ('  ' + $script:ARCH_TEMPLATE_DISCARD_LOCK_NOTE)
         }
+        # UI-V 1 (Amendment 1, items 1-2): the repack-mode row is offered on exactly the same terms -
+        # unless the command line already fixed the mode. There is no discard-lock equivalent: this
+        # toggle stores nothing, so there is no damaged file it could launder away. -NonInteractive
+        # never gets this far (Test-MenuModeAvailable returns false), which is item 2's other half.
+        $rmToggle = (-not $script:RepackModeCanonicalCli)
         # The candidate list (and its header reads) is built ONCE; only the toggle row is re-rendered.
         while ($true) {
             $labels = @()
@@ -8624,6 +8634,14 @@ function Select-ModelPathInteractive {
             if ($toggle) {
                 $toggleIndex = $labels.Count
                 $labels += ('arch template: {0} (toggle)' -f $script:ArchTemplateResolved)
+            }
+            # UI-V 1 (Amendment 1, item 1): one row, in the same position group as the arch-template
+            # one, rendered from the live value so a press is visible on the very next draw. The
+            # default text is 'packed' because RV 3's default is unchanged by this atom.
+            $rmToggleIndex = -1
+            if ($rmToggle) {
+                $rmToggleIndex = $labels.Count
+                $labels += ('repack mode: {0} (toggle)' -f $script:RepackModeResolved)
             }
             $title = 'Select the model GGUF   (Up/Down + Enter)'
             if ($cand.truncated) {
@@ -8640,6 +8658,11 @@ function Select-ModelPathInteractive {
             # back to the text prompt without ever drawing anything - still counted as "the user was
             # offered this control", and that silently deleted the -Model fallback question.
             if ($toggle) { $script:ArchTemplateToggleOffered = $true }
+            # UI-V 1 (Amendment 1, item 7): the same Codex build r1 M3 discipline for the repack-mode
+            # row. Recorded only NOW, because a render/host fault falls back to the text prompt
+            # without ever drawing anything - and counting that as "offered" would silently delete
+            # the pre-identification question, which is the one entry point such a run has left.
+            if ($rmToggle) { $script:RepackModeToggleOffered = $true }
             $i = [int]$r.index
             if ($toggle -and $i -eq $toggleIndex) {
                 # UX 1-1-5: recorded immediately AND latched for this run, then the menu is redrawn
@@ -8649,6 +8672,16 @@ function Select-ModelPathInteractive {
                 $next = 'off'
                 if ($script:ArchTemplateResolved -cne 'on') { $next = 'on' }
                 Set-ArchTemplateInteractive -Value $next
+                continue
+            }
+            if ($rmToggle -and $i -eq $rmToggleIndex) {
+                # Amendment 1 item 3: latched for this run and redrawn immediately, so the mode is on
+                # screen before a model is picked. Set-RepackModeInteractive is also where RV 2-4's
+                # refusal re-runs, so a -QD supplied on the command line stops the run here instead
+                # of being dropped without a word further down.
+                $rmNext = $script:REPACK_MODE_PACKED
+                if (-not (Test-VirtualRepack)) { $rmNext = $script:REPACK_MODE_VIRTUAL }
+                Set-RepackModeInteractive -Value $rmNext
                 continue
             }
             if ($i -lt 0 -or $i -ge $items0.Count) { return $null }   # "enter path manually"
@@ -9848,6 +9881,17 @@ $script:RunSecondsResolved = 0
 # RV 3: resolved once at the top of the run and read everywhere else. Initialised here so the
 # dot-sourced -LibraryMode path (launcher_selftest.ps1) always has a defined mode.
 $script:RepackModeResolved = 'packed'
+# UI-V 1 (Amendment 1, item 2): true once -RepackMode carried a value. Same latch, same reason as
+# UX 1-1-5's $script:ArchTemplateCanonicalCli - a run the command line has already decided may not
+# be shown a menu row offering to change it, because that offer would be a lie. Re-derived on every
+# Resolve-RepackMode call so a dot-sourced host driving the resolution twice cannot inherit the
+# previous run's answer.
+$script:RepackModeCanonicalCli = $false
+# UI-V 1 (Amendment 1, item 7): set once the model menu has actually rendered its repack-mode row.
+# It is what tells the pre-identification question that this run was already offered the same
+# control, so the two entry points can never both fire in one run - the UX 1-1-5 rule, applied to
+# the mode instead of the template.
+$script:RepackModeToggleOffered = $false
 # RV 2-4 (2): the preset read the virtual path performs EARLY, kept so the v0.4 merge point reuses
 # it instead of reading - and logging - the same preset a second time.
 $script:VirtualPresetEarly = $null
@@ -9862,6 +9906,11 @@ function Resolve-RepackMode {
     # The early-preset slot belongs to ONE run; clearing it here means a dot-sourced host that
     # drives this function twice cannot inherit the previous run's preset.
     $script:VirtualPresetEarly = $null
+    # UI-V 1: cleared with them, for the same one-run reason. The toggle-offered latch belongs here
+    # too: this function runs at main step 0, before the menu, so a dot-sourced host driving two runs
+    # cannot let the first run's rendered toggle suppress the second run's question (item 7).
+    $script:RepackModeCanonicalCli  = $false
+    $script:RepackModeToggleOffered = $false
     $raw = ([string]$RepackMode).Trim()
     if ($raw.Length -eq 0) { $script:RepackModeResolved = $script:REPACK_MODE_DEFAULT; return }
     $v = $raw.ToLowerInvariant()
@@ -9869,6 +9918,9 @@ function Resolve-RepackMode {
         Stop-Launcher 'fail_custom_args' ("invalid -RepackMode '" + $RepackMode + "': expected packed or virtual")
     }
     $script:RepackModeResolved = $v
+    # Set only after the value was accepted: an invalid one terminates above and a blank one is
+    # 'absent' (it took the default return), so neither may claim the command line decided this run.
+    $script:RepackModeCanonicalCli = $true
 }
 
 # RV 2-4: the CLI half of the pinned-shape refusal. Timing is the contract, not a preference: it
@@ -9907,6 +9959,68 @@ function Assert-VirtualOverridePins {
                 ' is not accepted with -RepackMode virtual: ' + $script:VIRTUAL_PIN_REASON)
         }
     }
+}
+
+# UI-V 1 (Amendment 1, item 3): the interactive half of the mode decision. It writes the SAME
+# variable -RepackMode writes, and it writes it while the run is still at model selection - the
+# output directory (RV 1-1 [2]), the artifact state table, the disk preflight, the repacker argv and
+# the gate choice are all resolved AFTER the selection call returns, so the toggle and the command
+# line converge on one code path instead of a second one built beside it.
+# Amendment 1 item 4: nothing is stored. The choice is pinned to THIS run and the next one starts
+# packed again - the deliberate difference from the arch-template toggle, which writes a global
+# preference. Persistence is a v0.3.1 question.
+# The pinned-shape CLI refusal is re-run here because its first call (main step 0) looked at a
+# packed run and returned without inspecting anything. RV 2-4's time boundary is "after the mode is
+# fixed, before the raw values are normalised away", and that is exactly here: -QD and -Prefetch are
+# still the raw parameter strings until Get-CliOverrides, which runs after identification. Same
+# function, same status and same reason text as the CLI path - a toggled run is refused, not ignored.
+# Item 7 adds a SECOND interactive entry point (the pre-identification question), and both write the
+# mode through here rather than each latching it themselves. $Source records which one answered, so
+# a later reader of the diagnostic can tell a menu toggle from a typed answer without guessing.
+function Set-RepackModeInteractive {
+    param([string] $Value, [string] $Source = 'menu_toggle')
+    $script:RepackModeResolved = [string]$Value
+    Write-Diag -Kind 'REPACK_MODE_INTERACTIVE' -Data @{ value = [string]$Value; source = [string]$Source }
+    Assert-VirtualCliPins
+}
+
+# UI-V 1 (Amendment 1, item 7): the entry point for a run the MENU never reached. Zero candidates
+# (the model lives outside <drive>:\moe-models\ and has never been identified before) and any
+# render/host fault both fall through to the text path, and that path had no way to choose the mode -
+# the exact hole HANDOFF_DEV 2-0 forbids. Scope is the arch-template precedent's, term for term:
+#   -NonInteractive       -> no question (there is nobody to ask)
+#   -RepackMode given     -> no question (the command line decided; asking would be a lie)
+#   the menu offered it   -> no question (one run, one offer)
+#   -Model given          -> no question (item 7: a run driven by -Model is a command-line run, and a
+#                            command line that can pass -Model can pass -RepackMode)
+# Deliberately NOT Confirm-User: that helper defaults to "no" and obeys -AssumeYes / -AssumeNo, which
+# belong to the repack confirmation. Here the default has to be the product default (packed) and a
+# bare Enter must mean exactly that - an -AssumeYes on the command line may not silently opt a run
+# into virtual. Nothing is stored (item 4), so this is asked again next run.
+function Confirm-RepackModeBeforeIdentify {
+    if ($NonInteractive) { return }
+    if ($script:RepackModeCanonicalCli) { return }
+    if ($script:RepackModeToggleOffered) { return }
+    if ($Model) { return }
+    Write-Line ''
+    Write-Line '[repack mode] packed (default) builds the repacked expert file; virtual writes a plan'
+    Write-Line '              only - space 1.0x, no data moved, prefetch = catalog policy.'
+    Write-Line '              Virtual is a preview: only one model has a published measurement in'
+    Write-Line '              this mode. Asked once, for this run only.'
+    $ans = Read-UserLine -Prompt '              Repack mode? [packed]/virtual '
+    # Anything that is not an explicit virtual is the default. The answer is echoed below precisely
+    # because of that: a typo resolves to packed, and the user has to be able to see that it did.
+    $value = $script:REPACK_MODE_PACKED
+    if ($null -ne $ans) {
+        $a = ([string]$ans).Trim().ToLowerInvariant()
+        if ($a -eq $script:REPACK_MODE_VIRTUAL -or $a -eq 'v') { $value = $script:REPACK_MODE_VIRTUAL }
+    }
+    # Item 7: the SAME latch the toggle and the command line write, so everything downstream - RV 1-1
+    # [2] onwards, the RV 2-4 refusals, the RV 2-5 preflight - is the one code path. The pinned-shape
+    # refusal fires inside this call, while -QD / -Prefetch are still raw (Get-CliOverrides runs after
+    # identification), so an answer of virtual on a pinned run stops here rather than being ignored.
+    Set-RepackModeInteractive -Value $value -Source 'pre_identify_question'
+    Write-Line ('[repack mode] ' + $value + ' (this run only; use -RepackMode to fix it from the command line)')
 }
 
 function Resolve-ExtraCliArgs {
@@ -10134,6 +10248,11 @@ function Invoke-LauncherMain {
     # after the arch is known, which is what makes the "would this run take the template path"
     # scope check possible at all, and still before the selection call below closes the door.
     Confirm-ArchTemplateBeforeIdentify -Catalog $catalog -ModelSet $modelSet -Root $root
+    # UI-V 1 (Amendment 1, item 7): the mode's half of the same pre-identification slot. It sits
+    # after the template question so the two decisions are asked in the order the menu lists their
+    # rows, and before Resolve-ProfileSelection - which is what keeps it ahead of RV 1-1 [2] (the
+    # output directory), the artifact state table, the disk preflight and Get-CliOverrides.
+    Confirm-RepackModeBeforeIdentify
 
     # LS OA-1 (M1): the header fingerprint narrows the candidates, the source pin decides.
     # UX 1-1-3: admissibility is folded into that same argument. The arch is the shard-set consensus
@@ -10347,6 +10466,9 @@ function Invoke-LauncherMain {
             $planRes = Invoke-Repacker -Catalog $catalog -Root $root -Profile $profile -ModelPath $modelPath -OutputDir $outputDir -PlanOnly $true
             if ($planRes.text) { Write-Line $planRes.text }
         }
+        # UI-V 1 (Amendment 1, item 3): the mode this screen is asking about, stated before the
+        # directory it will write into. Virtual only - the packed screen is unchanged (RV 4).
+        if (Test-VirtualRepack) { Write-Line ('  ' + $script:VIRTUAL_CONFIRM_LINE) }
         Write-Line ('  repack cache directory : {0}' -f $outputDir)
         Write-Line ('  free space on volume   : {0} MB' -f $pre.disk.free_mb)
         Write-Line '  v1 has no resume: an interrupted repack restarts from the beginning.'
