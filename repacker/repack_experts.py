@@ -7277,20 +7277,34 @@ def cmd_selftest():
         # 배포 번들은 launcher 를 zip 루트에, repacker 를 `repacker/` 하위에 둔다
         # (`packaging/make_bundle.ps1` 의 `Rel 'Start-MoeDirect.ps1'` ↔ `Rel 'repacker/
         # repack_experts.py'`). 그래서 **정상 번들에서 selftest 전체가 FAIL** 했고, 그 selftest 는
-        # 릴리스 조립 관문으로 쓰이던 표면이다. 2형상을 순차 해석하고 **둘 다 부재일 때만** FAIL 한다.
+        # 릴리스 조립 관문으로 쓰이던 표면이다.
+        # ★★**LUX-1 C1(26-08-18)**: 2형상→3형상으로 확장하고 **해석 순서를 뒤집었다**.
+        # [[C:repack.launcher-shape-resolution]] — 이 서술은 **사본**이며 원본은
+        # `HANDOFF_DEV.md` §2-7 의 규범 문장이다(§2-8 등기 제도 — 사본은 원본에 진다).
+        #   ①번들 루트 → ②공개 리포 `launcher/` → ③개발 트리 순으로 해석하고
+        #   **셋 다 부재일 때만** FAIL 한다.
+        #   ②를 추가한 이유: 공개 리포는 launcher 를 `<root>/launcher/` 에 두어 구 2형상
+        #   어느 쪽에도 안 걸렸다(공개 checkout 89/90 의 원인).
+        #   ★순서를 dev-first 에서 뒤집은 이유: 번들을 **개발 저장소 루트에 풀면**
+        #   `_lp_here=<repo>/<zip루트>/repacker` 가 돼 개발 트리 후보가
+        #   `<repo>/bench/moe-direct/launcher/…` 로 **실재 명중**해, 번들의 selftest 가 번들
+        #   자신이 아니라 개발 트리 런처를 검사하게 된다. **"가까운 배포물 우선"**이 계약이다.
         _lp_here = os.path.dirname(os.path.abspath(__file__))
         _lp_cands = [
-            # ① 개발 트리: <repo>/bench/repack/…  →  <repo>/bench/moe-direct/launcher/…
+            # ① 배포 번들: <root>/repacker/…  →  <root>/Start-MoeDirect.ps1
+            os.path.join(os.path.dirname(_lp_here), 'Start-MoeDirect.ps1'),
+            # ② 공개 리포: <root>/repacker/…  →  <root>/launcher/Start-MoeDirect.ps1
+            os.path.join(os.path.dirname(_lp_here), 'launcher', 'Start-MoeDirect.ps1'),
+            # ③ 개발 트리: <repo>/bench/repack/…  →  <repo>/bench/moe-direct/launcher/…
             os.path.join(os.path.dirname(os.path.dirname(_lp_here)),
                          'bench', 'moe-direct', 'launcher', 'Start-MoeDirect.ps1'),
-            # ② 배포 번들: <root>/repacker/…  →  <root>/Start-MoeDirect.ps1
-            os.path.join(os.path.dirname(_lp_here), 'Start-MoeDirect.ps1'),
         ]
         _lp_ps1 = next((p for p in _lp_cands if os.path.isfile(p)), None)
         _lp_bad, _lp_live = [], _lp_ps1 is not None
         if not _lp_live:
-            _lp_bad.append('launcher 를 두 형상 어디에서도 찾지 못했다(구조 이상) — 개발 트리=%s · 번들=%s'
-                           % (_lp_cands[0], _lp_cands[1]))
+            _lp_bad.append('launcher 를 세 형상 어디에서도 찾지 못했다(구조 이상) — '
+                           '번들=%s · 리포=%s · 개발 트리=%s'
+                           % (_lp_cands[0], _lp_cands[1], _lp_cands[2]))
         if _lp_live:
             _lp_txt = open(_lp_ps1, 'r', encoding='utf-8', errors='replace').read()
             # ★F2 후반: 실소비 결속을 **파서 함수 블록 + 주석 제외** 범위에서 본다. 파일 전체
@@ -7339,10 +7353,11 @@ def cmd_selftest():
         ok_lp = not _lp_bad
         checks.append(('v3-⑱ launcher 파서 계약 사본 대조 — `LAUNCHER_PLAN_KEYED_LINES` 6정규식·완료 줄·'
                        'derived expect 파일명이 `Start-MoeDirect.ps1` 원본 리터럴과 문자 단위 일치 + 그 6변수가 '
-                       '파서 함수 블록(주석 제외)에서 **실제 소비**됨 + ★2형상(개발 트리·배포 번들) 해석 후 '
-                       '둘 다 부재일 때만 FAIL(fail-closed)', ok_lp))
+                       '파서 함수 블록(주석 제외)에서 **실제 소비**됨 + ★3형상(배포 번들→공개 리포→'
+                       '개발 트리 순) 해석 후 **셋 다 부재일 때만** FAIL(fail-closed) '
+                       '[[C:repack.launcher-shape-resolution]]', ok_lp))
         print('[selftest] v3-⑱ launcher 정규식 사본 대조: %s (해석 경로=%s)'
-              % ('PASS' if ok_lp else 'FAIL', _lp_ps1 if _lp_live else '★둘 다 부재 = FAIL'))
+              % ('PASS' if ok_lp else 'FAIL', _lp_ps1 if _lp_live else '★셋 다 부재 = FAIL'))
         for _n in _lp_bad:
             print('    %s' % _n)
 
@@ -7363,6 +7378,14 @@ def cmd_selftest():
         _REG_RE = re.compile(r'\[\[C:([A-Za-z0-9._-]+?)(\|src)?\]\]')
         if _reg_live:
             _reg_files.append(os.path.abspath(__file__))
+            # ★LUX-1 C1: 계약 **원본은 권위 문서에 산다**(§2-8 규칙 3) —
+            # `repack.launcher-shape-resolution` 의 `|src` 는 `HANDOFF_DEV.md` §2-7 이다.
+            # 그 파일이 범위 밖이면 이 파일의 사본 태그가 **고아**로 보여 검사가 FAIL 하므로,
+            # 원본 거처를 스캔 범위에 넣는다(있을 때만 — 번들·공개 형상은 `_reg_live` 가
+            # false 라 이 블록 자체가 돌지 않는다).
+            _reg_handoff = os.path.join(_reg_root, 'HANDOFF_DEV.md')
+            if os.path.isfile(_reg_handoff):
+                _reg_files.append(_reg_handoff)
             for _rd, _rext in ((_reg_home, ('.md',)),
                                (os.path.join(_reg_home, 'ubench'), ('.cpp', '.py', '.md'))):
                 if os.path.isdir(_rd):
