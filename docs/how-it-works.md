@@ -14,7 +14,7 @@
   read and used.
 - **Not the weights.** No quantization step, no pruning, no fine-tuning, no value-changing
   transform of any kind: the repacked records are byte-for-byte the source tensors, verified
-  record by record.
+  record by record, and on the virtual repack path nothing is rewritten at all.
 - **Not the model's own caches.** The KV cache and the prefix cache that make later turns fast
   are stock llama.cpp. The cache this project *does* build - the budgeted expert slot cache
   described in [How it works](#how-it-works) - lives strictly underneath the weight reads: it
@@ -32,12 +32,14 @@ compute graph is the stock one - only the storage path underneath the expert ten
 
 ## How it works
 
-Your GGUF's expert tensors are rewritten once into a layout built for reading. After that the model
+On the default packed path your GGUF's expert tensors are rewritten once into a layout built for
+reading, and the virtual mode described below skips that step. After that the model
 runs with only a slice of its experts in memory at a time: a budget you can see holds the ones being
 used, and the rest stay on the NVMe and are read as the router asks for them, straight off the drive
 rather than through the operating system's page cache. Two terms come up throughout this document:
-the **expert store** is the single file the repack produces, `experts.bin`, and the **repack
-output** is the `repack\` folder holding it together with `manifest.json` and `verify_report.json`.
+on the default packed path the **expert store** is the single file the repack produces,
+`experts.bin`, and the **repack output** is the `repack\` folder holding it together with
+`manifest.json` and `verify_report.json`.
 The dense layers run on the GPU as they always did, with `-ngl 99` on the reference machine's
 RTX 5080; only the expert stream lives on the CPU and NVMe path.
 
@@ -48,6 +50,24 @@ your work actually touches - a genuinely new topic streams its own experts in fi
 against the same binary's mmap path - it produced token-for-token the same output, because none
 of this changes what is computed, only where the bytes come from; the exact scope is stated in
 [Measurements](measured-results.md).
+
+**The virtual repack, an opt-in since v0.3-preview.** The packed path buys its read layout with
+disk: your experts exist twice while you use it. The virtual path buys nothing and moves nothing.
+Instead of writing a second copy, the repack writes a manifest that records, for every routed
+slice, where it already sits inside your original GGUF: which shard, at what offset, how many
+bytes, and what alignment the reads have to respect. The engine then reads the experts straight out
+of the file you downloaded. The space cost is exactly 1.0x and no expert byte is ever moved. What
+the checks can prove changes with it, and the honest version is worth stating: the packed path
+hashes every record it writes against your source bytes, while the virtual path has nothing to
+hash, because nothing was copied, so what is verified there is the manifest itself, the addresses
+it hands the engine, and the binding to your file's headers, not a payload hash of every slice.
+**It is slower than the packed path today.** Reading in place means the experts sit scattered
+through the original file, and scattered reads cost more than a layout built for reading; prefetch
+recovers part of that and not all of it. So the packed path stays the default, the virtual one is
+something you turn on from the model menu when the disk matters more than the speed, and making it
+fast enough to be the default is the work of the next release. The virtual output folder is listed
+with everything else in
+[What gets written to your disk](disk-layout.md#what-gets-written-to-your-disk).
 
 The launcher measures your machine instead of assuming ours. A short read-only sweep picks the queue
 depth for your drive, and the cache budget is sized from your installed RAM and the model's own

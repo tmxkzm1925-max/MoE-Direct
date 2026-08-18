@@ -32,11 +32,23 @@ redistributed unmodified):
 
 ## Where the binaries come from
 
-- The engine is built locally from a pinned upstream llama.cpp tree plus a
-  published patch series. This repository publishes the complete patch and a
-  mechanical proof that the patch reproduces the shipped binaries' source
-  tree (see `patches/` and TECHNICAL.md). Build configuration: MSVC/Ninja,
-  Release, `GGML_CUDA=OFF`, `GGML_BACKEND_DL=ON`, `GGML_CPU_ALL_VARIANTS=ON`.
+- The engine is built locally from a pinned upstream llama.cpp tree. What
+  binds a given release to its sources depends on the release, so this is
+  stated per engine revision rather than once for all of them.
+  - **v0.2.1 through v0.2.3 (the v0.2.x engines: v0.2.1 and v0.2.2, the
+    latter reused by v0.2.3).** The complete patch for each is published here
+    together with a mechanical proof that it reproduces that release's shipped
+    binaries' source tree (see `patches/` and TECHNICAL.md). Build
+    configuration: MSVC/Ninja, Release, `GGML_CUDA=OFF`, `GGML_BACKEND_DL=ON`,
+    `GGML_CPU_ALL_VARIANTS=ON`, with the CUDA backend DLL carried unmodified
+    from the upstream release.
+  - **v0.3-preview.** Its engine delta is scheduled for v0.3.1. Until that
+    lands, the source state is identified by the per-file hashes in
+    `BUILD_RECEIPT.txt` rather than by a patch, and the same receipt is where
+    the build is described: build directory `build-moedirect-s0-cuda`, MSVC
+    2022 Build Tools (vcvars64) with ninja, built with the CUDA backend
+    enabled rather than carrying the upstream DLL. The exact configure line
+    ships with the v0.3.1 patch.
 - The launcher and repacker are plain-text source in this repository; the
   bundle copy is byte-identical to the repository copy.
 - Because signing changes the bytes of a PE file, reproducibility statements

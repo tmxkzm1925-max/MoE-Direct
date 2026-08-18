@@ -4,9 +4,11 @@
 
 ## Who this release is for
 
-> **v0.2.3 is a public preview aimed at hands-on users.** It runs, it is measured, and its rough
+> **v0.3-preview is a pre-release aimed at hands-on users.** It runs, it is measured, and its rough
 > edges are written down rather than hidden. It is not a one-click app for casual use yet - that
-> is a direction, not a promise.
+> is a direction, not a promise. The repack that writes a packed copy of the experts is still the
+> default and is the path everything here describes; the virtual repack that reads them in place is
+> an opt-in you turn on from the model menu, and it is slower today.
 
 You are comfortable downloading a GGUF from Hugging Face, you have an NVMe SSD and the patience
 for a one-time repack, and you want to run MoE models your RAM says you cannot. If that is you,
@@ -22,11 +24,11 @@ you bring your own GGUF.
 
 | | Requirement | Notes |
 |---|---|---|
-| OS | Windows 10 or 11, x64 | Windows only in v0.2.3. No Linux/macOS build exists; see [FAQ](faq.md#faq). |
+| OS | Windows 10 or 11, x64 | Windows only in v0.3-preview. No Linux/macOS build exists; see [FAQ](faq.md#faq). |
 | Runtime | Microsoft Visual C++ Redistributable (x64) | The engine binaries are built with MSVC. Most machines already have it; if it is missing the server cannot start (see [`fail_server_start`](troubleshooting.md#fail_server_start)). Install it from Microsoft's [Latest supported Visual C++ Redistributable downloads](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist) page. |
 | Storage | An NVMe SSD | This design is I/O bound by construction. Other storage - a SATA SSD, an external drive - is **not validated and not recommended**: the launcher does not block it, it measures your drive and reports the throughput it found. |
 | Model | It must be GGUF. Pinned catalog models are the validated path; an unlisted GGUF is accepted only when its architecture has a shipped template, and it runs labelled `experimental`. | Exact repos and revisions in [Supported models](models.md#supported-models). |
-| Disk | About **2x the model size**, plus reserve | The repack writes its output next to your GGUF and the original stays. Nothing is deleted. |
+| Disk | About **2x the model size**, plus reserve, on the default packed path | The packed repack writes its output next to your GGUF and the original stays. Nothing is deleted. The opt-in virtual repack writes a manifest and its plan report (measured at about 6 MB for the 122B test model and about 16 MB for the 397B one) and moves no expert data. |
 | Time | **Minutes to roughly 18 minutes on the recorded machine, once per model** | Recorded there: 61 GB store in 130 s, 72.8 GB in 220 s, 436 GB in 18 min. Another drive may take longer. |
 | RAM | Enough for the cache budget the launcher picks | The launcher sizes the expert cache from your installed RAM and the model's slot geometry, between 4 GB and 12 GB, and you can override it. Each profile also has a minimum below which it cannot be served at all: 8 GB for the 122B, 397B, gpt-oss and DeepSeek profiles, 4 GB for the 35B, 10 GB for K2.6. On a first run the sizing needs the slot geometry that the repack produces, so it happens after the repack and its verification; the preflight that runs before any repack output is written checks the explicit or profile-minimum budget instead. |
 | Python | Not needed | A pinned CPython runtime for the repacker is included in the zip. |
@@ -53,7 +55,7 @@ they contain no binaries):
 
 | Asset | What it is |
 |---|---|
-| `moe-direct-v0.2.3-win-x64.zip` | The runtime bundle. This is the one you want. |
+| `moe-direct-v0.3-preview-win-x64.zip` | The runtime bundle. This is the one you want. |
 | `SHA256SUMS.txt` | The checksum of that zip. |
 
 **Then, in this order.** The order matters: Windows marks downloaded files, and unblocking the zip
@@ -62,7 +64,7 @@ they contain no binaries):
 1. **Verify the download.** In Explorer, open the folder that holds both downloaded files,
    right-click empty space > Open in Terminal (PowerShell), then paste:
    ```powershell
-   $e=((Get-Content .\SHA256SUMS.txt -Raw).Trim() -split '\s+')[0];$a=(Get-FileHash .\moe-direct-v0.2.3-win-x64.zip -Algorithm SHA256).Hash;if($a -eq $e){'OK: hash matches'}else{'MISMATCH: download again'}
+   $e=((Get-Content .\SHA256SUMS.txt -Raw).Trim() -split '\s+')[0];$a=(Get-FileHash .\moe-direct-v0.3-preview-win-x64.zip -Algorithm SHA256).Hash;if($a -eq $e){'OK: hash matches'}else{'MISMATCH: download again'}
    ```
    On `MISMATCH`, stop and download again. If you skip it, the launcher's own sealed-manifest
    check still catches files changed or corrupted **inside the extracted bundle** on every start
@@ -70,13 +72,13 @@ they contain no binaries):
    that is what this paste is for. A checksum from the same page proves the download is intact,
    not who published it - releases are unsigned for now, so publisher trust rests on the GitHub
    account and the HTTPS path.
-2. **Unblock the zip itself** - right-click `moe-direct-v0.2.3-win-x64.zip` -> Properties -> tick
-   **Unblock** -> OK. (Equivalent: `Unblock-File .\moe-direct-v0.2.3-win-x64.zip`.) If the
+2. **Unblock the zip itself** - right-click `moe-direct-v0.3-preview-win-x64.zip` -> Properties -> tick
+   **Unblock** -> OK. (Equivalent: `Unblock-File .\moe-direct-v0.3-preview-win-x64.zip`.) If the
    **Unblock** checkbox is not there, the file was never marked - carry on. If a managed policy
    or Smart App Control offers no continuation, do not disable system-wide protection; wait for
    a signed build or use another machine.
 3. **Extract with Windows "Extract All"** into a **new, empty** folder, for example
-   `C:\moe-direct\v0.2.3\`. Other archivers differ in how they propagate the mark-of-the-web, so
+   `C:\moe-direct\v0.3-preview\`. Other archivers differ in how they propagate the mark-of-the-web, so
    this is the one path we document.
 4. **Put your GGUF somewhere the launcher can find it.** Any path works, but if you place models
    under `<drive>:\moe-models\` (up to three levels deep, e.g.
@@ -110,7 +112,7 @@ they contain no binaries):
    stops and shows you the exact cost - output size, free space left afterwards, expected time -
    and no model or repack output is created until you answer. This is the long step: minutes to
    roughly 18 minutes on the recorded machine, depending on model size, with
-   live progress. There is no resume as of v0.2.3; if you cancel, the next run starts the repack from
+   live progress. There is no resume as of v0.3-preview; if you cancel, the next run starts the repack from
    the beginning (it will tell you and ask before deleting the partial output).
 
    ![The repack plan and its confirmation prompt](img/03-repack-plan.png)

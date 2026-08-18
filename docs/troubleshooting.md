@@ -113,13 +113,22 @@ something else holds the files open (antivirus scan, an Explorer preview, anothe
 those, or delete the `repack\` folder next to your GGUF by hand, then run again. The launcher never
 deletes these without asking, and never resumes a partial repack.
 
+The two modes leave different things behind, and the launcher cleans each with its own set. A
+packed repack leaves `experts.bin.partial`, and the cleanup covers that folder's four artifacts. A
+virtual repack may leave `manifest.json.partial` in `repack-virtual\`, and may also leave
+`plan_report.json` if it got as far as writing it (the candidate manifest is written first, then
+verified, then the plan report and the manifest are promoted); there is never an
+`experts.bin.partial` there, and a virtual output folder that contains one is
+refused rather than cleaned. Same status code, same confirm-before-delete, different file list.
+
 ### fail_repack
 
 Exit `3`. *The repacker exited abnormally, or produced no verify report.*
 
 Attach both `launcher_*.jsonl` and `repack_log.jsonl` (issue form 2). Common causes worth checking
 first: the drive filled up mid-write, or the source GGUF is corrupt - re-verify the download's
-checksum against the Hugging Face repo.
+checksum against the Hugging Face repo. A virtual repack writes no verify report, so what has to
+be there for it is `manifest.json` and `plan_report.json`; the same status covers their absence.
 
 ### fail_custom_args
 
@@ -159,9 +168,16 @@ This is the gate that stands between you and serving unverified weights, so it f
 anything it cannot positively confirm - a partial file present, a report that does not say `pass`,
 counts that disagree, a non-empty problem list, an identity mismatch, or an unreadable file.
 
-What to do: delete the `repack\` folder next to your GGUF and repack (the launcher will offer
-this). If it fails a second time on the same model, that is worth an issue - attach both the
-launcher JSONL and `verify_report.json`.
+A virtual repack goes through the counterpart of that gate: an 8-item virtual plan gate with the
+same discipline and different evidence, because there is no `experts.bin` to bind. It checks that
+no bin artifact sits in the folder and that `plan_report.json`, `manifest.json` and the catalog
+agree with each other, and the engine re-derives the manifest's invariants on its own before it
+takes a single resource. The same status reports both.
+
+What to do: delete the repack output folder next to your GGUF - `repack\`, or `repack-virtual\`
+for a virtual repack - and repack (the launcher will offer this). If it fails a second time on the
+same model, that is worth an issue - attach the launcher JSONL, with `verify_report.json` for a
+packed repack or `plan_report.json` and `manifest.json` for a virtual one.
 
 ### fail_gate_engine_seal
 

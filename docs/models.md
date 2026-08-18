@@ -10,7 +10,10 @@ a different revision may have different tensors and will be rejected by the iden
 Every profile carries **two independent gates**, and one never implies the other:
 
 - **Format gate** - the repack of this model was verified byte for byte and the verify report
-  passed. This is what protects your output.
+  passed. This is what protects your output. That wording describes the packed path, which is what
+  the gate was run on. A virtual repack copies nothing, so it has no byte comparison to make: its
+  equivalent evidence is the plan report and the manifest, gated by the launcher and re-derived
+  independently by the engine, and the gate verdicts in this table are the packed ones either way.
 - **Performance gate** - a serving run of this model passed the frozen release gate on the
   reference machine. This is only about speed.
 
@@ -31,6 +34,11 @@ Every profile carries **two independent gates**, and one never implies the other
 
 Notes on this table:
 
+- **The expert-store column is the packed path's cost.** It is what the repack writes when it
+  writes a store. Choose the virtual repack mode instead and that column becomes a manifest and its plan
+  report next to your GGUF (measured at about 6 MB for the 122B test model and about 16 MB for
+  the 397B one); nothing else in the table changes, because the mode does not
+  change which model is which.
 - **First time? Take Qwen3.5-122B.** It is the only `reference-validated` profile and the one the
   published speed number belongs to. Budget about 73 GB of disk for its expert store.
 - **Prefetch column.** `validated` means the next-layer expert prefetch was measured and frozen for
@@ -39,7 +47,9 @@ Notes on this table:
   yet. The engine and the launcher both refuse a prefetch override on a profile that is not
   `validated` - this is deliberate, not a bug. K2.6 reached `validated` through a paired A-B-B-A
   run in which both adjacent pairs favoured the ON arm and all four arms produced byte-identical
-  output. **That row describes the shipped catalog (byte-identical since v0.2.1).** The promotion travels with `models.json`, not
+  output. **That row describes the shipped catalog.** The same catalog file shipped unchanged across the
+  v0.2.x releases from v0.2.1 on, and v0.3-preview replaces it: that file moves to catalog schema
+  version 2. The promotion travels with `models.json`, not
   with the model: a v0.2 bundle you already downloaded still carries `reference-only` for K2.6 and
   still serves it with prefetch off, and only a bundle shipping the updated catalog turns it on.
   The promotion is also about prefetch and nothing else: K2.6's performance gate is exactly where
@@ -57,8 +67,8 @@ Notes on this table:
 - **Where these values come from.** The catalog file `models.json` in the bundle is the single
   source of truth for the profile id, the repository and revision, the expert count and top-k, the
   minimum cache budget, the tier and the prefetch state; those columns are rendered from it. The
-  **Repacked expert store** column is not a catalog field: it is the size recorded when that model
-  was actually repacked here - on the reference machine, except the 35B row, which was repacked on
+  **Repacked expert store** column is not a catalog field: it is the size a packed repack of that
+  model recorded here - on the reference machine, except the 35B row, which was repacked on
   the second machine described in [TECHNICAL.md](../TECHNICAL.md). The 397B and DeepSeek rows
   have no recorded size yet. The launcher computes the exact size for *your* model and shows it in
   the repack plan before it writes.
@@ -153,7 +163,7 @@ three checks actually does, is in
 | Prefetch for the deepseek2 family, which is what Kimi K2.6 needs | **Landed and promoted.** The signal adapter for that family exists, a first live four-arm run on K2.6 selected K=8 / N=4, and the paired A-B-B-A run that one run could not stand in for has since been done: both adjacent pairs favoured the ON arm and all four arms produced byte-identical output. `prefetch_state` for that profile is `validated` in the v0.2.1 catalog, so a bundle shipping that catalog enables prefetch for it by itself; a v0.2 bundle still carries `reference-only` and serves it with prefetch off. Both runs, and the exact protocol, are under [Non-official observations](../TECHNICAL.md#non-official-observations). None of this touches the performance gate, which K2.6 still has not passed. |
 | DeepSeek-V4-Flash-0731 (284B, `deepseek4`) | **In the catalog since v0.2.1.** The architecture is native to the base commit this release is built on, its expert tensors are MXFP4, which is a layout the repacker already handles, and the repack verified 33,024 of 33,024 record-part pairs. A direct-read smoke run held 3.13-3.28 tok/s across four probes with zero fallback events (`PROBE`: reference machine, budget 8192 MB, QD 8, prefetch off, ctx 8192). It ships with the format gate passed, the performance gate unpassed and prefetch disabled, which is where the evidence actually stands; the prefetch depth search for this family is queued for a later release. |
 | Any model of an already-supported architecture (`experimental` tier) | **Shipped in v0.2.2 behind `-ExperimentalArchTemplate`; on by default since v0.2.3.** The catalog still runs its six pinned models the way it always did; this adds a second way of passing the same checks for a GGUF of a known architecture, derived, repacked, verified and served labelled `experimental` with prefetch off - an honest warning, not a block and not a promise. Templates exist for three architectures (`gpt-oss`, `qwen35moe`, `deepseek2`); the end-to-end evidence is one model of one of them (`gpt-oss`), which is what keeps the label. The default moved because behind a switch nobody found it, not because the evidence grew: an architecture with no template is still refused, and the repack still stops for your approval. `-ArchTemplate off` turns it off for a run, and the model menu's `arch template:` row stores the choice. See [Running an unlisted model (experimental)](#running-an-unlisted-model-experimental). |
-| Kimi K3 (2.8T class) | **Not yet ready, but moving.** Disk-space limits ruled out the MXFP4 build for now; a Kimi-K3 Q2_K_XL sits prepared on disk instead. On the development side its repacker catalog entry is registered (2026-08-13) - the remaining chain is the real repack verify, a smoke run, and engine-side support for the `kimi-k3` architecture, so nothing ships yet. We will do our best to bring it in at a format-validated grade or higher as soon as possible. (updated 2026-08-14) |
+| Kimi K3 (2.8T class) | **Not yet ready, but moving.** Disk-space limits ruled out the MXFP4 build for now; a Kimi-K3 Q2_K_XL sits prepared on disk instead. Its repacker catalog entry is registered (2026-08-13) and does ship: the entry and its expectation file are in the zip and in this repository, in both `expects/` copies. Serving is what is not registered, in the launcher or in the engine, so an attempt to serve it fail-closes. The remaining chain is the real repack verify, a smoke run, and engine-side support for the `kimi-k3` architecture. We will do our best to bring it in at a format-validated grade or higher as soon as possible. (updated 2026-08-14) |
 
 Why K3 is worth naming at all: at 2.8T-class sizes nothing that resembles a consumer machine can
 hold the weights in memory, so keeping experts on disk and streaming the ones each token actually

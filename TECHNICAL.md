@@ -30,9 +30,10 @@ Seven things carry this project. Each is written the same way below: the problem
 what it does about it, how that behaves while you are using it, and what was actually measured.
 Where the evidence has a section of its own further down, the last line points at it.
 
-Two terms are used throughout. The **expert store** is the single file the repack produces, and the
-**repack output** is the folder that holds it together with its identity manifest and its
-verification report.
+Two terms are used throughout. On the default packed path the **expert store** is the single file
+the repack produces, and the **repack output** is the folder that holds it together with its
+identity manifest and its verification report. The virtual repack mode added in v0.3-preview
+produces no store of its own; it is described at the end of the first technique below.
 
 ### 1. The one-time repack
 
@@ -62,6 +63,37 @@ opened read-only and stays where it was.
 prompted the change put 7.6x to 9x of I/O headroom between the pre-repack read path and what the
 same drive does with large blocks, which is the size of the opportunity the repack goes after.
 
+**The virtual repack mode, opt-in since v0.3-preview.** Everything above describes the packed
+path, whose price is the second copy: for the duration of your use, the expert data exists twice
+on your disk. The virtual mode declines to pay it. Instead of writing a store, the repacker writes
+a manifest that records where each routed slice already lives inside the source GGUF: the shard it
+belongs to, its absolute offset, its size, and the alignment the reads have to respect, together
+with the per-shard header digests and the source identity that bind the manifest to your files.
+The engine serves the experts by reading those addresses out of the original GGUF. Space cost is
+exactly 1.0x, no expert byte is moved, and the output folder holds a manifest and its plan
+report rather than a store.
+
+The verification story changes with the copy, and the difference is the honest part. The packed
+path can hash every record it writes against the source bytes because it wrote them; the virtual
+path wrote no payload, so there is nothing of its own to hash. What it verifies instead is
+structural: an independent re-derivation of the addresses and the slot arithmetic from your file,
+the manifest's internal consistency, and its binding to the source identity and headers, all of it
+fail-closed, with the engine repeating the parts it is responsible for rather than trusting the
+repacker's word.
+
+What this mode does not do yet is match the packed path's speed. The layout that made the packed
+store fast is exactly what a read-in-place path gives up: the experts stay scattered through the
+original file, and the drive returns less for the same request. Prefetch recovers part of the
+difference and not all of it. In a preregistered A/B on the 122B test model, prefetch on the
+virtual path made decode about 14 percent faster for under 2 percent more bytes read. That
+measurement is graded `PROBE`, not a gate run, and it comes from a working tree that predates the
+release binary rather than from the binary in this zip. Its comparison is
+virtual-with-prefetch against virtual-without, not virtual against packed. No
+packed-versus-virtual figure is published here, and until one is, the packed path remains the
+default and the recommendation for anyone whose disk can hold it. The protocol and the numbers for
+the prefetch comparison are in
+[Measurements](docs/measured-results.md#measured-results).
+
 ### 2. Direct reads, into a cache that knows what a model is
 
 **The problem.** The obvious way to keep weights on disk is to let the operating system handle it:
@@ -72,7 +104,10 @@ cache is not wrong; it simply has no way of knowing that a 4 KiB page belongs to
 experts are selected in groups, or that one of them is about to be wanted again.
 
 **What it does.** Expert bytes are read straight from the expert store, unbuffered, so the operating
-system does not keep a second copy of what is already held in memory. What decides which experts
+system does not keep a second copy of what is already held in memory. On a virtual repack the same
+unbuffered reads go to your original GGUF instead, at the addresses the manifest records; the cache
+mechanics in the rest of this paragraph are identical either way, while the measurements quoted
+further down were taken on the packed path. What decides which experts
 stay resident is a cache belonging to this project, sized to a budget you can see and change,
 holding whole experts in slots rather than pages, with a deterministic eviction order and a pin that
 stops an expert being evicted while it is in use. Whatever does not fit stays on the drive and is
@@ -218,7 +253,9 @@ link is where the guarantee would quietly become a hope.
 
 **What it does.** The chain runs end to end. Your GGUF is opened read-only. Every repacked record is
 hashed against its source, all of them, and the report is consumed fail-closed by two independent
-consumers that are deliberately not allowed to trust each other. The engine holds its own frozen
+consumers that are deliberately not allowed to trust each other; a virtual repack has no copied
+record to hash, so the link in its place is the plan report and the manifest, gated by the launcher
+and re-derived independently by the engine. The engine holds its own frozen
 expectations for each supported model and refuses to start when they are not met, which is why
 enabling a new model family means updating the engine's own table rather than editing a catalog file.
 The catalog is checked against its schema and its digests on every start, because a hand-edited
@@ -366,7 +403,12 @@ A/B, it does not replace the official ratio, and it is not used in any gate.*
 > overlapped I/O at a measured queue depth, and a deterministic LRU with lease pinning. The claim
 > is scoped to what we measured on this box for these models - not a universal law about mmap.
 
-## About the binary in this release
+## About the binaries these numbers came from
+
+**Which binary this section is about.** Everything below concerns the v0.2 and v0.2.1 release
+binaries, and the pairs above that carry the headline are the v0.2.1 ones. None of them has been
+re-run since: the v0.3-preview zip ships a later engine, and no pair on that binary is published
+here.
 
 Earlier editions of this README had to explain an awkward gap: the official gate numbers came from
 a working tree that predated the shipped zip, and the only run on the exact release binary was a
@@ -382,7 +424,7 @@ v0.2.1 is a different bundle: a revised launcher, and an engine that accepts BF1
 for the `deepseek4` family - that family's router tensors only: qwen, gpt-oss and deepseek2
 routers, and every norm and bias tensor, remain F32-only, and the GEMV/TopK worker body is
 byte-identical to the previous build. The rule that produced the v0.2 pair applies to it unchanged, which is
-why the headline for this release is its own pair on its own binary rather than the earlier
+why the v0.2.1 headline is its own pair on its own binary rather than the earlier
 numbers carried forward.
 
 ## What v0.2.1 adds, measured

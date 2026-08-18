@@ -1,0 +1,88 @@
+{
+ "expect_schema_version": "1.0",
+ "profile_id": "kimi-k3-ud-q2kxl",
+ "arch": "kimi-k3",
+ "n_layer": 93,
+ "n_expert": 896,
+ "n_expert_used": 16,
+ "routed_tensors": 276,
+ "expert_bytes_total": 799065243648,
+ "sources": [
+  {
+   "file_bytes": 6934144,
+   "data_start": 6934118
+  },
+  {
+   "file_bytes": 49949612160,
+   "data_start": 10496
+  },
+  {
+   "file_bytes": 48978554752,
+   "data_start": 9600
+  },
+  {
+   "file_bytes": 49824551744,
+   "data_start": 8896
+  },
+  {
+   "file_bytes": 49393005856,
+   "data_start": 10144
+  },
+  {
+   "file_bytes": 47742644320,
+   "data_start": 9312
+  },
+  {
+   "file_bytes": 49744198080,
+   "data_start": 8512
+  },
+  {
+   "file_bytes": 47870271264,
+   "data_start": 8992
+  },
+  {
+   "file_bytes": 48999332128,
+   "data_start": 9504
+  },
+  {
+   "file_bytes": 49165754528,
+   "data_start": 9888
+  },
+  {
+   "file_bytes": 49843822496,
+   "data_start": 9120
+  },
+  {
+   "file_bytes": 48999332128,
+   "data_start": 9504
+  },
+  {
+   "file_bytes": 49997009440,
+   "data_start": 9760
+  },
+  {
+   "file_bytes": 49012567584,
+   "data_start": 9248
+  },
+  {
+   "file_bytes": 49924176160,
+   "data_start": 9504
+  },
+  {
+   "file_bytes": 49165754528,
+   "data_start": 9888
+  },
+  {
+   "file_bytes": 49843822496,
+   "data_start": 9120
+  },
+  {
+   "file_bytes": 48999332128,
+   "data_start": 9504
+  },
+  {
+   "file_bytes": 23817182976,
+   "data_start": 3968
+  }
+ ]
+}

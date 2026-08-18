@@ -31,8 +31,9 @@ written protocol that is not a gate run - it promotes nothing, and the Kimi figu
 you should not plan interactive work around.
 The token-identity check is scoped - greedy decoding on gpt-oss-120b; on Qwen3.5-122B the
 separate check is run-to-run reproducibility, and no parity claim is made for sampled decoding
-or for K2.6. Every expert byte is verified against your original GGUF before it is ever used,
-and the server never bulk-loads experts up front. Which build and conditions every number was
+or for K2.6. On the default packed path every expert byte is verified against your original GGUF
+before it is ever used (the opt-in virtual path copies nothing and verifies its manifest and
+addresses instead), and the server never bulk-loads experts up front. Which build and conditions every number was
 measured under: [Measurements](docs/measured-results.md) and each release's notes.
 
 [![MoE-Direct demo](https://img.youtube.com/vi/JDfrWMxwczk/maxresdefault.jpg)](https://youtu.be/JDfrWMxwczk)
@@ -56,7 +57,8 @@ edges live in [Limitations and FAQ](docs/faq.md).
 
 ## Quick start
 
-You need Windows 10/11 x64, an NVMe SSD, disk space of about twice the model size, and a GGUF
+You need Windows 10/11 x64, an NVMe SSD, disk space of about twice the model size on the default
+packed path (the opt-in virtual repack needs the model plus a manifest and its plan report, measured at about 6 MB for the 122B test model and about 16 MB for the 397B one), and a GGUF
 from the [supported list](#supported-models).
 
 1. **Download** the runtime zip (`moe-direct-<version>-win-x64.zip`) and `SHA256SUMS.txt` from
@@ -128,7 +130,7 @@ Every number ships with the conditions it was measured under; these are the head
 | Qwen3.5-122B paired probe | 5.65-6.26 per probe, arm average **5.96 tok/s** | paired probe |
 | Output parity, direct-read vs stock path (gpt-oss-120b, greedy) | 12 paired responses, token IDs identical | paired run |
 | Kimi K2.6 (1T class) from 32 GB RAM | 1.03 tok/s, coherent output | probe |
-| Your weights after the one-time repack | byte-for-byte the source tensors, every record SHA-256 verified | fail-closed gate |
+| Your weights after the one-time repack | byte-for-byte the source tensors: on the packed path every record is SHA-256 verified, and a virtual repack never copies them at all | fail-closed gate |
 
 Results scale primarily with NVMe read throughput; treat them as data points from the reference
 machine (32 GB RAM, one RTX 5080, Gen5 NVMe), not as promises for yours. Which build each
@@ -140,19 +142,28 @@ each release's notes.
 
 Work ships one piece per release, when it is measured, not on a schedule.
 
-- **v0.3 is done; v0.3.1 is what we are building now.** Up through v0.2.3, running a model
+- **v0.3 shipped as a preview; v0.3.1 is what we are building now.** Up through v0.2.3, running a model
   here meant a one-time repack that wrote a second packed copy of the experts — your disk
   paid the model's size again, just to get the layout the engine wanted. From v0.3 the
   repack can be virtual: a small manifest, no data moved, space cost exactly 1.0x, reading
   experts straight out of the file you already have. And it ships with measured numbers,
   not promises — in a preregistered A/B, prefetch (on by default for the two catalog rows
   that carry it, the 122B test model among them) made in-place decode about 14% faster at
-  under 2% extra bytes read.
+  under 2% extra bytes read. That number is a `PROBE`: it compares in-place with prefetch
+  against in-place without it, not against the packed path, and it was measured on a working
+  tree that predates the release binary rather than re-run on this zip's.
 - **v0.3 is a preview, on purpose.** The honest part: the virtual path is still slower
   than the packed path today — the experts sit scattered through the original file, so
   fetching them costs more, and prefetch claws back only part of that. The packed path
-  stays the default and gives up nothing. These gaps are known, measured, and are exactly
-  what the next release exists to close.
+  stays the default and gives up nothing. One rough edge belongs here too: on a virtual
+  run the launcher's status screen still reports the packed path's rows, because it does
+  not yet tell the two modes apart on that screen. `copy integrity` reads `PASS` although
+  a virtual repack copies nothing; `serving validation` and the reference numbers are the
+  packed profile's; and a `-Repro` or `-Smoke` run can go as far as printing
+  `performance gate : PASS`, which is a packed verdict on a path that is not under that
+  gate at all. What actually checks a virtual repack is a separate 8-item plan gate and
+  the engine's own re-derivation, and that screen shows none of it. These gaps are
+  known, measured, and are exactly what the next release exists to close.
 - **Next up, v0.3.1:** the fixes land here. The codebase gets its cleanup pass first —
   readability and structural work, including the boundary contract the later pieces build
   on — then the speed recovery work on the in-place path, and adaptive prefetch: prefetch

@@ -6,8 +6,10 @@
 
 - **MoE models only.** Dense models get no benefit from this design.
 - **First-run repack cost is real** - minutes to roughly 18 minutes on the recorded machine, and
-  roughly the model's size again on disk. There is no resume as of v0.2.3: an interrupted repack restarts
-  from the beginning.
+  roughly the model's size again on disk on the default packed path. A virtual repack writes a manifest
+  and its plan report (about 6 MB for the 122B test model, about 16 MB for the 397B one), so it
+  costs megabytes rather than the model a second time. There is no resume as of
+  v0.3-preview, in either mode: an interrupted repack restarts from the beginning.
 - **Windows only.** No Linux or macOS build, and no promised numbers for them.
 - **This zip carries the CUDA runtime only.** The official numbers were measured on NVIDIA CUDA.
   The expert stream - the direct reads and the slot cache - runs on the CPU and the NVMe, so it
@@ -16,7 +18,7 @@
   off-bundle - an RTX 5080 at CUDA-parity decode, and a first cross-vendor run on an AMD
   RX 9070 XT whose arms were character-identical among themselves - see
   [Non-official observations](../TECHNICAL.md#non-official-observations) - but nothing Vulkan
-  ships in v0.2.3, and other backends (ROCm/HIP, unified-memory platforms) remain **untested**. CPU-only serving (`-ngl 0`) needs no GPU at all - that is how the 35B row in
+  ships in v0.3-preview, and other backends (ROCm/HIP, unified-memory platforms) remain **untested**. CPU-only serving (`-ngl 0`) needs no GPU at all - that is how the 35B row in
   [TECHNICAL.md](../TECHNICAL.md) was measured. If you run this on other hardware, the
   performance-report issue form is where we would like to see the result.
 - **Unsigned preview build.** Expect SmartScreen friction; some managed machines will refuse it.
@@ -82,24 +84,31 @@ the author personally. Parts of this document were written with AI assistance.
 
 The launcher, the repacker and the expectation files are published in this
 repository, and the shipped copies are the same bytes: `launcher/Start-MoeDirect.ps1`,
-`launcher/Start-MoeDirect.cmd`, `repacker/repack_experts.py` and the nine `expects/*.expect.json`
+`launcher/Start-MoeDirect.cmd`, `repacker/repack_experts.py` and the ten `expects/*.expect.json`
 files are byte-identical to the copies inside the release zip (verified by SHA-256 at publish
-time). As of v0.2.2 the zip carries all nine, so the repacker's self-test passes from a checkout
-and from the zip alike - 65/65, measured on the assembled bundle; the v0.2.1 zip's 63/64 was a
-known issue of that bundle and this closes it - see [repacker/README.md](../repacker/README.md). `launcher/models.json` is the catalog the launcher consumes, exactly as the zip resolves
+time). The repacker's self-test runs from a checkout and from the zip alike: it measures 90/90 on
+the assembled bundle and 89/90 from a plain checkout of this repository, where the one failure is
+the launcher parser contract copy check looking for `Start-MoeDirect.ps1` in the two layouts it
+knows, neither of which is this repository's `launcher/` directory, and failing closed rather than
+skipping itself. That resolver learns this layout in v0.3.1 - see
+[repacker/README.md](../repacker/README.md). `launcher/models.json` is the catalog the launcher consumes, exactly as the zip resolves
 it - it is where each profile's `expect_sha256` pin lives, so the binding between the launcher and
-the expectation files can be audited end to end (for this one file the zip copy differs in line
-endings only, CRLF against the repository's LF - the JSON content is identical). What runs from a plain checkout: the repacker
+the expectation files can be audited end to end. What runs from a plain checkout: the repacker
 does (its `repacker/expects/` catalog ships in place - see [repacker/README.md](../repacker/README.md));
-the launcher does not, since it needs the engine binaries and bundle manifest from the zip. The launcher's own test suite (1,063 checks as of
-v0.2.3, all passing on the shipped launcher) is not yet published: it depends
+the launcher does not, since it needs the engine binaries and bundle manifest from the zip. The launcher's own test suite (1,392 checks as of
+v0.3-preview, all passing on the shipped launcher) is not yet published: it depends
 on fixture files that need to be packaged for standalone use, and it will follow in a later
-release. The engine is a patched llama.cpp build; the binaries are sealed by
-the bundle's SHA manifest, and the full engine delta is published in [`patches/`](../patches/) as a
+release. The engine is a patched llama.cpp build and the binaries are sealed by
+the bundle's SHA manifest. For the engines that shipped in v0.2.1 through v0.2.3 (two revisions: v0.2.1 and v0.2.2, the
+latter reused by v0.2.3), the full delta of each is published in [`patches/`](../patches/) as a
 single reviewed patch against the pinned upstream commit, with a mechanical proof that it
-reproduces the exact source tree the shipped binaries were built from; the same tree is browsable
-as a [fork branch](https://github.com/tmxkzm1925-max/llama.cpp/tree/moe-direct-v0.2.2), one branch
-per distinct engine revision - releases that reuse an engine tree share its branch. A rebased
+reproduces the exact source tree those binaries were built from, and each tree is browsable as a
+[fork branch](https://github.com/tmxkzm1925-max/llama.cpp/tree/moe-direct-v0.2.2), one branch per
+distinct engine revision, so releases that reuse an engine tree share its branch. **The
+v0.3-preview engine is not covered by that yet.** Its delta is not published, and what binds those
+binaries to their sources today is `BUILD_RECEIPT.txt` in the bundle, which records the SHA-256 of
+each of the seven changed engine files; the v0.3-preview tree was not committed, so there is no
+tree id for it either. The patch and the fork branch for it follow with v0.3.1. A rebased
 mainline PR series is in preparation.
 
 ## From the roadmap
