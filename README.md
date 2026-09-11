@@ -55,6 +55,11 @@ The exact boundary — what is changed and what is provably not touched (the mat
 the weights, your files) — is stated once, in [How it works](docs/how-it-works.md). Known rough
 edges live in [Limitations and FAQ](docs/faq.md).
 
+People have started taking an interest in this project, and the current round of work is
+taking longer than the earlier ones did, so from now on I will post progress updates on X.
+If you are curious how things are going, you can follow along at
+[@jun1243138](https://x.com/jun1243138).
+
 ## Quick start
 
 You need Windows 10/11 x64, an NVMe SSD, disk space of about twice the model size on the default
