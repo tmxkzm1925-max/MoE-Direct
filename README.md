@@ -13,6 +13,7 @@ No modified weights.
 ![gpu](https://img.shields.io/badge/GPU-NVIDIA%20CUDA-76B900)
 ![scope](https://img.shields.io/badge/models-MoE%20only-8A2BE2)
 [![license](https://img.shields.io/github/license/tmxkzm1925-max/MoE-Direct?color=blue)](LICENSE)
+[![X](https://img.shields.io/badge/X-%40jun1243138-000000?logo=x&logoColor=white)](https://x.com/jun1243138)
 
 </div>
 
@@ -56,9 +57,8 @@ the weights, your files) — is stated once, in [How it works](docs/how-it-works
 edges live in [Limitations and FAQ](docs/faq.md).
 
 People have started taking an interest in this project, and the current round of work is
-taking longer than the earlier ones did, so from now on I will post progress updates on X.
-If you are curious how things are going, you can follow along at
-[@jun1243138](https://x.com/jun1243138).
+taking longer than the earlier ones did, so from now on I will post progress updates on X
+(the badge at the top of this page).
 
 ## Quick start
 
