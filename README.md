@@ -13,7 +13,7 @@ No modified weights.
 ![gpu](https://img.shields.io/badge/GPU-NVIDIA%20CUDA-76B900)
 ![scope](https://img.shields.io/badge/models-MoE%20only-8A2BE2)
 [![license](https://img.shields.io/github/license/tmxkzm1925-max/MoE-Direct?color=blue)](LICENSE)
-[![X](https://img.shields.io/badge/X-%40jun1243138-000000?logo=x&logoColor=white)](https://x.com/jun1243138)
+[![X](https://img.shields.io/badge/-%40jun1243138-000000?logo=x&logoColor=white)](https://x.com/jun1243138)
 
 </div>
 
