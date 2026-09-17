@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10131b">
+  <meta name="description" content="MoE-Direct는 NVMe SSD에서 필요한 전문가만 읽어, 제한된 RAM과 VRAM의 소비자 PC에서 대형 MoE 모델을 실행하는 오픈소스 런타임입니다. 실제 측정 결과와 시연, 지원 모델을 확인하세요.">
+  <meta property="og:title" content="MoE-Direct: 내 PC에서 더 큰 모델을">
+  <meta property="og:description" content="32GB RAM · RTX 5080 16GB · NVMe SSD. 대형 MoE 모델을 실행하는 새로운 경로와 공개된 실측 결과.">
+  <meta property="og:type" content="website">
+  <title>MoE-Direct: 내 PC에서 더 큰 모델을</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2310131b'/%3E%3Cpath d='M7 24V8h5l4 8 4-8h5v16h-5V16l-4 7-4-7v8' fill='%2387adff'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">본문으로 이동</a>
+  <header class="site-header">
+    <a class="brand" href="#" aria-label="MoE-Direct 처음으로">MoE<span class="brand-light">-Direct</span></a>
+    <nav aria-label="주요 메뉴">
+      <a href="#how">작동 원리</a><a href="#results">실측 결과</a><a href="#demo">시연</a><a href="#start">시작하기</a>
+    </nav>
+    <a class="header-source" href="https://github.com/tmxkzm1925-max/MoE-Direct" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+  </header>
+
+  <main id="main">
+    <section class="hero">
+      <div class="hero-grid wrapper">
+        <div class="hero-copy">
+          <div class="eyebrow"><span class="tag">OPEN SOURCE</span><span>LOCAL MoE RUNTIME</span></div>
+          <h1>내 PC에서,<br><span>더 큰 모델을.</span></h1>
+          <p class="hero-description">모델 전체를 메모리에 올리지 않고,<br class="desktop-break">필요한 전문가만 SSD에서 읽어옵니다.</p>
+          <p class="hero-sub">32GB RAM과 한 장의 소비자 GPU로<br>메모리보다 큰 MoE 모델을 실행하는 오픈소스 런타임.</p>
+          <div class="hero-actions"><a class="button button-primary" href="#demo">실제 작동 보기 <span aria-hidden="true">↗</span></a><a class="text-link" href="#results">측정 결과 살펴보기 <span aria-hidden="true">↓</span></a></div>
+          <div class="compatibility"><span>Windows x64</span><span>NVIDIA CUDA</span><span>MIT License</span></div>
+        </div>
+        <div class="engine-panel" role="img" aria-label="작동 개념도. MoE 전문가 데이터를 NVMe SSD에 저장하고, 필요한 전문가를 캐시에 읽어 GPU 계산에 사용합니다. 전체 모델을 메모리에 상주시킬 필요가 없습니다.">
+          <div class="panel-top"><span>EXPERT STREAMING</span><span class="panel-id">01 / ARCHITECTURE</span></div>
+          <div class="disk-label"><span>NVMe SSD</span><span>전문가 데이터 저장</span></div>
+          <div class="expert-grid" aria-hidden="true">
+            <i></i><i></i><i class="selected"></i><i></i><i></i><i></i><i></i><i class="selected"></i>
+            <i></i><i class="selected"></i><i></i><i></i><i></i><i class="selected"></i><i></i><i></i>
+            <i></i><i></i><i></i><i class="selected"></i><i></i><i></i><i class="selected"></i><i></i>
+            <i class="selected"></i><i></i><i></i><i></i><i></i><i></i><i></i><i class="selected"></i>
+          </div>
+          <div class="flow-line"><span>필요한 전문가만 읽기</span><span aria-hidden="true">↓</span></div>
+          <div class="compute-row"><div class="cache-box"><span class="mono">EXPERT CACHE</span><div class="cache-slots" aria-hidden="true"><i></i><i></i><i></i><i></i></div></div><span class="flow-arrow" aria-hidden="true">→</span><div class="gpu-box"><span class="mono">GPU</span><strong>계산</strong></div></div>
+          <div class="panel-bottom"><span>원본 가중치 · 기존 라우팅 유지</span><span>개념도</span></div>
+        </div>
+      </div>
+      <div class="headline-results wrapper">
+        <div><span class="metric-caption">REFERENCE HARDWARE</span><strong>32<span>GB RAM</span></strong><p>RTX 5080 16GB + Gen5 NVMe</p></div>
+        <div><span class="metric-caption">QWEN3.5-122B · Q4_K_M</span><strong>5.59–5.69<span>tok/s</span></strong><p>지속 디코드 · 릴리스 검증 통과</p></div>
+        <div><span class="metric-caption">SAME-BINARY COMPARISON</span><strong>≈ 2.3<span>배</span></strong><p>같은 가중치의 plain mmap 경로 대비</p></div>
+      </div>
+    </section>
+
+    <section class="section wrapper how-section" id="how">
+      <div class="section-heading"><span class="section-no">01 / HOW IT WORKS</span><h2>MoE의 희소성을,<br>메모리의 여유로.</h2><p>MoE 모델은 매 토큰마다 일부 전문가만 활성화합니다. MoE-Direct는 이 특성을 활용해 전문가 데이터를 NVMe에 두고, 계산에 필요한 시점에 읽어옵니다.</p></div>
+      <div class="principles">
+        <article><span class="principle-number">01</span><div><h3>가중치는 그대로</h3><p>재양자화나 라우팅 변경 없이 원본 GGUF의 전문가 데이터를 사용합니다. 기본 packed 경로는 사용 전 원본과 바이트 단위로 검증합니다.</p></div></article>
+        <article><span class="principle-number">02</span><div><h3>읽기 경로를 바꿉니다</h3><p>전문가 저장 방식, 캐시, 배치, 프리패치를 다룹니다. 서버 시작 시 전문가 전체를 미리 메모리에 적재하지 않습니다.</p></div></article>
+        <article><span class="principle-number">03</span><div><h3>공간과 속도를 선택</h3><p>기본 packed 경로는 전문가 복사본을 만듭니다. 선택형 virtual 경로는 작은 manifest로 원본을 직접 읽지만, 현재는 packed 경로보다 느립니다.</p></div></article>
+        <a class="document-link" href="https://github.com/tmxkzm1925-max/MoE-Direct/blob/main/docs/how-it-works.md" target="_blank" rel="noopener noreferrer">구조와 변경 범위 자세히 보기 <span aria-hidden="true">↗</span></a>
+      </div>
+    </section>
+
+    <section class="results-section" id="results">
+      <div class="wrapper section">
+        <div class="section-heading results-heading"><div><span class="section-no">02 / MEASURED RESULTS</span><h2>가능성은 크게.<br>주장은 측정한 만큼.</h2></div><p>아래 수치는 기준 PC에서 얻은 결과입니다. 고정된 릴리스 검증과 탐색 실험을 구분해 공개합니다.</p></div>
+        <div class="results-table-wrap"><table class="results-table"><caption class="sr-only">기준 PC의 모델별 측정 결과와 검증 범위</caption><thead><tr><th scope="col">모델 / 양자화</th><th scope="col">SSD의 전문가 데이터</th><th scope="col">확인한 결과</th><th scope="col">측정 등급</th></tr></thead><tbody>
+          <tr><th scope="row"><strong>Qwen3.5-122B</strong><span>Q4_K_M</span></th><td>72.8 <span>GB</span></td><td><strong class="result-value">5.59–5.69 <small>tok/s</small></strong><span>지속 디코드 · 고정 성능 검증 통과</span></td><td><span class="grade official">OFFICIAL</span></td></tr>
+          <tr><th scope="row"><strong>gpt-oss-120b</strong><span>MXFP4</span></th><td>61 <span>GB</span></td><td><strong class="result-value">12 / 12 <small>동일</small></strong><span>greedy 응답의 토큰 ID가 stock 읽기 경로와 일치</span></td><td><span class="grade official">OFFICIAL</span></td></tr>
+          <tr><th scope="row"><strong>Kimi K2.6</strong><span>1T급 · mixed-quant · 전체 파일 447GB</span></th><td>436 <span>GB</span></td><td><strong class="result-value">1.03 <small>tok/s</small></strong><span>일관된 출력 관찰 · 성능 검증 미통과</span></td><td><span class="grade probe">PROBE</span></td></tr>
+        </tbody></table></div>
+        <div class="result-notes"><p><strong>OFFICIAL</strong> 기준 장비의 고정된 릴리스 검증 절차에 따른 결과. 각 행에 실제 확인한 항목을 표기했습니다.</p><p><strong>PROBE</strong> 별도 절차의 탐색 측정. 출시 성능을 보증하지 않으며, Kimi 수치를 기준으로 대화형 실사용을 계획하지 마세요.</p></div>
+        <details class="evidence-details"><summary>비교 조건과 출력 검증의 범위 <span aria-hidden="true">+</span></summary><div><p>약 2.3배라는 수치는 동일한 실행 바이너리와 가중치의 plain mmap 경로를 기준으로 합니다. 다른 런타임 전체보다 빠르다는 주장은 아닙니다.</p><p>토큰 일치 검증은 gpt-oss-120b의 greedy decoding, 12쌍의 응답에 한정됩니다. Qwen3.5-122B에서는 실행 간 재현성을 따로 확인했으며, 샘플링 출력이나 Kimi K2.6의 토큰 일치를 주장하지 않습니다.</p><p>Qwen3.5-122B의 별도 paired probe는 5.65–6.26 tok/s, arm 평균 5.96 tok/s입니다. 위 표의 릴리스 검증 수치와 합치지 않았습니다. 성능은 NVMe 읽기 처리량과 실행 조건에 따라 달라집니다.</p></div></details>
+        <div class="evidence-footer"><span>기준 환경: RAM 32GB · RTX 5080 · Gen5 NVMe</span><a class="document-link" href="https://github.com/tmxkzm1925-max/MoE-Direct/blob/main/docs/measured-results.md" target="_blank" rel="noopener noreferrer">빌드·측정 조건·검증 절차 <span aria-hidden="true">↗</span></a></div>
+      </div>
+    </section>
+
+    <section class="section wrapper demo-section" id="demo">
+      <div class="section-heading"><span class="section-no">03 / SEE IT RUN</span><h2>한 대의 PC.<br>편집 없는 2분 49초.</h2><p>447GB Kimi K2.6의 콜드 부팅부터 응답까지, 이어서 Qwen3.5-122B 실행까지. 작업 관리자를 함께 보여주는 실제 시연입니다.</p><div class="demo-facts"><div><strong>약 19초</strong><span>Kimi 서버 준비</span></div><div><strong>32GB 미만</strong><span>시연 중 시스템 RAM 사용량</span></div></div><a class="document-link" href="https://youtu.be/I0MRTEn0G6g" target="_blank" rel="noopener noreferrer">설치부터 실행까지 전체 안내 영상 <span aria-hidden="true">↗</span></a></div>
+      <a class="video-card" href="https://youtu.be/JDfrWMxwczk" target="_blank" rel="noopener noreferrer" aria-label="YouTube에서 MoE-Direct 실제 시연 영상 보기, 2분 49초">
+        <div class="video-title"><span class="video-kicker">COLD BOOT → FIRST ANSWER</span><strong>447<span>GB</span></strong><span>Kimi K2.6 · RAM 32GB 미만</span></div>
+        <span class="play-button" aria-hidden="true">▶</span><span class="video-caption"><span>실제 실행 영상 · YouTube</span><span>02:49 ↗</span></span>
+      </a>
+    </section>
+
+    <section class="models-section wrapper section" id="models">
+      <div class="section-heading compact-heading"><span class="section-no">04 / MODEL CATALOG</span><h2>지원 모델과 검증 범위</h2><p>처음에는 기준 모델인 Qwen3.5-122B-A10B Q4_K_M을 권장합니다.</p></div>
+      <div class="model-list">
+        <div class="model-row reference-model"><div><span class="small-label">기준 모델 · 시작점</span><h3>Qwen3.5-122B-A10B</h3><p>Q4_K_M · 256 experts / top-8</p></div><span class="tier">형식 + 기준 성능 검증</span></div>
+        <div class="model-row"><div><h3>gpt-oss-120b</h3><p>MXFP4 · 128 experts / top-4</p></div><span class="tier">형식 검증</span></div>
+        <div class="model-row"><div><h3>Qwen3.5-35B-A3B</h3><p>Q4_K_M · 256 experts / top-8</p></div><span class="tier">형식 검증</span></div>
+        <div class="model-row"><div><h3>Qwen3.5-397B-A17B</h3><p>Q4_K_M · 512 experts / top-10</p></div><span class="tier">형식 검증</span></div>
+        <div class="model-row"><div><h3>Kimi K2.6</h3><p>447GB mixed-quant · 384 experts / top-8</p></div><span class="tier">형식 검증</span></div>
+        <div class="model-row"><div><h3>DeepSeek-V4-Flash-0731</h3><p>MXFP4/Q8_0 · 256 experts / top-6</p></div><span class="tier">형식 검증</span></div>
+      </div>
+      <p class="model-footnote">형식 검증은 원본과의 바이트 일치 검증을 통과했다는 뜻이며, 속도 보증은 아닙니다. 정확한 GGUF 저장소와 고정 revision은 <a href="https://github.com/tmxkzm1925-max/MoE-Direct/blob/main/docs/models.md" target="_blank" rel="noopener noreferrer">지원 모델 문서 ↗</a>에서 확인하세요.</p>
+    </section>
+
+    <section class="start-section" id="start"><div class="wrapper section">
+      <div class="section-heading compact-heading"><span class="section-no">05 / GET STARTED</span><h2>내 장비에서 시작하기</h2><p>Windows용 실험적 프리뷰입니다. 사용할 GGUF 모델은 직접 준비합니다.</p></div>
+      <div class="requirements"><span>Windows 10/11 x64</span><span>NVIDIA GPU · CUDA</span><span>NVMe SSD</span><span>지원 목록의 GGUF</span></div>
+      <ol class="steps"><li><span class="step-no">01</span><h3>런타임 준비</h3><p>Releases에서 ZIP과 SHA256SUMS.txt를 받아 무결성을 확인하고, 차단을 해제한 뒤 새 폴더에 압축을 풉니다.</p><a href="https://github.com/tmxkzm1925-max/MoE-Direct/releases" target="_blank" rel="noopener noreferrer">릴리스 다운로드 ↗</a></li><li><span class="step-no">02</span><h3>모델 선택</h3><p>검증된 GGUF의 모든 분할 파일을 같은 폴더에 준비하고, 런처에서 모델을 선택합니다.</p><code>&lt;drive&gt;:\moe-models\&lt;folder&gt;\</code><code>Start-MoeDirect.cmd</code></li><li><span class="step-no">03</span><h3>리팩 후 연결</h3><p>표시되는 디스크 비용과 시간을 확인하고 최초 리팩을 승인합니다. 실행 후 안내된 URL에 OpenAI 호환 클라이언트를 연결합니다.</p><a href="https://github.com/tmxkzm1925-max/MoE-Direct/blob/main/docs/clients.md" target="_blank" rel="noopener noreferrer">클라이언트 연결 안내 ↗</a></li></ol>
+      <div class="scope-note"><h3>실행 전에 알아둘 점</h3><ul><li>MoE 전용입니다. Dense 모델에는 이 방식의 이점이 없으며, 이미 RAM에 들어가는 모델을 위한 도구도 아닙니다.</li><li>기본 packed 경로는 모델 크기의 약 두 배에 해당하는 디스크 공간이 필요합니다. virtual 경로는 원본 외에 작은 manifest와 보고서를 사용합니다.</li><li>첫 리팩은 한 번만 수행합니다. 차가운 세션의 첫 대화는 느릴 수 있고, 이후에는 prefix cache를 재사용합니다.</li><li>현재 프리뷰는 코드 서명이 없습니다. 체크섬과 안내 문서를 확인하세요. Defender 나 SmartScreen 을 끄도록 요구하지 않습니다.</li></ul><a href="https://github.com/tmxkzm1925-max/MoE-Direct/blob/main/docs/getting-started.md" target="_blank" rel="noopener noreferrer">상세 설치·무결성 확인 안내 ↗</a></div>
+    </div></section>
+
+    <section class="section wrapper roadmap-section" id="roadmap">
+      <div class="section-heading"><span class="section-no">06 / WHAT COMES NEXT</span><h2>공개된 현재.<br>측정해 나갈 다음.</h2><p>README에 공개된 개발 상태와 목표입니다. 향후 기능은 아직 제공되는 기능이 아닙니다.</p><a class="document-link" href="https://github.com/tmxkzm1925-max/MoE-Direct#roadmap" target="_blank" rel="noopener noreferrer">최신 로드맵 확인 <span aria-hidden="true">↗</span></a></div>
+      <div class="roadmap"><article><span class="roadmap-status">공개 프리뷰</span><h3>v0.3 · virtual repack</h3><p>전문가 복사본 없이 원본 GGUF에서 읽는 선택형 경로를 제공합니다. 현재는 packed 경로보다 느리고, virtual 실행에서도 런처 상태 화면이 packed 경로의 검증 결과(성능 게이트 PASS 표시 포함)를 그대로 보여주는 알려진 한계가 있습니다.</p></article><article><span class="roadmap-status next">개발 중</span><h3>v0.3.1 · 구조 정리와 속도 회복</h3><p>코드 구조와 경계 계약을 정리하고, in-place 경로의 성능 회복과 모델 계열에 적응하는 프리패치를 준비합니다.</p></article><article><span class="roadmap-status future">후속 목표</span><h3>엔진 독립화 · 프리필 · 긴 컨텍스트</h3><p>전문가 실행 코어를 엔진과 분리하고, 프리필 경로 개선은 준비되는 순서대로 내놓습니다. 그 위에서 VRAM·RAM·NVMe에 KV cache를 계층화해, 다음 세대 sparse-attention 모델을 대상으로 같은 소비자 환경에서 100만 토큰 컨텍스트를 목표로 합니다.</p></article></div>
+    </section>
+
+    <section class="about-strip"><div class="wrapper about-grid"><div><span class="section-no">BUILT IN THE OPEN</span><h2>한 사람이 방향을 잡고,<br>AI와 함께 검증합니다.</h2></div><div><p>설계와 결정은 개발자가 맡고, Claude와 GPT가 설계·구현·상호 검토에 참여합니다. 공개된 설계 노트에는 논의와 검토 과정이 남아 있습니다.</p><p>MoE-Direct는 llama.cpp를 기반으로 한 MIT 라이선스 프로젝트입니다. 언급된 모델 개발사와 제휴 관계가 없으며, 공식 보증을 받은 프로젝트가 아닙니다.</p><p>보관된 릴리스에는 DOI가 있습니다: <a href="https://doi.org/10.5281/zenodo.21739367" target="_blank" rel="noopener noreferrer">10.5281/zenodo.21739367 ↗</a></p><a class="document-link" href="https://github.com/tmxkzm1925-max/MoE-Direct/tree/main/docs/design-notes" target="_blank" rel="noopener noreferrer">공개 설계 노트 읽기 <span aria-hidden="true">↗</span></a></div></div></section>
+  </main>
+
+  <footer class="wrapper site-footer"><div><a class="brand" href="#">MoE<span class="brand-light">-Direct</span></a><p>© 2026 tmxkzm1925-max · MIT License</p></div><div class="footer-links"><a href="https://github.com/tmxkzm1925-max/MoE-Direct" target="_blank" rel="noopener noreferrer">GitHub ↗</a><a href="https://github.com/tmxkzm1925-max/MoE-Direct/blob/main/README.md" target="_blank" rel="noopener noreferrer">README 원문 ↗</a><a href="https://x.com/jun1243138" target="_blank" rel="noopener noreferrer">개발 소식 ↗</a><span>README 기준 · 2026.09.17</span></div></footer>
+</body>
+</html>
