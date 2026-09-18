@@ -55,6 +55,26 @@
     .gain-strip span{display:block;margin-top:8px;font-size:15px;line-height:1.75;color:#9da9ba}
     .gain-strip em{display:block;margin-top:10px;font-style:normal;font:12.5px/1.6 var(--mono);letter-spacing:.2px;color:#8d99ab}
     .metric-stage{margin-top:26px}
+    .metric-row{display:flex;gap:24px;align-items:flex-start}
+    .metric-card{flex:0 1 466px;min-width:0}
+    .metric-card-hw{flex:0 1 260px}
+    .scene-card{display:block;width:100%;height:auto}
+    .metric-note{margin:14px 0 0;font-size:15px;line-height:1.6;color:#8d99ab}
+    .swipe-hint{display:none}
+    /* Header navigation: every destination gets its own pill so the click
+       target is visible, not only a colour difference. */
+    .site-header .header-rail{display:flex;align-items:center;gap:8px;margin-left:auto;min-width:0;flex:0 1 auto}
+    .site-header .header-rail nav{display:flex;order:0;width:auto;margin:0;gap:8px}
+    .site-header .header-rail nav a,.site-header .header-rail .header-source{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:1px solid var(--dark-line);border-radius:999px;background:rgba(255,255,255,.025);color:#cbd1db;font-size:14px;font-weight:500;line-height:1;white-space:nowrap;transition:transform .16s ease,background-color .16s ease,border-color .16s ease}
+    .site-header .header-rail .header-source{border-color:#55617a;color:#fff}
+    .site-header .header-rail .header-source span{margin-left:0}
+    .site-header .header-rail nav a.is-current{border-color:var(--blue);color:var(--blue)}
+    .site-header .header-rail nav a.is-hover,.site-header .header-rail .header-source.is-hover,
+    .site-header .header-rail nav a:focus-visible,.site-header .header-rail .header-source:focus-visible{transform:translateY(-2px);background:rgba(169,198,255,.14);border-color:var(--blue);color:#fff;box-shadow:0 6px 18px rgba(0,0,0,.4);outline:none}
+    @media(hover:hover){
+      .site-header .header-rail nav a:hover,.site-header .header-rail .header-source:hover{transform:translateY(-2px);background:rgba(169,198,255,.14);border-color:var(--blue);color:#fff;box-shadow:0 6px 18px rgba(0,0,0,.4)}
+    }
+    .site-header .header-rail nav a:active,.site-header .header-rail .header-source:active{transform:translateY(0) scale(.97);background:rgba(169,198,255,.2);border-color:var(--blue);color:#fff}
     .scroll-cue{display:none}
     .story.js .scroll-cue{display:flex;flex-direction:column;align-items:center;gap:8px;position:absolute;left:50%;bottom:22px;transform:translateX(-50%);z-index:3;font:12px/1 var(--mono);letter-spacing:1.5px;color:#8fa0ba;transition:opacity .55s ease;pointer-events:none}
     .story.js .scroll-cue.is-gone,.story.js:not([data-chapter="1"]) .scroll-cue{opacity:0}
@@ -66,7 +86,12 @@
     .story-foot{padding-block:0 4px}
     .deck-foot{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 22px;padding-block:22px 26px;border-top:1px solid #2b323f}
     .hw-note{margin:0;font-size:12.5px;line-height:1.6;color:#8d99ab}
-    @media(prefers-reduced-motion:reduce){.site-header{transition:none}.story.js .chapter{transition:none;transform:none}.story.js .scroll-cue{display:none}}
+    @media(prefers-reduced-motion:reduce){.site-header{transition:none}.story.js .chapter{transition:none;transform:none}.story.js .scroll-cue{display:none}
+      .site-header .header-rail nav a,.site-header .header-rail .header-source{transition:background-color .16s ease,border-color .16s ease,color .16s ease}
+      .site-header .header-rail nav a:hover,.site-header .header-rail .header-source:hover,
+      .site-header .header-rail nav a:active,.site-header .header-rail .header-source:active,
+      .site-header .header-rail nav a.is-hover,.site-header .header-rail .header-source.is-hover,
+      .site-header .header-rail nav a:focus-visible,.site-header .header-rail .header-source:focus-visible{transform:none;box-shadow:none}}
     .glossary{margin-top:38px;border:1px solid #d3dae6;background:#fff}
     .glossary summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 20px;cursor:pointer;font-size:14px;font-weight:600;list-style:none}
     .glossary summary::-webkit-details-marker{display:none}
@@ -80,11 +105,66 @@
     .demo-plain{max-width:660px;margin:0 0 20px;font-size:15px;line-height:1.9;color:#4d5a6d}
     @media(max-width:1100px){.gain-strip{gap:24px}}
     @media(max-width:800px){.glossary-body{grid-template-columns:1fr}.gain-strip{grid-template-columns:1fr;gap:18px}.slide-grid{grid-template-columns:1fr;gap:26px;min-height:0;align-content:center}.deck-video{justify-self:stretch;max-width:none}.story.js .rail{right:14px}.chapter h1,.slide-title,.chapter-solo h1,.chapter-solo .slide-title{font-size:clamp(27px,6.6vw,34px);letter-spacing:-1.4px;margin:10px 0 14px}.slide-lead{font-size:15px;line-height:1.75}.scene{max-width:none}}
-    @media(max-width:640px){.site-header{padding-inline:16px;padding-block:11px;gap:10px;min-height:0;flex-wrap:nowrap}.site-header.is-scrolled{padding-block:9px}.site-header .brand{font-size:18px;flex:none}.site-header nav{order:0;width:auto;margin:0 0 0 auto;gap:9px;font-size:11.5px;justify-content:flex-end;flex:0 1 auto;min-width:0}.header-source{display:none}}
-    @media(max-width:420px){.chapter h1,.slide-title{font-size:25px;letter-spacing:-1px}.slide-lead{font-size:14px}}
-    /* Short or narrow viewports release the pin: the chapters stack in normal
-       flow and every SVG shows the end state the markup already renders. */
-    @media(max-height:640px),(max-width:700px){
+    /* Phones keep the pinned story. Every chapter collapses to one column that
+       fits the stage, and the two multi card chapters become a snap row that is
+       swiped sideways instead of being clipped. */
+    @media(max-width:700px){
+      .site-header{padding-inline:14px;padding-block:9px;gap:10px;min-height:0;flex-wrap:nowrap}
+      .site-header.is-scrolled{padding-block:8px}
+      .site-header .brand{font-size:17px;flex:none}
+      .site-header .header-rail{gap:6px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;flex:1 1 auto;padding:2px 0}
+      .site-header .header-rail::-webkit-scrollbar{display:none}
+      .site-header .header-rail nav{gap:6px}
+      .site-header .header-rail nav a,.site-header .header-rail .header-source{padding:6px 10px;font-size:13px;scroll-snap-align:start}
+      /* .stage-inner overrides .wrapper's width, so the pinned chapters need
+         their own gutter or they run to the screen edge on a phone. */
+      .story.js .stage-inner{width:calc(100% - 40px)}
+      .story.js .chapter{padding-block:0}
+      .chapter h1,.slide-title,.chapter-solo h1,.chapter-solo .slide-title{font-size:clamp(24px,7.2vw,30px);line-height:1.28;letter-spacing:-1.1px;margin:0 0 10px}
+      .slide-lead{font-size:15px;line-height:1.62;max-width:none}
+      .chapter .hero-actions,.chapter-solo .hero-actions{margin:14px 0 0}
+      .chapter .hero-actions .button{padding:11px 16px;font-size:14px}
+      .slide-grid{gap:14px}
+      .chapter-art{gap:10px}
+      .scene{max-width:none;max-height:42vh;max-height:42svh;margin-inline:auto}
+      .metric-stage{margin-top:14px}
+      .gain-strip,.metric-row{display:flex;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;gap:14px;margin-top:16px;padding-bottom:6px}
+      .gain-strip>div,.metric-card,.metric-card-hw{flex:0 0 78vw;scroll-snap-align:start;min-width:0}
+      .gain-strip>div{padding-top:14px}
+      .gain-strip strong{font-size:17px}
+      .gain-strip span{font-size:14px;line-height:1.65}
+      .metric-note{margin-top:10px;font-size:13px}
+      .swipe-hint{display:block;margin:8px 0 0;font:12px/1 var(--mono);letter-spacing:1px;color:#8fa0ba}
+      .story.js .rail{right:8px;gap:9px}
+      .rail-dot{width:7px;height:7px}
+      .rail-dot[aria-current="true"]{height:18px}
+      .story.js .scroll-cue{bottom:10px}
+    }
+    @media(max-width:420px){.chapter h1,.slide-title,.chapter-solo h1,.chapter-solo .slide-title{font-size:24px;letter-spacing:-.9px}.slide-lead{font-size:14px}}
+    /* The static sections below the story are two column grids. Once they
+       collapse, their items keep the automatic minimum size of their content
+       and push the document wider than a narrow screen. Constrain them, let the
+       results table scroll inside its own wrapper, and clip as a last resort.
+       The threshold is 560px because the widest item measures 498px and the
+       wrapper is the viewport less 40px, so 538px is where the two meet. */
+    .results-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+    @media(max-width:560px){
+      .wrapper,.section,.section-heading,.results-heading,.compact-heading,
+      .demo-media,.demo-facts,.demo-facts>div,.video-card,.evidence-footer,
+      .evidence-details,.result-notes,.results-table-wrap,
+      .principles,.principles article,.model-list,.model-row,.model-footnote,
+      .requirements,.steps,.steps li,.scope-note,.roadmap,.roadmap article,
+      .about-grid,.about-grid>div,.glossary,.glossary-body,.deck-foot,
+      .compatibility,.site-footer,.footer-links{max-width:100%;min-width:0;box-sizing:border-box}
+      /* clip, not hidden: overflow-x:hidden here makes the root a scroll
+         container and the sticky header stops sticking (measured: header top
+         -1200 after a 1200px scroll at 390px). clip leaves sticky alone. */
+      html{overflow-x:clip}
+      body{overflow-x:clip}
+    }
+    /* Only a short viewport releases the pin, never a narrow one: a landscape
+       phone has no room for a pinned stage, a portrait phone does. */
+    @media(max-height:560px){
       .story.js{height:auto}
       .story.js .stage{position:static;height:auto;overflow:visible}
       .story.js .stage-inner{height:auto}
@@ -119,10 +199,12 @@
   <a class="skip" href="#main">본문으로 이동</a>
   <header class="site-header">
     <a class="brand" href="#" aria-label="MoE-Direct 처음으로">MoE<span class="brand-light">-Direct</span></a>
-    <nav aria-label="주요 메뉴">
-      <a href="#how">작동 원리</a><a href="#results">실측 결과</a><a href="#demo">시연</a><a href="#start">시작하기</a>
-    </nav>
-    <a class="header-source" href="https://github.com/tmxkzm1925-max/MoE-Direct" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+    <div class="header-rail">
+      <nav aria-label="주요 메뉴">
+        <a href="#how">작동 원리</a><a href="#results">실측 결과</a><a href="#demo">시연</a><a href="#start">시작하기</a>
+      </nav>
+      <a class="header-source" href="https://github.com/tmxkzm1925-max/MoE-Direct" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+    </div>
   </header>
 
   <main id="main">
@@ -398,6 +480,7 @@
                     <strong>서버급 장비 없이, 지금 가진 PC로</strong><span>서버 장비를 새로 들이지 않고, 이미 쓰고 있는 데스크톱에서 실행합니다.</span><em>Windows · NVIDIA 그래픽카드 · NVMe SSD</em>
                   </div>
                 </div>
+                <p class="swipe-hint" aria-hidden="true">옆으로 넘기기 →</p>
               </div>
             </div>
           </article>
@@ -409,227 +492,237 @@
                 <p class="slide-lead">기준 PC에서 실제로 잰 수치와 그 등급을 그대로 싣습니다.</p>
                 <div class="hero-actions"><a class="text-link" href="#results">측정 결과 살펴보기 <span aria-hidden="true">↓</span></a></div>
                 <div class="metric-stage">
-                  <svg class="scene-wide" viewBox="0 0 1240 380" role="img" aria-label="기준 PC와 두 모델 비교. SSD의 전문가 데이터는 Qwen 72.8GB, Kimi 436GB이고 Kimi의 전체 모델 파일은 447GB입니다. 같은 시간 동안 만들어지는 글 조각 수를 같은 칸 판에 채워 5.59에서 5.69 tok/s와 1.03 tok/s의 차이를 보여줍니다.">
-                  <rect x="0" y="0" width="260" height="340" fill="#141a26" stroke="#2b3446" stroke-width="1"/>
-                  <rect x="284" y="0" width="466" height="340" fill="#141a26" stroke="#2b3446" stroke-width="1"/>
-                  <rect x="774" y="0" width="466" height="340" fill="#141a26" stroke="#2b3446" stroke-width="1"/>
-                  <text x="20" y="34" fill="#9aa8bd" font-size="17">기준 PC</text>
-                  <rect x="20" y="54" width="150" height="96" fill="#161d29" stroke="#cdd9ee" stroke-width="1.6"/>
-                  <path d="M86 150V166H62V172H130V166H106V150" fill="none" stroke="#cdd9ee" stroke-width="1.6"/>
-                  <rect x="182" y="54" width="44" height="112" fill="none" stroke="#cdd9ee" stroke-width="1.6"/>
-                  <text x="20" y="208" fill="#e7ecf6" font-size="19">메모리 32GB</text>
-                  <text x="20" y="238" fill="#9da9ba" font-size="16">RTX 5080 16GB</text>
-                  <text x="20" y="262" fill="#9da9ba" font-size="16">Gen5 NVMe</text>
-
-                  <text x="304" y="34" fill="#e7ecf6" font-size="17">Qwen3.5-122B · Q4_K_M</text>
-                  <text x="304" y="66" fill="#9aa8bd" font-size="16">SSD의 전문가 데이터</text>
-                  <rect x="304" y="76" width="426" height="18" fill="#1a2233"/>
-                  <rect class="c5-bar sx" x="304" y="76" width="71" height="18" fill="#a9c6ff"/>
-                  <text x="304" y="118" fill="#cdd9ee" font-size="17">72.8 GB</text>
-                  <text x="304" y="182" fill="#ffffff" font-size="26" font-weight="700">5.59–5.69 tok/s</text>
-                  <text x="304" y="210" fill="#9ad0ff" font-size="16">검증 통과</text>
-                  <text x="304" y="246" fill="#9aa8bd" font-size="16">글 조각(토큰)</text>
-                  <text class="c5-total" x="730" y="246" fill="#e7ecf6" font-size="18" text-anchor="end">≈ 56개</text>
-                  <rect x="304" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="338" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="372" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="406" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="440" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="474" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="508" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="542" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="576" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="610" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="644" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="678" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="304" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="338" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="372" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="406" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="440" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="474" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="508" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="542" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="576" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="610" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="644" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="678" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="304" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="338" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="372" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="406" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="440" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="474" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="508" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="542" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="576" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="610" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="644" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="678" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="304" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="338" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="372" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="406" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="440" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="474" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="508" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="542" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="576" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="610" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="644" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="678" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="304" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="338" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="372" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="406" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="440" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="474" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="508" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="542" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="576" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="610" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="644" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="678" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect class="c5-qm" x="304" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="338" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="372" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="406" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="440" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="474" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="508" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="542" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="576" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="610" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="644" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="678" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="304" y="271" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="338" y="271" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="372" y="271" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="406" y="271" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="440" y="271" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="474" y="271" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="508" y="271" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="542" y="271" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="576" y="271" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="610" y="271" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="644" y="271" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="678" y="271" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="304" y="286" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="338" y="286" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="372" y="286" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="406" y="286" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="440" y="286" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="474" y="286" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="508" y="286" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="542" y="286" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="576" y="286" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="610" y="286" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="644" y="286" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="678" y="286" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="304" y="301" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="338" y="301" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="372" y="301" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="406" y="301" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="440" y="301" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="474" y="301" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="508" y="301" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="542" y="301" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="576" y="301" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="610" y="301" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="644" y="301" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="678" y="301" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="304" y="316" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="338" y="316" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="372" y="316" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="406" y="316" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="440" y="316" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="474" y="316" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="508" y="316" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-qm" x="542" y="316" width="26" height="9" rx="2" fill="#a9c6ff"/>
-
-                  <text x="794" y="34" fill="#e7ecf6" font-size="17">Kimi K2.6 · mixed-quant</text>
-                  <text x="794" y="66" fill="#9aa8bd" font-size="16">SSD의 전문가 데이터</text>
-                  <rect x="794" y="76" width="426" height="18" fill="#1a2233"/>
-                  <rect class="c5-bar sx" x="794" y="76" width="426" height="18" fill="#a9c6ff"/>
-                  <text x="794" y="118" fill="#cdd9ee" font-size="17">436 GB</text>
-                  <text x="794" y="144" fill="#9da9ba" font-size="16">전체 모델 파일 447GB</text>
-                  <text x="794" y="182" fill="#ffffff" font-size="26" font-weight="700">1.03 tok/s</text>
-                  <text x="794" y="210" fill="#d6a86a" font-size="16">탐색 측정(PROBE) · 대화형 사용 부적합</text>
-                  <text x="794" y="246" fill="#9aa8bd" font-size="16">글 조각(토큰)</text>
-                  <text class="c5-total" x="1220" y="246" fill="#e7ecf6" font-size="18" text-anchor="end">≈ 10개</text>
-                  <rect x="794" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="828" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="862" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="896" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="930" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="964" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="998" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="1032" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="1066" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="1100" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="1134" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="1168" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="794" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="828" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="862" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="896" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="930" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="964" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="998" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="1032" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="1066" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="1100" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="1134" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="1168" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="794" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="828" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="862" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="896" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="930" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="964" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="998" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="1032" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="1066" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="1100" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="1134" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="1168" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="794" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="828" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="862" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="896" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="930" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="964" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="998" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="1032" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="1066" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="1100" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="1134" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="1168" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="794" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="828" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="862" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="896" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="930" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="964" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="998" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="1032" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="1066" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="1100" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="1134" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect x="1168" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
-                  <rect class="c5-km" x="794" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-km" x="828" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-km" x="862" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-km" x="896" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-km" x="930" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-km" x="964" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-km" x="998" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-km" x="1032" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-km" x="1066" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
-                  <rect class="c5-km" x="1100" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
-
-                  <text x="284" y="368" fill="#8d99ab" font-size="16">측정 속도를 10초로 환산한 예시 · 5.64 tok/s 기준</text>
-                  </svg>
+                  <div class="metric-row">
+                    <div class="metric-card metric-card-hw">
+                      <svg class="scene-card" viewBox="0 0 260 340" role="img" aria-label="기준 PC. 메모리 32GB, RTX 5080 16GB, Gen5 NVMe.">
+                        <rect x="0" y="0" width="260" height="340" fill="#141a26" stroke="#2b3446" stroke-width="1"/>
+                        <text x="20" y="34" fill="#9aa8bd" font-size="17">기준 PC</text>
+                        <rect x="20" y="54" width="150" height="96" fill="#161d29" stroke="#cdd9ee" stroke-width="1.6"/>
+                        <path d="M86 150V166H62V172H130V166H106V150" fill="none" stroke="#cdd9ee" stroke-width="1.6"/>
+                        <rect x="182" y="54" width="44" height="112" fill="none" stroke="#cdd9ee" stroke-width="1.6"/>
+                        <text x="20" y="208" fill="#e7ecf6" font-size="19">메모리 32GB</text>
+                        <text x="20" y="238" fill="#9da9ba" font-size="16">RTX 5080 16GB</text>
+                        <text x="20" y="262" fill="#9da9ba" font-size="16">Gen5 NVMe</text>
+                      </svg>
+                    </div>
+                    <div class="metric-card">
+                      <svg class="scene-card" viewBox="0 0 466 340" role="img" aria-label="Qwen3.5-122B Q4_K_M. SSD의 전문가 데이터 72.8GB, 5.59에서 5.69 tok/s, 검증 통과. 10초로 환산하면 글 조각 약 56개.">
+                        <rect x="0" y="0" width="466" height="340" fill="#141a26" stroke="#2b3446" stroke-width="1"/>
+                        <text x="20" y="34" fill="#e7ecf6" font-size="17">Qwen3.5-122B · Q4_K_M</text>
+                        <text x="20" y="66" fill="#9aa8bd" font-size="16">SSD의 전문가 데이터</text>
+                        <rect x="20" y="76" width="426" height="18" fill="#1a2233"/>
+                        <rect class="c5-bar sx" x="20" y="76" width="71" height="18" fill="#a9c6ff"/>
+                        <text x="20" y="118" fill="#cdd9ee" font-size="17">72.8 GB</text>
+                        <text x="20" y="182" fill="#ffffff" font-size="26" font-weight="700">5.59–5.69 tok/s</text>
+                        <text x="20" y="210" fill="#9ad0ff" font-size="16">검증 통과</text>
+                        <text x="20" y="246" fill="#9aa8bd" font-size="16">글 조각(토큰)</text>
+                        <text class="c5-total" x="446" y="246" fill="#e7ecf6" font-size="18" text-anchor="end">≈ 56개</text>
+                        <rect x="20" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="54" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="88" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="122" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="156" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="190" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="224" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="258" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="292" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="326" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="360" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="394" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="20" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="54" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="88" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="122" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="156" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="190" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="224" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="258" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="292" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="326" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="360" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="394" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="20" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="54" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="88" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="122" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="156" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="190" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="224" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="258" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="292" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="326" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="360" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="394" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="20" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="54" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="88" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="122" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="156" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="190" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="224" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="258" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="292" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="326" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="360" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="394" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="20" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="54" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="88" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="122" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="156" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="190" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="224" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="258" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="292" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="326" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="360" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="394" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
+                        <rect class="c5-qm" x="20" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="54" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="88" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="122" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="156" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="190" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="224" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="258" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="292" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="326" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="360" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="394" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="20" y="271" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="54" y="271" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="88" y="271" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="122" y="271" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="156" y="271" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="190" y="271" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="224" y="271" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="258" y="271" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="292" y="271" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="326" y="271" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="360" y="271" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="394" y="271" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="20" y="286" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="54" y="286" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="88" y="286" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="122" y="286" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="156" y="286" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="190" y="286" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="224" y="286" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="258" y="286" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="292" y="286" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="326" y="286" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="360" y="286" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="394" y="286" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="20" y="301" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="54" y="301" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="88" y="301" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="122" y="301" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="156" y="301" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="190" y="301" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="224" y="301" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="258" y="301" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="292" y="301" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="326" y="301" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="360" y="301" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="394" y="301" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="20" y="316" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="54" y="316" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="88" y="316" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="122" y="316" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="156" y="316" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="190" y="316" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="224" y="316" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-qm" x="258" y="316" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                      </svg>
+                    </div>
+                    <div class="metric-card">
+                      <svg class="scene-card" viewBox="0 0 466 340" role="img" aria-label="Kimi K2.6 mixed-quant. SSD의 전문가 데이터 436GB, 전체 모델 파일 447GB, 1.03 tok/s, 탐색 측정이라 대화형 사용에는 부적합합니다. 10초로 환산하면 글 조각 약 10개.">
+                        <rect x="0" y="0" width="466" height="340" fill="#141a26" stroke="#2b3446" stroke-width="1"/>
+                        <text x="20" y="34" fill="#e7ecf6" font-size="17">Kimi K2.6 · mixed-quant</text>
+                        <text x="20" y="66" fill="#9aa8bd" font-size="16">SSD의 전문가 데이터</text>
+                        <rect x="20" y="76" width="426" height="18" fill="#1a2233"/>
+                        <rect class="c5-bar sx" x="20" y="76" width="426" height="18" fill="#a9c6ff"/>
+                        <text x="20" y="118" fill="#cdd9ee" font-size="17">436 GB</text>
+                        <text x="20" y="144" fill="#9da9ba" font-size="16">전체 모델 파일 447GB</text>
+                        <text x="20" y="182" fill="#ffffff" font-size="26" font-weight="700">1.03 tok/s</text>
+                        <text x="20" y="210" fill="#d6a86a" font-size="16">탐색 측정(PROBE) · 대화형 사용 부적합</text>
+                        <text x="20" y="246" fill="#9aa8bd" font-size="16">글 조각(토큰)</text>
+                        <text class="c5-total" x="446" y="246" fill="#e7ecf6" font-size="18" text-anchor="end">≈ 10개</text>
+                        <rect x="20" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="54" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="88" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="122" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="156" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="190" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="224" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="258" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="292" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="326" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="360" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="394" y="256" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="20" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="54" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="88" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="122" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="156" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="190" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="224" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="258" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="292" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="326" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="360" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="394" y="271" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="20" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="54" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="88" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="122" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="156" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="190" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="224" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="258" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="292" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="326" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="360" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="394" y="286" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="20" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="54" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="88" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="122" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="156" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="190" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="224" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="258" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="292" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="326" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="360" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="394" y="301" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="20" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="54" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="88" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="122" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="156" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="190" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="224" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="258" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="292" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="326" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="360" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
+                  <rect x="394" y="316" width="26" height="9" rx="2" fill="#232b3a"/>
+                        <rect class="c5-km" x="20" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-km" x="54" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-km" x="88" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-km" x="122" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-km" x="156" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-km" x="190" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-km" x="224" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-km" x="258" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-km" x="292" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                  <rect class="c5-km" x="326" y="256" width="26" height="9" rx="2" fill="#a9c6ff"/>
+                      </svg>
+                    </div>
+                  </div>
+                  <p class="metric-note">측정 속도를 10초로 환산한 예시 · 5.64 tok/s 기준</p>
+                  <p class="swipe-hint" aria-hidden="true">옆으로 넘기기 →</p>
                 </div>
               </div>
             </div>
@@ -745,6 +838,48 @@
     window.addEventListener('scroll', function () {
       header.classList.toggle('is-scrolled', window.scrollY > 8);
     }, { passive: true });
+
+    /* Scrollspy: the pill whose section fills most of the viewport is marked
+       current. While the pinned story is on screen no pill is current. */
+    var pills = header.querySelectorAll('.header-rail nav a[href^="#"]');
+    var byId = {};
+    for (var p = 0; p < pills.length; p++) {
+      byId[pills[p].getAttribute('href').slice(1)] = pills[p];
+    }
+    var watched = ['story', 'how', 'results', 'demo', 'models', 'start', 'roadmap'];
+    var share = {};
+
+    function paint() {
+      var best = '', top = 0, k;
+      for (k in share) {
+        if (share[k] > top) { top = share[k]; best = k; }
+      }
+      for (var i = 0; i < pills.length; i++) { pills[i].classList.remove('is-current'); }
+      if (top > 0.1 && best !== 'story' && byId[best]) { byId[best].classList.add('is-current'); }
+    }
+
+    if ('IntersectionObserver' in window) {
+      var spy = new IntersectionObserver(function (entries) {
+        for (var i = 0; i < entries.length; i++) {
+          var e = entries[i];
+          var tall = window.innerHeight || 1;
+          share[e.target.id] = e.isIntersecting ? (e.intersectionRect.height / tall) : 0;
+        }
+        paint();
+      }, { threshold: [0, .1, .25, .5, .75, 1] });
+      for (var w = 0; w < watched.length; w++) {
+        var el = document.getElementById(watched[w]);
+        if (el) { spy.observe(el); }
+      }
+    }
+
+    /* Capture aid: navhover=N puts the Nth pill in its hover state, which a
+       headless screenshot cannot produce on its own. */
+    try {
+      var n = parseInt(new URLSearchParams(window.location.search).get('navhover'), 10);
+      var all = header.querySelectorAll('.header-rail nav a,.header-rail .header-source');
+      if (n >= 1 && n <= all.length) { all[n - 1].classList.add('is-hover'); }
+    } catch (e) { /* the switch is optional */ }
   })();
   </script>
   <script>
@@ -963,7 +1098,7 @@
     var loose = false;
 
     var reduce = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
-    var wide = window.matchMedia ? window.matchMedia('(max-height:640px),(max-width:700px)') : null;
+    var wide = window.matchMedia ? window.matchMedia('(max-height:560px)') : null;
 
     function sense() {
       still = !!(reduce && reduce.matches);
