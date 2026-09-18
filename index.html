@@ -3,26 +3,30 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#F1F5F2">
+  <meta name="theme-color" content="#DEE8E0">
   <meta name="description" content="MoE-Direct는 ChatGPT 같은 대형 AI 언어 모델을 내 PC에서 돌리는 오픈소스 프로그램입니다. NVMe SSD에서 필요한 전문가만 읽어, 제한된 RAM과 VRAM의 소비자 PC에서 대형 MoE 모델을 실행합니다. 실제 측정 결과와 시연, 지원 모델을 확인하세요.">
   <meta property="og:title" content="MoE-Direct: 내 PC에서 더 큰 모델을">
   <meta property="og:description" content="ChatGPT 같은 대형 AI 언어 모델을 내 PC에서 돌리는 오픈소스 프로그램. 32GB RAM · RTX 5080 16GB · NVMe SSD. 대형 MoE 모델을 실행하는 새로운 경로와 공개된 실측 결과.">
   <meta property="og:type" content="website">
   <title>MoE-Direct: 내 PC에서 더 큰 모델을</title>
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23315E9E'/%3E%3Cpath d='M7 24V8h5l4 8 4-8h5v16h-5V16l-4 7-4-7v8' fill='%23FFFDF8'/%3E%3C/svg%3E">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23285590'/%3E%3Cpath d='M7 24V8h5l4 8 4-8h5v16h-5V16l-4 7-4-7v8' fill='%23FFFDF8'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css">
   <style>
     :root{--hdr:90px;
-      /* pastel light palette (reviews/astra_2_intro_visual.md, follow-up 3).
-         styles.css stays untouched: its tokens are overridden here. */
-      --paper:#F1F5F2;--dark:#F1F5F2;--ink:#24342E;--muted:#52635A;--line:#CFDAD2;--dark-line:#718478;
-      --blue:#315E9E;--blue-deep:#315E9E;--blue-dark:#24477A;
-      --surface:#FFFDF8;--sunken:#E2EBE5;--outline:#718478;
+      /* pastel light palette, scheme B (reviews/astra_2_intro_visual.md,
+         follow-up 4). styles.css stays untouched: its tokens are overridden
+         here. The story, results, models and roadmap stand on the deeper
+         sage so that ivory figures and cards carry area of their own; how,
+         demo, start and about keep the lighter section ground. */
+      --paper:#DEE8E0;--dark:#DEE8E0;--ink:#192820;--muted:#45564B;--line:#B9C9BE;--dark-line:#536B5C;
+      --blue:#285590;--blue-deep:#285590;--blue-dark:#1C3E70;
+      --surface:#FFFDF8;--sunken:#E2EBE5;--outline:#536B5C;
+      --section-ground:#F1F5F2;--track:#D5E1D8;
       --emphasis:#A6402D;--emphasis-surface:#FAE7DF;
       --verified-surface:#E1F0E5;--verified-ink:#2D6545;
       --probe-surface:#F8ECCD;--probe-ink:#77551C;--receding-ink:#000000;
-      --card-shadow:0 1px 3px rgba(36,52,46,.05);
-      --lift-shadow:0 8px 24px rgba(36,52,46,.08)}
+      --card-shadow:0 2px 4px rgba(36,52,46,.12),0 8px 20px rgba(36,52,46,.10);
+      --lift-shadow:0 2px 4px rgba(36,52,46,.12),0 8px 20px rgba(36,52,46,.10)}
     html{scroll-padding-top:0}
     .site-header{position:sticky;top:0;z-index:50;min-height:0;padding-block:28px;background:var(--surface);background:rgba(255,253,248,.96);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);transition:padding .25s ease}
     .site-header.is-scrolled{padding-block:16px}
@@ -41,7 +45,7 @@
     .story.js .stage-inner{height:100%}
     .story.js .chapter{position:absolute;inset:0;padding-block:0;opacity:0;visibility:hidden;transform:translateY(18px);transition:opacity .3s ease,transform .3s ease}
     .story.js .chapter.is-active{opacity:calc(1 - var(--fade,0));visibility:visible;transform:translateY(calc(var(--fade,0) * -26px))}
-    .stage::after{content:"";position:absolute;left:0;right:0;bottom:0;height:110px;background:linear-gradient(to bottom,rgba(241,245,242,0),rgba(241,245,242,.92));pointer-events:none;z-index:1}
+    .stage::after{content:"";position:absolute;left:0;right:0;bottom:0;height:110px;background:linear-gradient(to bottom,rgba(222,232,224,0),rgba(222,232,224,.92));pointer-events:none;z-index:1}
     .chapter-art{display:flex;flex-direction:column;justify-content:center;gap:18px;min-width:0}
     .scene{display:block;width:100%;max-width:560px;height:auto}
     .scene-wide{display:block;width:100%;height:auto}
@@ -69,7 +73,7 @@
     .gain-strip em{display:block;margin-top:10px;font-style:normal;font:12.5px/1.6 var(--mono);letter-spacing:.2px;color:var(--muted)}
     .metric-stage{margin-top:26px}
     .metric-row{display:flex;gap:24px;align-items:flex-start}
-    .metric-card{flex:0 1 466px;min-width:0}
+    .metric-card{flex:0 1 466px;min-width:0;border:1.5px solid var(--outline);background:var(--surface);box-shadow:var(--card-shadow)}
     .metric-card-hw{flex:0 1 260px}
     .scene-card{display:block;width:100%;height:auto}
     .metric-note{margin:14px 0 0;font-size:15px;line-height:1.6;color:var(--muted)}
@@ -83,11 +87,11 @@
     .site-header .header-rail .header-source span{margin-left:0}
     .site-header .header-rail nav a.is-current{border-color:var(--blue);color:var(--blue)}
     .site-header .header-rail nav a.is-hover,.site-header .header-rail .header-source.is-hover,
-    .site-header .header-rail nav a:focus-visible,.site-header .header-rail .header-source:focus-visible{transform:translateY(-2px);background:rgba(49,94,158,.10);border-color:var(--blue);color:var(--blue-dark);box-shadow:0 6px 18px rgba(36,52,46,.12);outline:none}
+    .site-header .header-rail nav a:focus-visible,.site-header .header-rail .header-source:focus-visible{transform:translateY(-2px);background:rgba(40,85,144,.10);border-color:var(--blue);color:var(--blue-dark);box-shadow:0 6px 18px rgba(36,52,46,.12);outline:none}
     @media(hover:hover){
-      .site-header .header-rail nav a:hover,.site-header .header-rail .header-source:hover{transform:translateY(-2px);background:rgba(49,94,158,.10);border-color:var(--blue);color:var(--blue-dark);box-shadow:0 6px 18px rgba(36,52,46,.12)}
+      .site-header .header-rail nav a:hover,.site-header .header-rail .header-source:hover{transform:translateY(-2px);background:rgba(40,85,144,.10);border-color:var(--blue);color:var(--blue-dark);box-shadow:0 6px 18px rgba(36,52,46,.12)}
     }
-    .site-header .header-rail nav a:active,.site-header .header-rail .header-source:active{transform:translateY(0) scale(.97);background:rgba(49,94,158,.16);border-color:var(--blue);color:var(--blue-dark)}
+    .site-header .header-rail nav a:active,.site-header .header-rail .header-source:active{transform:translateY(0) scale(.97);background:rgba(40,85,144,.16);border-color:var(--blue);color:var(--blue-dark)}
     .scroll-cue{display:none}
     .story.js .scroll-cue{display:flex;flex-direction:column;align-items:center;gap:8px;position:absolute;left:50%;bottom:22px;transform:translateX(-50%);z-index:3;font:12px/1 var(--mono);letter-spacing:1.5px;color:var(--muted);transition:opacity .55s ease;pointer-events:none}
     .story.js .scroll-cue.is-gone,.story.js:not([data-chapter="1"]) .scroll-cue{opacity:0}
@@ -105,7 +109,7 @@
       .site-header .header-rail nav a:active,.site-header .header-rail .header-source:active,
       .site-header .header-rail nav a.is-hover,.site-header .header-rail .header-source.is-hover,
       .site-header .header-rail nav a:focus-visible,.site-header .header-rail .header-source:focus-visible{transform:none;box-shadow:none}}
-    .glossary{margin-top:38px;border:1px solid var(--line);background:var(--surface)}
+    .glossary{margin-top:38px;border:1.5px solid var(--outline);background:var(--surface);box-shadow:var(--card-shadow)}
     .glossary summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 20px;cursor:pointer;font-size:14px;font-weight:600;list-style:none}
     .glossary summary::-webkit-details-marker{display:none}
     .glossary summary>span{display:inline-block;font:22px/1 var(--mono);color:var(--muted)}
@@ -122,6 +126,9 @@
        fits the stage, and the two multi card chapters become a snap row that is
        swiped sideways instead of being clipped. */
     @media(max-width:700px){
+      /* one reduced elevation for every card on a phone (follow-up 4, S08) */
+      :root{--card-shadow:0 1px 2px rgba(36,52,46,.14),0 3px 6px rgba(36,52,46,.08);
+        --lift-shadow:0 1px 2px rgba(36,52,46,.14),0 3px 6px rgba(36,52,46,.08)}
       .site-header{padding-inline:14px;padding-block:9px;gap:10px;min-height:0;flex-wrap:nowrap}
       .site-header.is-scrolled{padding-block:8px}
       .site-header .brand{font-size:17px;flex:none}
@@ -218,7 +225,7 @@
        --------------------------------------------------------------- */
     html{overflow-x:clip}
     body{background:var(--paper);color:var(--ink)}
-    ::selection{background:rgba(49,94,158,.18);color:var(--ink)}
+    ::selection{background:rgba(40,85,144,.18);color:var(--ink)}
     .skip{background:var(--surface);color:var(--ink)}
     .hero{background:var(--paper);color:var(--ink)}
     .site-header{color:var(--ink)}
@@ -237,21 +244,23 @@
     .principles article{border-bottom:1px solid var(--line)}
     .principles p,.section-heading p{color:var(--muted)}
 
-    /* alternating grounds: 01 surface, 02 page, 03 surface, 04 page,
-       05 surface, 06 page, about surface. The two wrapper bound sections
-       carry theirs on a pseudo element, which changes no width. */
+    /* two grounds: the pinned story, 02 results, 04 models and 06 roadmap
+       stand on the deeper sage, while 01 how, 03 demo, 05 start and about
+       take the lighter section ground. The two wrapper bound sections carry
+       theirs on a pseudo element, which changes no width. */
     .how-section,.demo-section{position:relative}
     .how-section::before,.demo-section::before{content:"";position:absolute;z-index:-1;
-      top:0;bottom:0;left:50%;margin-left:-50vw;width:100vw;background:var(--surface)}
+      top:0;bottom:0;left:50%;margin-left:-50vw;width:100vw;background:var(--section-ground)}
     .results-section{background:var(--paper);border-block:1px solid var(--line)}
     .models-section,.roadmap-section{background:var(--paper)}
-    .start-section{background:var(--surface);color:var(--ink)}
-    .about-strip{background:var(--surface);border-block:1px solid var(--line)}
+    .start-section{background:var(--section-ground);color:var(--ink)}
+    .about-strip{background:var(--section-ground);border-block:1px solid var(--line)}
 
     .results-table th,.results-table td{border-bottom:1px solid var(--line)}
     .results-table thead th{color:var(--muted)}
+    /* no zebra: every row shares the section ground (follow-up 4) */
     .results-table tbody tr:nth-child(even) th,
-    .results-table tbody tr:nth-child(even) td{background:var(--sunken)}
+    .results-table tbody tr:nth-child(even) td{background:transparent}
     .results-table tbody th>span,.results-table td>span:not(.grade){color:var(--muted)}
     .grade.official{background:var(--verified-surface);color:var(--verified-ink);
       border:1px solid var(--verified-ink)}
@@ -259,16 +268,16 @@
       border:1px solid var(--probe-ink)}
     .result-notes p{color:var(--muted)}
     .result-notes strong{color:var(--ink)}
-    .evidence-details{border:1px solid var(--line);background:var(--surface)}
+    .evidence-details{border:1.5px solid var(--outline);background:var(--surface);box-shadow:var(--card-shadow)}
     .evidence-details summary>span{color:var(--muted)}
     .evidence-details p{color:var(--muted)}
     .evidence-footer{color:var(--muted)}
     .demo-facts span{color:var(--muted)}
 
-    .video-card{background-color:var(--sunken);
+    .video-card{background-color:var(--surface);
       background-image:linear-gradient(rgba(36,52,46,.06) 1px,transparent 1px),
         linear-gradient(90deg,rgba(36,52,46,.06) 1px,transparent 1px);
-      border:1px solid var(--outline);box-shadow:var(--card-shadow)}
+      border:1.5px solid var(--outline);box-shadow:var(--card-shadow)}
     .video-title{color:var(--blue)}
     .video-kicker{color:var(--muted)}
     .video-title>strong{color:var(--ink)}
@@ -295,11 +304,11 @@
     .steps p{color:var(--muted)}
     .steps a,.scope-note>a{color:var(--blue)}
     .steps code{color:var(--muted)}
-    .scope-note{border:1px solid var(--line);background:var(--sunken)}
+    .scope-note{border:1.5px solid var(--outline);background:var(--surface);box-shadow:var(--card-shadow)}
     .scope-note h3{color:var(--ink)}
     .scope-note li{color:var(--muted)}
 
-    .roadmap{border-left:1px solid var(--line)}
+    .roadmap{border-left:1.5px solid var(--outline)}
     .roadmap article{border-bottom:1px solid var(--line)}
     .roadmap article:before{background:var(--outline);box-shadow:0 0 0 6px var(--paper)}
     /* one neutral chip for all three stages: the entry's own words say where it
@@ -386,38 +395,38 @@
                     <circle cx="422" cy="176" r="3" fill="#000000"/>
                     <circle cx="422" cy="206" r="3" fill="#000000"/>
                   </g>
-                  <text class="c1-old" x="38" y="352" fill="#52635A" font-size="17" style="opacity:0">회사 서버</text>
-                  <text class="c1-inset" x="16" y="24" fill="#52635A" font-size="16">이전: 회사 서버</text>
-                  <rect class="c1-glow" x="140" y="84" width="280" height="220" fill="#E2EBE5"/>
-                  <g class="c1-pc" fill="none" stroke="#718478" stroke-width="2">
+                  <text class="c1-old" x="38" y="352" fill="#45564B" font-size="17" style="opacity:0">회사 서버</text>
+                  <text class="c1-inset" x="16" y="24" fill="#45564B" font-size="16">이전: 회사 서버</text>
+                  <rect class="c1-glow" x="140" y="84" width="280" height="220" fill="#FFFDF8"/>
+                  <g class="c1-pc" fill="none" stroke="#536B5C" stroke-width="2.5">
                     <path class="c1-draw" vector-effect="non-scaling-stroke" d="M132 76H428V312H132Z"/>
                     <path class="c1-draw" vector-effect="non-scaling-stroke" d="M264 312V332H232V338H328V332H296V312"/>
                     <path class="c1-draw" vector-effect="non-scaling-stroke" d="M446 88H511V307H446Z"/>
                   </g>
-                  <g class="c1-pcdot" fill="#315E9E">
+                  <g class="c1-pcdot" fill="#285590">
                     <circle cx="478" cy="110" r="4"/>
                     <rect x="462" y="128" width="32" height="5"/>
                     <rect x="462" y="140" width="32" height="5"/>
                   </g>
-                  <g class="c1-answer" fill="#315E9E">
+                  <g class="c1-answer" fill="#285590">
                     <rect x="200" y="274" width="160" height="9" rx="3"/>
                     <rect x="200" y="290" width="118" height="9" rx="3"/>
                   </g>
                   <g class="c1-glyph">
-                    <rect x="220" y="126" width="120" height="136" fill="#FFFDF8" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="244" y="140" width="20" height="20" fill="#315E9E"/>
-                    <rect x="270" y="140" width="20" height="20" fill="#315E9E"/>
-                    <rect x="296" y="140" width="20" height="20" fill="#315E9E"/>
-                    <rect x="244" y="166" width="20" height="20" fill="#315E9E"/>
-                    <rect x="270" y="166" width="20" height="20" fill="#315E9E"/>
-                    <rect x="296" y="166" width="20" height="20" fill="#315E9E"/>
-                    <rect x="244" y="192" width="20" height="20" fill="#315E9E"/>
-                    <rect x="270" y="192" width="20" height="20" fill="#315E9E"/>
-                    <rect x="296" y="192" width="20" height="20" fill="#315E9E"/>
-                    <text x="280" y="242" fill="#24342E" font-size="17" text-anchor="middle">공개 AI 모델</text>
+                    <rect x="220" y="126" width="120" height="136" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="244" y="140" width="20" height="20" fill="#285590"/>
+                    <rect x="270" y="140" width="20" height="20" fill="#285590"/>
+                    <rect x="296" y="140" width="20" height="20" fill="#285590"/>
+                    <rect x="244" y="166" width="20" height="20" fill="#285590"/>
+                    <rect x="270" y="166" width="20" height="20" fill="#285590"/>
+                    <rect x="296" y="166" width="20" height="20" fill="#285590"/>
+                    <rect x="244" y="192" width="20" height="20" fill="#285590"/>
+                    <rect x="270" y="192" width="20" height="20" fill="#285590"/>
+                    <rect x="296" y="192" width="20" height="20" fill="#285590"/>
+                    <text x="280" y="242" fill="#192820" font-size="17" text-anchor="middle">공개 AI 모델</text>
                   </g>
-                  <text class="c1-now" x="132" y="360" fill="#52635A" font-size="16">지금: 내 PC</text>
-                  <text class="c1-cap" x="280" y="396" fill="#24342E" font-size="17" text-anchor="middle">같은 모델, 내 PC에서 실행</text>
+                  <text class="c1-now" x="132" y="360" fill="#45564B" font-size="16">지금: 내 PC</text>
+                  <text class="c1-cap" x="280" y="396" fill="#192820" font-size="17" text-anchor="middle">같은 모델, 내 PC에서 실행</text>
                 </svg>
               </div>
             </div>
@@ -431,74 +440,74 @@
               </div>
               <div class="chapter-art">
                 <svg class="scene" viewBox="0 0 560 350" role="img" aria-label="작동 개념도. SSD에 모델을 보관한 채 필요한 전문가 칸만 메모리의 임시 보관 자리로 복사되고, GPU가 계산해 글 조각을 내놓습니다. 다음 계산에서는 두 자리를 재사용하고 두 자리만 새로 읽습니다.">
-                  <text x="0" y="16" fill="#52635A" font-size="16">SSD · 모델 보관</text>
+                  <text x="0" y="16" fill="#45564B" font-size="16">SSD · 모델 보관</text>
                   <g class="c2-cells">
-                    <rect x="0" y="28" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="60" y="28" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="120" y="28" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="180" y="28" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="240" y="28" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="300" y="28" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="360" y="28" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="420" y="28" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="0" y="56" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="60" y="56" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="120" y="56" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="180" y="56" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="240" y="56" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="300" y="56" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="360" y="56" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="420" y="56" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="0" y="84" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="60" y="84" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="120" y="84" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="180" y="84" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="240" y="84" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="300" y="84" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="360" y="84" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="420" y="84" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="0" y="112" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="60" y="112" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="120" y="112" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="180" y="112" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="240" y="112" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="300" y="112" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="360" y="112" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="420" y="112" width="52" height="20" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="0" y="28" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="60" y="28" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="120" y="28" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="180" y="28" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="240" y="28" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="300" y="28" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="360" y="28" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="420" y="28" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="0" y="56" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="60" y="56" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="120" y="56" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="180" y="56" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="240" y="56" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="300" y="56" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="360" y="56" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="420" y="56" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="0" y="84" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="60" y="84" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="120" y="84" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="180" y="84" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="240" y="84" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="300" y="84" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="360" y="84" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="420" y="84" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="0" y="112" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="60" y="112" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="120" y="112" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="180" y="112" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="240" y="112" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="300" y="112" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="360" y="112" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="420" y="112" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
                   </g>
-                  <rect class="c2-hl-a0" x="120" y="28" width="52" height="20" fill="#315E9E"/>
-                  <rect class="c2-hl-a1" x="300" y="56" width="52" height="20" fill="#315E9E"/>
-                  <rect class="c2-hl-a2" x="60" y="84" width="52" height="20" fill="#315E9E" style="opacity:0"/>
-                  <rect class="c2-hl-a3" x="360" y="112" width="52" height="20" fill="#315E9E" style="opacity:0"/>
-                  <rect class="c2-hl-b2" x="180" y="56" width="52" height="20" fill="#315E9E"/>
-                  <rect class="c2-hl-b3" x="120" y="112" width="52" height="20" fill="#315E9E"/>
-                  <text x="0" y="166" fill="#52635A" font-size="16">필요한 전문가만 읽기</text>
-                  <path d="M184 152V172M178 166L184 172L190 166" fill="none" stroke="#315E9E" stroke-width="2" vector-effect="non-scaling-stroke"/>
-                  <text x="0" y="196" fill="#52635A" font-size="16">메모리 · 임시 보관</text>
+                  <rect class="c2-hl-a0" x="120" y="28" width="52" height="20" fill="#285590"/>
+                  <rect class="c2-hl-a1" x="300" y="56" width="52" height="20" fill="#285590"/>
+                  <rect class="c2-hl-a2" x="60" y="84" width="52" height="20" fill="#285590" style="opacity:0"/>
+                  <rect class="c2-hl-a3" x="360" y="112" width="52" height="20" fill="#285590" style="opacity:0"/>
+                  <rect class="c2-hl-b2" x="180" y="56" width="52" height="20" fill="#285590"/>
+                  <rect class="c2-hl-b3" x="120" y="112" width="52" height="20" fill="#285590"/>
+                  <text x="0" y="166" fill="#45564B" font-size="16">필요한 전문가만 읽기</text>
+                  <path d="M184 152V172M178 166L184 172L190 166" fill="none" stroke="#285590" stroke-width="2" vector-effect="non-scaling-stroke"/>
+                  <text x="0" y="196" fill="#45564B" font-size="16">메모리 · 임시 보관</text>
                   <g class="c2-slots">
-                    <rect x="0" y="208" width="92" height="34" fill="#FFFDF8" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="104" y="208" width="92" height="34" fill="#FFFDF8" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="208" y="208" width="92" height="34" fill="#FFFDF8" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="312" y="208" width="92" height="34" fill="#FFFDF8" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="0" y="208" width="92" height="34" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="104" y="208" width="92" height="34" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="208" y="208" width="92" height="34" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="312" y="208" width="92" height="34" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
                   </g>
-                  <rect class="c2-cp-a0 tx" x="20" y="215" width="52" height="20" fill="#315E9E"/>
-                  <rect class="c2-cp-a1 tx" x="124" y="215" width="52" height="20" fill="#315E9E"/>
-                  <rect class="c2-cp-a2 tx" x="228" y="215" width="52" height="20" fill="#315E9E" style="opacity:0"/>
-                  <rect class="c2-cp-a3 tx" x="332" y="215" width="52" height="20" fill="#315E9E" style="opacity:0"/>
-                  <rect class="c2-cp-b2 tx" x="228" y="215" width="52" height="20" fill="#315E9E"/>
-                  <rect class="c2-cp-b3 tx" x="332" y="215" width="52" height="20" fill="#315E9E"/>
-                  <rect class="c2-slot-0" x="0" y="208" width="92" height="34" fill="none" stroke="#315E9E" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                  <rect class="c2-slot-1" x="104" y="208" width="92" height="34" fill="none" stroke="#315E9E" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                  <rect class="c2-slot-2" x="208" y="208" width="92" height="34" fill="none" stroke="#315E9E" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                  <rect class="c2-slot-3" x="312" y="208" width="92" height="34" fill="none" stroke="#315E9E" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                  <text class="c2-reuse-0" x="2" y="262" fill="#315E9E" font-size="16">재사용</text>
-                  <text class="c2-reuse-1" x="106" y="262" fill="#315E9E" font-size="16">재사용</text>
-                  <path class="c2-link" d="M408 225H428M422 219L428 225L422 231" fill="none" stroke="#315E9E" stroke-width="2" vector-effect="non-scaling-stroke"/>
-                  <rect class="c2-gpu" x="436" y="202" width="124" height="46" fill="#E2EBE5" stroke="#718478" stroke-width="2" vector-effect="non-scaling-stroke"/>
-                  <text class="c2-gpu-t" x="498" y="231" fill="#24342E" font-size="17" text-anchor="middle">GPU · 계산</text>
-                  <rect class="c2-frag-0" x="436" y="262" width="112" height="12" rx="3" fill="#315E9E"/>
-                  <rect class="c2-frag-1" x="436" y="282" width="84" height="12" rx="3" fill="#315E9E"/>
-                  <text x="0" y="330" fill="#52635A" font-size="16">개념도 · 칸 수는 예시</text>
+                  <rect class="c2-cp-a0 tx" x="20" y="215" width="52" height="20" fill="#285590"/>
+                  <rect class="c2-cp-a1 tx" x="124" y="215" width="52" height="20" fill="#285590"/>
+                  <rect class="c2-cp-a2 tx" x="228" y="215" width="52" height="20" fill="#285590" style="opacity:0"/>
+                  <rect class="c2-cp-a3 tx" x="332" y="215" width="52" height="20" fill="#285590" style="opacity:0"/>
+                  <rect class="c2-cp-b2 tx" x="228" y="215" width="52" height="20" fill="#285590"/>
+                  <rect class="c2-cp-b3 tx" x="332" y="215" width="52" height="20" fill="#285590"/>
+                  <rect class="c2-slot-0" x="0" y="208" width="92" height="34" fill="none" stroke="#285590" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                  <rect class="c2-slot-1" x="104" y="208" width="92" height="34" fill="none" stroke="#285590" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                  <rect class="c2-slot-2" x="208" y="208" width="92" height="34" fill="none" stroke="#285590" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                  <rect class="c2-slot-3" x="312" y="208" width="92" height="34" fill="none" stroke="#285590" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                  <text class="c2-reuse-0" x="2" y="262" fill="#285590" font-size="16">재사용</text>
+                  <text class="c2-reuse-1" x="106" y="262" fill="#285590" font-size="16">재사용</text>
+                  <path class="c2-link" d="M408 225H428M422 219L428 225L422 231" fill="none" stroke="#285590" stroke-width="2" vector-effect="non-scaling-stroke"/>
+                  <rect class="c2-gpu" x="436" y="202" width="124" height="46" fill="#FFFDF8" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+                  <text class="c2-gpu-t" x="498" y="231" fill="#192820" font-size="17" text-anchor="middle">GPU · 계산</text>
+                  <rect class="c2-frag-0" x="436" y="262" width="112" height="12" rx="3" fill="#285590"/>
+                  <rect class="c2-frag-1" x="436" y="282" width="84" height="12" rx="3" fill="#285590"/>
+                  <text x="0" y="330" fill="#45564B" font-size="16">개념도 · 칸 수는 예시</text>
                 </svg>
               </div>
             </div>
@@ -514,41 +523,41 @@
               <div class="chapter-art">
                 <svg class="scene" viewBox="0 0 560 460" role="img" aria-label="크기 비교. 내 PC 메모리 32GB 한 칸 옆에 모델 파일 447GB를 나타내는 열네 칸 탑이 서 있고, 13배 이상이라고 적혀 있습니다. 탑에서 전문가 조각 몇 개가 PC의 고정된 작업 공간으로 옮겨오고 응답 확인 표시가 붙습니다.">
                   <g class="c3-cam tx" >
-                    <rect x="40" y="374" width="84" height="24" fill="#718478" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="176" y="374" width="84" height="24" fill="#315E9E" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="176" y="348" width="84" height="24" fill="#315E9E" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="176" y="322" width="84" height="24" fill="#315E9E" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="176" y="296" width="84" height="24" fill="#315E9E" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="176" y="270" width="84" height="24" fill="#315E9E" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="176" y="244" width="84" height="24" fill="#315E9E" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="176" y="218" width="84" height="24" fill="#315E9E" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="176" y="192" width="84" height="24" fill="#315E9E" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="176" y="166" width="84" height="24" fill="#315E9E" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="176" y="140" width="84" height="24" fill="#315E9E" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="176" y="114" width="84" height="24" fill="#315E9E" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="176" y="88" width="84" height="24" fill="#315E9E" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="176" y="62" width="84" height="24" fill="#315E9E" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="176" y="36" width="84" height="24" fill="#315E9E" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="40" y="374" width="84" height="24" fill="#536B5C" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="176" y="374" width="84" height="24" fill="#285590" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="176" y="348" width="84" height="24" fill="#285590" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="176" y="322" width="84" height="24" fill="#285590" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="176" y="296" width="84" height="24" fill="#285590" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="176" y="270" width="84" height="24" fill="#285590" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="176" y="244" width="84" height="24" fill="#285590" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="176" y="218" width="84" height="24" fill="#285590" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="176" y="192" width="84" height="24" fill="#285590" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="176" y="166" width="84" height="24" fill="#285590" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="176" y="140" width="84" height="24" fill="#285590" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="176" y="114" width="84" height="24" fill="#285590" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="176" y="88" width="84" height="24" fill="#285590" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="176" y="62" width="84" height="24" fill="#285590" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="176" y="36" width="84" height="24" fill="#285590" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
                   </g>
-                  <text x="24" y="424" fill="#52635A" font-size="16">내 PC 메모리 32GB</text>
-                  <text class="c3-lab" x="160" y="26" fill="#52635A" font-size="16">모델 파일 447GB</text>
-                  <path class="c3-brk" d="M272 36H282M282 36V398M272 398H282" fill="none" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                  <text class="c3-mult" x="292" y="222" fill="#24342E" font-size="18">13배 이상</text>
+                  <text x="24" y="424" fill="#45564B" font-size="16">내 PC 메모리 32GB</text>
+                  <text class="c3-lab" x="160" y="26" fill="#45564B" font-size="16">모델 파일 447GB</text>
+                  <path class="c3-brk" d="M272 36H282M282 36V398M272 398H282" fill="none" stroke="#536B5C" stroke-width="2" vector-effect="non-scaling-stroke"/>
+                  <text class="c3-mult" x="292" y="222" fill="#192820" font-size="18">13배 이상</text>
                   <g class="c3-pc">
-                    <rect x="372" y="258" width="152" height="100" fill="#FFFDF8" stroke="#718478" stroke-width="2" vector-effect="non-scaling-stroke"/>
-                    <rect x="384" y="270" width="128" height="76" fill="#E2EBE5" stroke="#718478" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <path d="M436 358V374H412V380H460V374H436" fill="none" stroke="#718478" stroke-width="2" vector-effect="non-scaling-stroke"/>
-                    <rect x="532" y="268" width="24" height="90" fill="none" stroke="#718478" stroke-width="2" vector-effect="non-scaling-stroke"/>
-                    <text x="372" y="400" fill="#52635A" font-size="16">내 PC</text>
+                    <rect x="372" y="258" width="152" height="100" fill="#FFFDF8" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="384" y="270" width="128" height="76" fill="#E2EBE5" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                    <path d="M436 358V374H412V380H460V374H436" fill="none" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+                    <rect x="532" y="268" width="24" height="90" fill="none" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+                    <text x="372" y="400" fill="#45564B" font-size="16">내 PC</text>
                   </g>
-                  <g class="c3-tile" fill="#315E9E">
+                  <g class="c3-tile" fill="#285590">
                     <rect class="c3-t0 tx" x="398" y="296" width="18" height="18"/>
                     <rect class="c3-t1 tx" x="424" y="296" width="18" height="18"/>
                     <rect class="c3-t2 tx" x="450" y="296" width="18" height="18"/>
                   </g>
                   <g class="c3-ok">
-                    <path d="M374 421L379 427L389 415" fill="none" stroke="#315E9E" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
-                    <text x="396" y="428" fill="#315E9E" font-size="16">응답 확인</text>
+                    <path d="M374 421L379 427L389 415" fill="none" stroke="#285590" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+                    <text x="396" y="428" fill="#285590" font-size="16">응답 확인</text>
                   </g>
                 </svg>
               </div>
@@ -563,12 +572,12 @@
                 <div class="gain-strip">
                   <div>
                     <svg class="mini" viewBox="0 0 200 130" role="img" aria-label="데스크톱 한 대 안에서 질문과 답이 오가고, 인터넷 플러그는 둘로 떨어져 있습니다.">
-                      <rect x="10" y="14" width="116" height="74" fill="#FFFDF8" stroke="#718478" stroke-width="2" vector-effect="non-scaling-stroke"/>
-                      <path d="M58 88V100H40V105H96V100H78V88" fill="none" stroke="#718478" stroke-width="2" vector-effect="non-scaling-stroke"/>
-                      <rect x="136" y="14" width="30" height="91" fill="none" stroke="#718478" stroke-width="2" vector-effect="non-scaling-stroke"/>
-                      <rect class="m1-b0" x="20" y="26" width="64" height="15" rx="4" fill="#315E9E"/>
-                      <rect class="m1-b1" x="50" y="50" width="64" height="15" rx="4" fill="#718478"/>
-                      <g stroke="#718478" stroke-width="2" fill="none">
+                      <rect x="10" y="14" width="116" height="74" fill="#FFFDF8" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+                      <path d="M58 88V100H40V105H96V100H78V88" fill="none" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+                      <rect x="136" y="14" width="30" height="91" fill="none" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+                      <rect class="m1-b0" x="20" y="26" width="64" height="15" rx="4" fill="#285590"/>
+                      <rect class="m1-b1" x="50" y="50" width="64" height="15" rx="4" fill="#536B5C"/>
+                      <g stroke="#536B5C" stroke-width="2" fill="none">
                         <path class="m1-pl tx" vector-effect="non-scaling-stroke" d="M96 116H116V128H96Z"/>
                         <path class="m1-pl tx" vector-effect="non-scaling-stroke" d="M116 119H124M116 125H124"/>
                         <path class="m1-pr tx" vector-effect="non-scaling-stroke" d="M134 116H156V128H134Z"/>
@@ -578,13 +587,13 @@
                   </div>
                   <div>
                     <svg class="mini" viewBox="0 0 200 130" role="img" aria-label="프로그램 창을 요청 세 건이 지나가고, 프로그램 이용료 0원 표시는 그대로입니다.">
-                      <rect x="14" y="12" width="132" height="74" fill="#FFFDF8" stroke="#718478" stroke-width="2" vector-effect="non-scaling-stroke"/>
-                      <path d="M14 30H146" stroke="#718478" stroke-width="1.5" fill="none" vector-effect="non-scaling-stroke"/>
-                      <g fill="#718478"><circle cx="24" cy="21" r="3"/><circle cx="34" cy="21" r="3"/><circle cx="44" cy="21" r="3"/></g>
-                      <rect class="m2-c0 tx" x="152" y="38" width="30" height="11" rx="2" fill="#315E9E"/>
-                      <rect class="m2-c1 tx" x="152" y="54" width="30" height="11" rx="2" fill="#315E9E"/>
-                      <rect class="m2-c2 tx" x="152" y="70" width="30" height="11" rx="2" fill="#315E9E"/>
-                      <text x="14" y="118" fill="#52635A" font-size="16">프로그램 이용료 0원</text>
+                      <rect x="14" y="12" width="132" height="74" fill="#FFFDF8" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+                      <path d="M14 30H146" stroke="#536B5C" stroke-width="1.5" fill="none" vector-effect="non-scaling-stroke"/>
+                      <g fill="#536B5C"><circle cx="24" cy="21" r="3"/><circle cx="34" cy="21" r="3"/><circle cx="44" cy="21" r="3"/></g>
+                      <rect class="m2-c0 tx" x="152" y="38" width="30" height="11" rx="2" fill="#285590"/>
+                      <rect class="m2-c1 tx" x="152" y="54" width="30" height="11" rx="2" fill="#285590"/>
+                      <rect class="m2-c2 tx" x="152" y="70" width="30" height="11" rx="2" fill="#285590"/>
+                      <text x="14" y="118" fill="#45564B" font-size="16">프로그램 이용료 0원</text>
                     </svg>
                     <strong>요금도 사용량 제한도 없이</strong><span>무료로 공개된 오픈소스입니다. 내 장비가 허락하는 만큼 씁니다.</span>
                   </div>
@@ -594,14 +603,14 @@
                         <rect x="104" y="4" width="64" height="100" fill="#FFFDF8" stroke="#000000" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
                         <path d="M104 28H168M104 52H168M104 76H168" stroke="#000000" stroke-width="1.5" fill="none" vector-effect="non-scaling-stroke"/>
                       </g>
-                      <rect x="8" y="24" width="100" height="64" fill="#FFFDF8" stroke="#718478" stroke-width="2" vector-effect="non-scaling-stroke"/>
-                      <path d="M50 88V98H34V103H82V98H66V88" fill="none" stroke="#718478" stroke-width="2" vector-effect="non-scaling-stroke"/>
-                      <rect x="116" y="32" width="26" height="72" fill="#FFFDF8" stroke="#718478" stroke-width="2" vector-effect="non-scaling-stroke"/>
+                      <rect x="8" y="24" width="100" height="64" fill="#FFFDF8" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+                      <path d="M50 88V98H34V103H82V98H66V88" fill="none" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+                      <rect x="116" y="32" width="26" height="72" fill="#FFFDF8" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
                       <g class="m3-chip">
-                        <rect x="8" y="110" width="14" height="10" fill="#315E9E"/>
-                        <text x="26" y="120" fill="#52635A" font-size="16">GPU</text>
-                        <rect x="72" y="110" width="14" height="10" fill="#315E9E"/>
-                        <text x="90" y="120" fill="#52635A" font-size="16">SSD</text>
+                        <rect x="8" y="110" width="14" height="10" fill="#285590"/>
+                        <text x="26" y="120" fill="#45564B" font-size="16">GPU</text>
+                        <rect x="72" y="110" width="14" height="10" fill="#285590"/>
+                        <text x="90" y="120" fill="#45564B" font-size="16">SSD</text>
                       </g>
                     </svg>
                     <strong>서버급 장비 없이, 지금 가진 PC로</strong><span>서버 장비를 새로 들이지 않고, 이미 쓰고 있는 데스크톱에서 실행합니다.</span><em>Windows · NVIDIA 그래픽카드 · NVMe SSD</em>
@@ -622,229 +631,229 @@
                   <div class="metric-row">
                     <div class="metric-card metric-card-hw">
                       <svg class="scene-card" viewBox="0 0 260 340" role="img" aria-label="기준 PC. 메모리 32GB, RTX 5080 16GB, Gen5 NVMe.">
-                        <rect x="0" y="0" width="260" height="340" fill="#FFFDF8" stroke="#CFDAD2" stroke-width="1"/>
-                        <text x="20" y="34" fill="#52635A" font-size="17">기준 PC</text>
-                        <rect x="20" y="54" width="150" height="96" fill="#FFFDF8" stroke="#718478" stroke-width="2" vector-effect="non-scaling-stroke"/>
-                        <path d="M86 150V166H62V172H130V166H106V150" fill="none" stroke="#718478" stroke-width="2" vector-effect="non-scaling-stroke"/>
-                        <rect x="182" y="54" width="44" height="112" fill="none" stroke="#718478" stroke-width="2" vector-effect="non-scaling-stroke"/>
-                        <text x="20" y="208" fill="#24342E" font-size="19">메모리 32GB</text>
-                        <text x="20" y="238" fill="#52635A" font-size="16">RTX 5080 16GB</text>
-                        <text x="20" y="262" fill="#52635A" font-size="16">Gen5 NVMe</text>
+                        <rect x="0" y="0" width="260" height="340" fill="#FFFDF8"/>
+                        <text x="20" y="34" fill="#45564B" font-size="17">기준 PC</text>
+                        <rect x="20" y="54" width="150" height="96" fill="#FFFDF8" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+                        <path d="M86 150V166H62V172H130V166H106V150" fill="none" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+                        <rect x="182" y="54" width="44" height="112" fill="none" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+                        <text x="20" y="208" fill="#192820" font-size="19">메모리 32GB</text>
+                        <text x="20" y="238" fill="#45564B" font-size="16">RTX 5080 16GB</text>
+                        <text x="20" y="262" fill="#45564B" font-size="16">Gen5 NVMe</text>
                       </svg>
                     </div>
                     <div class="metric-card">
                       <svg class="scene-card" viewBox="0 0 466 340" role="img" aria-label="Qwen3.5-122B Q4_K_M. SSD의 전문가 데이터 72.8GB, 5.59에서 5.69 tok/s, 검증 통과. 10초로 환산하면 글 조각 약 56개.">
-                        <rect x="0" y="0" width="466" height="340" fill="#FFFDF8" stroke="#CFDAD2" stroke-width="1"/>
-                        <text x="20" y="34" fill="#24342E" font-size="17">Qwen3.5-122B · Q4_K_M</text>
-                        <text x="20" y="66" fill="#52635A" font-size="16">SSD의 전문가 데이터</text>
-                        <rect x="20" y="76" width="426" height="18" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                        <rect class="c5-bar sx" x="20" y="76" width="71" height="18" fill="#315E9E"/>
-                        <text x="20" y="118" fill="#52635A" font-size="17">72.8 GB</text>
-                        <text x="20" y="182" fill="#24342E" font-size="26" font-weight="700">5.59–5.69 tok/s</text>
+                        <rect x="0" y="0" width="466" height="340" fill="#FFFDF8"/>
+                        <text x="20" y="34" fill="#192820" font-size="17">Qwen3.5-122B · Q4_K_M</text>
+                        <text x="20" y="66" fill="#45564B" font-size="16">SSD의 전문가 데이터</text>
+                        <rect x="20" y="76" width="426" height="18" fill="#D5E1D8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                        <rect class="c5-bar sx" x="20" y="76" width="71" height="18" fill="#285590"/>
+                        <text x="20" y="118" fill="#45564B" font-size="17">72.8 GB</text>
+                        <text x="20" y="182" fill="#192820" font-size="26" font-weight="700">5.59–5.69 tok/s</text>
                         <text x="20" y="210" fill="#2D6545" font-size="16">검증 통과</text>
-                        <text x="20" y="246" fill="#52635A" font-size="16">글 조각(토큰)</text>
-                        <text class="c5-total" x="446" y="246" fill="#24342E" font-size="18" text-anchor="end">≈ 56개</text>
-                        <rect x="20" y="256" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="54" y="256" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="88" y="256" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="122" y="256" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="156" y="256" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="190" y="256" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="224" y="256" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="258" y="256" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="292" y="256" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="326" y="256" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="360" y="256" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="394" y="256" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="20" y="271" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="54" y="271" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="88" y="271" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="122" y="271" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="156" y="271" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="190" y="271" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="224" y="271" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="258" y="271" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="292" y="271" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="326" y="271" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="360" y="271" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="394" y="271" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="20" y="286" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="54" y="286" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="88" y="286" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="122" y="286" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="156" y="286" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="190" y="286" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="224" y="286" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="258" y="286" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="292" y="286" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="326" y="286" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="360" y="286" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="394" y="286" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="20" y="301" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="54" y="301" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="88" y="301" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="122" y="301" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="156" y="301" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="190" y="301" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="224" y="301" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="258" y="301" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="292" y="301" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="326" y="301" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="360" y="301" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="394" y="301" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="20" y="316" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="54" y="316" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="88" y="316" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="122" y="316" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="156" y="316" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="190" y="316" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="224" y="316" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="258" y="316" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="292" y="316" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="326" y="316" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="360" y="316" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="394" y="316" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                        <rect class="c5-qm" x="20" y="256" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="54" y="256" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="88" y="256" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="122" y="256" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="156" y="256" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="190" y="256" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="224" y="256" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="258" y="256" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="292" y="256" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="326" y="256" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="360" y="256" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="394" y="256" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="20" y="271" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="54" y="271" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="88" y="271" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="122" y="271" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="156" y="271" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="190" y="271" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="224" y="271" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="258" y="271" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="292" y="271" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="326" y="271" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="360" y="271" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="394" y="271" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="20" y="286" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="54" y="286" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="88" y="286" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="122" y="286" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="156" y="286" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="190" y="286" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="224" y="286" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="258" y="286" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="292" y="286" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="326" y="286" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="360" y="286" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="394" y="286" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="20" y="301" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="54" y="301" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="88" y="301" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="122" y="301" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="156" y="301" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="190" y="301" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="224" y="301" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="258" y="301" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="292" y="301" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="326" y="301" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="360" y="301" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="394" y="301" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="20" y="316" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="54" y="316" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="88" y="316" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="122" y="316" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="156" y="316" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="190" y="316" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="224" y="316" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-qm" x="258" y="316" width="26" height="9" rx="2" fill="#315E9E"/>
+                        <text x="20" y="246" fill="#45564B" font-size="16">글 조각(토큰)</text>
+                        <text class="c5-total" x="446" y="246" fill="#192820" font-size="18" text-anchor="end">≈ 56개</text>
+                        <rect x="20" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="54" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="88" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="122" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="156" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="190" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="224" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="258" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="292" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="326" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="360" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="394" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="20" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="54" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="88" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="122" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="156" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="190" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="224" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="258" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="292" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="326" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="360" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="394" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="20" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="54" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="88" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="122" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="156" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="190" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="224" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="258" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="292" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="326" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="360" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="394" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="20" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="54" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="88" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="122" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="156" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="190" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="224" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="258" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="292" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="326" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="360" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="394" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="20" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="54" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="88" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="122" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="156" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="190" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="224" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="258" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="292" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="326" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="360" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="394" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                        <rect class="c5-qm" x="20" y="256" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="54" y="256" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="88" y="256" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="122" y="256" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="156" y="256" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="190" y="256" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="224" y="256" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="258" y="256" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="292" y="256" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="326" y="256" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="360" y="256" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="394" y="256" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="20" y="271" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="54" y="271" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="88" y="271" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="122" y="271" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="156" y="271" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="190" y="271" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="224" y="271" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="258" y="271" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="292" y="271" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="326" y="271" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="360" y="271" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="394" y="271" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="20" y="286" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="54" y="286" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="88" y="286" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="122" y="286" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="156" y="286" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="190" y="286" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="224" y="286" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="258" y="286" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="292" y="286" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="326" y="286" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="360" y="286" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="394" y="286" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="20" y="301" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="54" y="301" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="88" y="301" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="122" y="301" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="156" y="301" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="190" y="301" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="224" y="301" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="258" y="301" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="292" y="301" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="326" y="301" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="360" y="301" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="394" y="301" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="20" y="316" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="54" y="316" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="88" y="316" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="122" y="316" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="156" y="316" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="190" y="316" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="224" y="316" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-qm" x="258" y="316" width="26" height="9" rx="2" fill="#285590"/>
                       </svg>
                     </div>
                     <div class="metric-card">
                       <svg class="scene-card" viewBox="0 0 466 340" role="img" aria-label="Kimi K2.6 mixed-quant. SSD의 전문가 데이터 436GB, 전체 모델 파일 447GB, 1.03 tok/s, 탐색 측정이라 대화형 사용에는 부적합합니다. 10초로 환산하면 글 조각 약 10개.">
-                        <rect x="0" y="0" width="466" height="340" fill="#FFFDF8" stroke="#CFDAD2" stroke-width="1"/>
-                        <text x="20" y="34" fill="#24342E" font-size="17">Kimi K2.6 · mixed-quant</text>
-                        <text x="20" y="66" fill="#52635A" font-size="16">SSD의 전문가 데이터</text>
-                        <rect x="20" y="76" width="426" height="18" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                        <rect class="c5-bar sx" x="20" y="76" width="426" height="18" fill="#315E9E"/>
-                        <text x="20" y="118" fill="#52635A" font-size="17">436 GB</text>
-                        <text x="20" y="144" fill="#52635A" font-size="16">전체 모델 파일 447GB</text>
-                        <text x="20" y="182" fill="#24342E" font-size="26" font-weight="700">1.03 tok/s</text>
+                        <rect x="0" y="0" width="466" height="340" fill="#FFFDF8"/>
+                        <text x="20" y="34" fill="#192820" font-size="17">Kimi K2.6 · mixed-quant</text>
+                        <text x="20" y="66" fill="#45564B" font-size="16">SSD의 전문가 데이터</text>
+                        <rect x="20" y="76" width="426" height="18" fill="#D5E1D8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                        <rect class="c5-bar sx" x="20" y="76" width="426" height="18" fill="#285590"/>
+                        <text x="20" y="118" fill="#45564B" font-size="17">436 GB</text>
+                        <text x="20" y="144" fill="#45564B" font-size="16">전체 모델 파일 447GB</text>
+                        <text x="20" y="182" fill="#192820" font-size="26" font-weight="700">1.03 tok/s</text>
                         <text x="20" y="210" fill="#77551C" font-size="16">탐색 측정(PROBE) · 대화형 사용 부적합</text>
-                        <text x="20" y="246" fill="#52635A" font-size="16">글 조각(토큰)</text>
-                        <text class="c5-total" x="446" y="246" fill="#24342E" font-size="18" text-anchor="end">≈ 10개</text>
-                        <rect x="20" y="256" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="54" y="256" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="88" y="256" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="122" y="256" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="156" y="256" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="190" y="256" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="224" y="256" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="258" y="256" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="292" y="256" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="326" y="256" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="360" y="256" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="394" y="256" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="20" y="271" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="54" y="271" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="88" y="271" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="122" y="271" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="156" y="271" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="190" y="271" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="224" y="271" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="258" y="271" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="292" y="271" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="326" y="271" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="360" y="271" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="394" y="271" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="20" y="286" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="54" y="286" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="88" y="286" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="122" y="286" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="156" y="286" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="190" y="286" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="224" y="286" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="258" y="286" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="292" y="286" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="326" y="286" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="360" y="286" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="394" y="286" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="20" y="301" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="54" y="301" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="88" y="301" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="122" y="301" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="156" y="301" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="190" y="301" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="224" y="301" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="258" y="301" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="292" y="301" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="326" y="301" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="360" y="301" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="394" y="301" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="20" y="316" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="54" y="316" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="88" y="316" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="122" y="316" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="156" y="316" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="190" y="316" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="224" y="316" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="258" y="316" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="292" y="316" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="326" y="316" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="360" y="316" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="394" y="316" width="26" height="9" rx="2" fill="#E2EBE5" stroke="#718478" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                        <rect class="c5-km" x="20" y="256" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-km" x="54" y="256" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-km" x="88" y="256" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-km" x="122" y="256" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-km" x="156" y="256" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-km" x="190" y="256" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-km" x="224" y="256" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-km" x="258" y="256" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-km" x="292" y="256" width="26" height="9" rx="2" fill="#315E9E"/>
-                  <rect class="c5-km" x="326" y="256" width="26" height="9" rx="2" fill="#315E9E"/>
+                        <text x="20" y="246" fill="#45564B" font-size="16">글 조각(토큰)</text>
+                        <text class="c5-total" x="446" y="246" fill="#192820" font-size="18" text-anchor="end">≈ 10개</text>
+                        <rect x="20" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="54" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="88" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="122" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="156" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="190" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="224" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="258" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="292" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="326" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="360" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="394" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="20" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="54" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="88" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="122" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="156" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="190" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="224" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="258" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="292" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="326" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="360" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="394" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="20" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="54" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="88" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="122" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="156" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="190" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="224" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="258" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="292" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="326" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="360" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="394" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="20" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="54" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="88" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="122" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="156" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="190" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="224" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="258" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="292" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="326" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="360" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="394" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="20" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="54" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="88" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="122" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="156" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="190" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="224" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="258" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="292" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="326" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="360" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                  <rect x="394" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                        <rect class="c5-km" x="20" y="256" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-km" x="54" y="256" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-km" x="88" y="256" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-km" x="122" y="256" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-km" x="156" y="256" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-km" x="190" y="256" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-km" x="224" y="256" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-km" x="258" y="256" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-km" x="292" y="256" width="26" height="9" rx="2" fill="#285590"/>
+                  <rect class="c5-km" x="326" y="256" width="26" height="9" rx="2" fill="#285590"/>
                       </svg>
                     </div>
                   </div>
