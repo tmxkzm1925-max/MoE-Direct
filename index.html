@@ -302,9 +302,10 @@
     .roadmap{border-left:1px solid var(--line)}
     .roadmap article{border-bottom:1px solid var(--line)}
     .roadmap article:before{background:var(--outline);box-shadow:0 0 0 6px var(--paper)}
-    .roadmap-status{color:var(--muted)}
-    .roadmap-status.next{color:var(--blue)}
-    .roadmap-status.future{color:var(--muted)}
+    /* one neutral chip for all three stages: the entry's own words say where it
+       stands, so the colour does not rank them */
+    .roadmap-status,.roadmap-status.next,.roadmap-status.future{display:inline-block;
+      padding:3px 10px;border:1px solid var(--outline);background:none;color:var(--muted)}
     .roadmap p{color:var(--muted)}
     .about-grid p{color:var(--muted)}
     .site-footer p{color:var(--muted)}
@@ -313,7 +314,7 @@
     /* one emphasis per unit: text, ground, chip or lift, never two */
     .em-focus,.chapter h1>span.em-focus,.slide-title>span.em-focus,
     .principles h3.em-focus,.section-heading h2.em-focus,
-    .document-link.em-focus,.small-label.em-focus,.roadmap-status.em-focus{color:var(--emphasis)}
+    .document-link.em-focus,.small-label.em-focus{color:var(--emphasis)}
     /* No card or row carries an emphasis ground: a coloured panel reads as a
        verdict the reader cannot check. Each unit emphasises one phrase instead,
        and the measurement grades keep their own verified and probe tints. */
@@ -938,8 +939,8 @@
     </div></section>
 
     <section class="section wrapper roadmap-section" id="roadmap">
-      <div class="section-heading"><span class="section-no">06 / WHAT COMES NEXT</span><h2>공개된 현재.<br>측정해 나갈 다음.</h2><p>README에 공개된 개발 상태와 목표입니다. 향후 기능은 아직 제공되는 기능이 아닙니다.</p><a class="document-link" href="https://github.com/tmxkzm1925-max/MoE-Direct#roadmap" target="_blank" rel="noopener noreferrer">최신 로드맵 확인 <span aria-hidden="true">↗</span></a></div>
-      <div class="roadmap"><article><span class="roadmap-status em-focus">공개 프리뷰</span><h3>v0.3 · virtual repack</h3><p>전문가 복사본 없이 원본 GGUF에서 읽는 선택형 경로를 제공합니다. 현재는 packed 경로보다 느리고, virtual 실행에서도 런처 상태 화면이 packed 경로의 검증 결과(성능 게이트 PASS 표시 포함)를 그대로 보여주는 알려진 한계가 있습니다.</p></article><article><span class="roadmap-status next">개발 중</span><h3>v0.3.1 · 구조 정리와 속도 회복</h3><p>코드 구조와 경계 계약을 정리하고, in-place 경로의 성능 회복과 모델 계열에 적응하는 프리패치를 준비합니다.</p></article><article><span class="roadmap-status future">후속 목표</span><h3>엔진 독립화 · 프리필 · 긴 컨텍스트</h3><p>전문가 실행 코어를 엔진과 분리하고, 프리필 경로 개선은 준비되는 순서대로 내놓습니다. 그 위에서 VRAM·RAM·NVMe에 KV cache를 계층화해, 다음 세대 sparse-attention 모델을 대상으로 같은 소비자 환경에서 100만 토큰 컨텍스트를 목표로 합니다.</p></article></div>
+      <div class="section-heading"><span class="section-no">06 / WHAT COMES NEXT</span><h2><span class="em-focus">공개된 현재.</span><br>측정해 나갈 다음.</h2><p>README에 공개된 개발 상태와 목표입니다. 향후 기능은 아직 제공되는 기능이 아닙니다.</p><a class="document-link" href="https://github.com/tmxkzm1925-max/MoE-Direct#roadmap" target="_blank" rel="noopener noreferrer">최신 로드맵 확인 <span aria-hidden="true">↗</span></a></div>
+      <div class="roadmap"><article><span class="roadmap-status">공개 프리뷰</span><h3>v0.3 · virtual repack</h3><p>전문가 복사본 없이 원본 GGUF에서 읽는 선택형 경로를 제공합니다. 현재는 packed 경로보다 느리고, virtual 실행에서도 런처 상태 화면이 packed 경로의 검증 결과(성능 게이트 PASS 표시 포함)를 그대로 보여주는 알려진 한계가 있습니다.</p></article><article><span class="roadmap-status next">개발 중</span><h3>v0.3.1 · 구조 정리와 속도 회복</h3><p>코드 구조와 경계 계약을 정리하고, in-place 경로의 성능 회복과 모델 계열에 적응하는 프리패치를 준비합니다.</p></article><article><span class="roadmap-status future">후속 목표</span><h3>엔진 독립화 · 프리필 · 긴 컨텍스트</h3><p>전문가 실행 코어를 엔진과 분리하고, 프리필 경로 개선은 준비되는 순서대로 내놓습니다. 그 위에서 VRAM·RAM·NVMe에 KV cache를 계층화해, 다음 세대 sparse-attention 모델을 대상으로 같은 소비자 환경에서 100만 토큰 컨텍스트를 목표로 합니다.</p></article></div>
     </section>
 
     <section class="about-strip"><div class="wrapper about-grid"><div><span class="section-no">BUILT IN THE OPEN</span><h2>한 사람이 방향을 잡고,<br>AI와 함께 검증합니다.</h2></div><div><p>설계와 결정은 개발자가 맡고, Claude와 GPT가 설계·구현·상호 검토에 참여합니다. 공개된 설계 노트에는 논의와 검토 과정이 남아 있습니다.</p><p>MoE-Direct는 llama.cpp를 기반으로 한 MIT 라이선스 프로젝트입니다. 언급된 모델 개발사와 제휴 관계가 없으며, 공식 보증을 받은 프로젝트가 아닙니다.</p><p>보관된 릴리스에는 DOI가 있습니다: <a href="https://doi.org/10.5281/zenodo.21739367" target="_blank" rel="noopener noreferrer">10.5281/zenodo.21739367 ↗</a></p><a class="document-link em-focus" href="https://github.com/tmxkzm1925-max/MoE-Direct/tree/main/docs/design-notes" target="_blank" rel="noopener noreferrer">공개 설계 노트 읽기 <span aria-hidden="true">↗</span></a></div></div></section>
