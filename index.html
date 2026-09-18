@@ -19,7 +19,10 @@
     #how,#results,#demo,#models,#start,#roadmap{scroll-margin-top:var(--hdr)}
     .story{position:relative}
     .stage{position:relative;display:flex;align-items:center}
-    .stage-inner{position:relative;width:100%}
+    /* no width override here: .stage-inner carries .wrapper, so letting the
+       stylesheet's width win gives the pinned chapters the same side gutter as
+       the static sections at every breakpoint. */
+    .stage-inner{position:relative}
     .chapter{display:flex;align-items:center;min-height:100vh;padding-block:70px}
     .chapter>.slide-grid{width:100%}
     .story.js{height:560vh;height:560svh}
@@ -116,9 +119,6 @@
       .site-header .header-rail::-webkit-scrollbar{display:none}
       .site-header .header-rail nav{gap:6px}
       .site-header .header-rail nav a,.site-header .header-rail .header-source{padding:6px 10px;font-size:13px;scroll-snap-align:start}
-      /* .stage-inner overrides .wrapper's width, so the pinned chapters need
-         their own gutter or they run to the screen edge on a phone. */
-      .story.js .stage-inner{width:calc(100% - 40px)}
       .story.js .chapter{padding-block:0}
       .chapter h1,.slide-title,.chapter-solo h1,.chapter-solo .slide-title{font-size:clamp(24px,7.2vw,30px);line-height:1.28;letter-spacing:-1.1px;margin:0 0 10px}
       .slide-lead{font-size:15px;line-height:1.62;max-width:none}
