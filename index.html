@@ -328,6 +328,319 @@
        verdict the reader cannot check. Each unit emphasises one phrase instead,
        and the measurement grades keep their own verified and probe tints. */
     .em-lift{box-shadow:var(--lift-shadow)}
+    /* Local comparison: art-led chapters, chapter 4 type hierarchy,
+       and a separate colour for chapter 5 storage bars. */
+    @media(min-width:801px){
+      #chapter-1 .slide-grid,#chapter-2 .slide-grid,#chapter-3 .slide-grid{
+        grid-template-columns:minmax(0,1fr) minmax(0,1.7fr);gap:40px}
+      #chapter-1 .scene,#chapter-2 .scene,#chapter-3 .scene{
+        width:100%;max-width:100%;max-height:calc(100svh - var(--hdr) - 110px);
+        align-self:center}
+    }
+    #chapter-1 h1,#chapter-2 .slide-title,#chapter-3 .slide-title,
+    #chapter-4 .slide-title,#chapter-5 .slide-title{
+      font-size:clamp(28px,2.35vw,34px)}
+    #chapter-1 h1,#chapter-2 .slide-title,#chapter-3 .slide-title{
+      line-height:1.3;
+      letter-spacing:-.04em;margin:14px 0 16px}
+    #chapter-1 .slide-lead,#chapter-2 .slide-lead,#chapter-3 .slide-lead{
+      font-size:16px;line-height:1.8}
+    #chapter-1 .hero-actions,#chapter-3 .hero-actions{margin-top:20px}
+    #chapter-4 .slide-title{
+      line-height:1.18;
+      letter-spacing:-.045em;margin:0 0 16px}
+    #chapter-4 .gain-strip{margin-top:36px}
+    #chapter-4 .gain-strip .mini{
+      width:270px;height:auto;aspect-ratio:200 / 130;margin-bottom:22px}
+    #chapter-4 .gain-strip strong{
+      font-size:clamp(24px,2vw,28px);font-weight:800;line-height:1.35;
+      letter-spacing:-.035em;min-height:1.35em;word-break:keep-all;
+      overflow-wrap:anywhere;text-wrap:balance}
+    #chapter-4 .gain-strip>div>span{margin-top:10px}
+    #chapter-5 .c5-bar{
+      fill:var(--emphasis);stroke:#863423;stroke-width:1;
+      vector-effect:non-scaling-stroke}
+    #chapter-5 .slide-title{
+      line-height:1.3;letter-spacing:-1px;margin-bottom:10px}
+    #chapter-5 .slide-lead{font-size:16px;line-height:1.7}
+    #chapter-5 .hero-actions{margin-top:12px}
+    #chapter-5 .metric-stage{margin-top:24px}
+    @media(min-width:801px) and (max-width:1099px){
+      #chapter-1 .slide-grid,#chapter-2 .slide-grid,#chapter-3 .slide-grid{
+        grid-template-columns:minmax(0,1fr) minmax(0,1.6fr);gap:28px}
+      #chapter-4 .gain-strip{gap:24px}
+      #chapter-4 .gain-strip .mini{width:240px}
+      #chapter-4 .gain-strip strong{min-height:2.7em}
+    }
+    @media(min-width:801px) and (max-height:780px){
+      #chapter-4 .gain-strip{margin-top:24px}
+      #chapter-4 .gain-strip .mini{width:230px;margin-bottom:16px}
+      #chapter-4 .gain-strip strong{font-size:24px}
+    }
+    @media(max-width:800px){
+      #chapter-1 h1,#chapter-2 .slide-title,#chapter-3 .slide-title,
+      #chapter-4 .slide-title,#chapter-5 .slide-title{
+        font-size:clamp(24px,6.67vw,28px)}
+      #chapter-1 h1,#chapter-2 .slide-title,#chapter-3 .slide-title{margin:8px 0 10px}
+      #chapter-1 .slide-grid,#chapter-2 .slide-grid,#chapter-3 .slide-grid{gap:18px}
+      #chapter-1 .scene,#chapter-2 .scene,#chapter-3 .scene{
+        width:min(640px,100%);max-width:none;
+        max-height:52svh;align-self:center;margin-inline:0}
+      #chapter-5 .metric-row{
+        display:flex;overflow-x:auto;overflow-y:hidden;gap:16px;
+        scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;
+        padding-bottom:6px}
+      #chapter-5 .metric-card{flex:0 0 min(88vw,480px);scroll-snap-align:start}
+      #chapter-5 .metric-card-hw{flex-basis:min(62vw,260px)}
+      #chapter-5 .swipe-hint{display:block}
+      #chapter-4 .slide-title{
+        line-height:1.2;
+        letter-spacing:-.04em;margin-bottom:14px}
+      #chapter-4 .gain-strip{
+        display:flex;overflow-x:auto;overflow-y:hidden;gap:16px;
+        scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;
+        margin-top:22px;padding-bottom:6px}
+      #chapter-4 .gain-strip>div{
+        flex:0 0 min(78vw,380px);min-width:0;scroll-snap-align:start}
+      #chapter-4 .gain-strip .mini{width:240px;margin-bottom:18px}
+      #chapter-4 .gain-strip strong{font-size:24px;min-height:0}
+      #chapter-4 .swipe-hint{display:block}
+    }
+    @media(max-width:700px){
+      #chapter-1 h1,#chapter-2 .slide-title,#chapter-3 .slide-title,
+      #chapter-4 .slide-title,#chapter-5 .slide-title{font-size:clamp(24px,6.67vw,26px)}
+      #chapter-1 .slide-lead,#chapter-2 .slide-lead,#chapter-3 .slide-lead{
+        font-size:14px;line-height:1.6}
+      #chapter-1 .hero-actions,#chapter-3 .hero-actions{margin-top:12px}
+      #chapter-1 .hero-actions .button,#chapter-3 .hero-actions .button{
+        padding:10px 14px}
+      #chapter-5 .slide-lead{font-size:14px;line-height:1.6}
+      #chapter-5 .metric-stage{margin-top:16px}
+      #chapter-4 .gain-strip .mini{width:230px}
+      #chapter-4 .gain-strip strong{font-size:23px;line-height:1.35}
+    }
+    @media(max-width:700px) and (max-height:740px){
+      #chapter-4 .slide-title{margin-bottom:10px}
+      #chapter-4 .gain-strip{margin-top:16px}
+      #chapter-4 .gain-strip .mini{width:200px;margin-bottom:14px}
+    }
+    @media(max-width:700px) and (max-height:640px){
+      #chapter-1 .scene,#chapter-2 .scene,#chapter-3 .scene{max-height:46svh}
+      .story[data-chapter="1"] .scroll-cue{display:none}
+      .story[data-chapter="1"] .stage::after,
+      .story[data-chapter="5"] .stage::after{height:24px}
+      #chapter-4 .gain-strip .mini{width:180px}
+      #chapter-4 .gain-strip strong{font-size:22px}
+    }
+
+    /* Mobile benefit slides and a shared-PC model comparison. */
+    .gain-nav{display:none}
+    #chapter-5 .metric-stage{margin-top:18px}
+    .metric-hardware{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;
+      margin:0 0 16px;padding:10px 14px;border-left:3px solid var(--outline);
+      background:rgba(255,253,248,.48);font-size:14px;line-height:1.5;color:var(--muted)}
+    .metric-hardware strong{color:var(--ink);font-weight:700}
+    #chapter-5 .metric-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:24px;overflow:visible;margin:0;padding:0}
+    #chapter-5 .metric-card{min-width:0;padding:20px 22px;box-sizing:border-box}
+    .model-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+    .model-heading h3{margin:0;font-size:20px;line-height:1.3;letter-spacing:-.5px;color:var(--ink)}
+    .model-heading small{display:block;margin-top:3px;font-size:13px;font-weight:400;
+      letter-spacing:0;color:var(--muted)}
+    .model-grade{flex:none;padding:4px 7px;background:var(--verified-surface);
+      color:var(--verified-ink);font-size:13px;line-height:1.4;font-weight:600}
+    .model-grade-probe{background:var(--probe-surface);color:var(--probe-ink)}
+    .model-storage{margin-top:18px}
+    .metric-label{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+      font-size:14px;line-height:1.4;color:var(--muted)}
+    .metric-label strong{font-size:23px;line-height:1;font-weight:700;color:var(--ink);white-space:nowrap}
+    .metric-label strong small{font-size:14px;font-weight:500}
+    .storage-track{height:28px;margin-top:8px}
+    #chapter-5 .storage-track .c5-bar{display:block;height:100%;background:var(--emphasis);
+      box-shadow:inset 0 0 0 1px #863423;transform-origin:left center}
+    .model-file{min-height:18px;margin:6px 0 0;font-size:12px;line-height:1.5;color:var(--muted)}
+    .model-output{margin-top:14px}
+    .output-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;
+      font-size:14px;line-height:1.5;color:var(--muted)}
+    .output-summary strong{font-size:32px;line-height:1.1;color:var(--blue);white-space:nowrap}
+    .token-board{display:grid;grid-template-columns:repeat(15,minmax(0,1fr));gap:4px;
+      margin-top:10px}
+    .token-cell{height:12px;border:1px solid var(--outline);background:var(--track);border-radius:2px}
+    .token-cell.c5-qm,.token-cell.c5-km{background:var(--blue);border-color:var(--blue)}
+    .model-speed{display:flex;justify-content:space-between;gap:8px;margin:10px 0 0;
+      font-size:14px;line-height:1.5;color:var(--muted)}
+    .model-speed em{font-style:normal;color:var(--probe-ink)}
+    .story[data-chapter="5"] .stage::after{height:18px}
+    .story[data-chapter="4"] .stage::after{display:none}
+    @media(max-width:800px){
+      #chapter-4 .gain-strip{display:grid;grid-template-columns:minmax(0,1fr);gap:0;
+        margin-top:18px;padding:0;overflow:visible;scroll-snap-type:none;touch-action:pan-y}
+      #chapter-4 .gain-panel{grid-area:1 / 1;min-width:0;box-sizing:border-box;padding:20px;
+        border:1.5px solid var(--outline);background:var(--surface);box-shadow:var(--card-shadow);
+        opacity:0;visibility:hidden;pointer-events:none;transform:none;
+        transition:opacity .28s ease,transform .28s ease,visibility .28s}
+      #chapter-4 .gain-panel.is-current{opacity:1;visibility:visible;pointer-events:auto;transform:none}
+      #chapter-4 .gain-strip .mini{width:min(290px,100%);margin:0 auto 18px}
+      #chapter-4 .gain-strip strong{min-height:0}
+      #chapter-4 .gain-strip span{font-size:16px;line-height:1.65}
+      #chapter-4 .gain-strip em{font-size:13px;line-height:1.5}
+      .gain-nav{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:12px}
+      .gain-dots{display:flex;align-items:center;gap:0}
+      .gain-dot{display:grid;place-items:center;min-width:36px;height:40px;padding:0 8px;
+        border:0;background:none;cursor:pointer;color:var(--blue)}
+      .gain-dot::before{content:"";display:block;width:8px;height:8px;border-radius:999px;
+        background:var(--outline);transition:width .25s ease,background .25s ease}
+      .gain-dot[aria-current="true"]::before{width:28px;background:var(--blue)}
+      .gain-dot:focus-visible{outline:2px solid var(--blue);outline-offset:1px;border-radius:4px}
+      .gain-label{min-width:8em;font-size:14px;line-height:1.5;color:var(--muted)}
+      #chapter-5 .metric-stage{margin-top:14px}
+      .metric-hardware{margin-bottom:12px;padding:8px 10px;gap:2px 12px;font-size:13px}
+      #chapter-5 .metric-row{grid-template-columns:1fr;gap:12px}
+      #chapter-5 .metric-card{padding:14px 16px}
+      .model-heading h3{font-size:17px}
+      .model-heading small{display:inline;margin-left:6px;font-size:12px}
+      .model-grade{font-size:12px;padding:3px 6px}
+      .model-storage{margin-top:12px}
+      .metric-label{font-size:14px}
+      .metric-label strong{font-size:21px}
+      .storage-track{height:18px;margin-top:6px}
+      .model-file{min-height:0;margin-top:4px;font-size:12px}
+      .model-file:empty{display:none}
+      .model-output{margin-top:10px}
+      .output-summary{font-size:14px;gap:8px}
+      .output-summary strong{font-size:26px}
+      .token-board{gap:3px;margin-top:7px}
+      .token-cell{height:8px}
+      .model-speed{font-size:13px;margin-top:7px}
+      #chapter-5 .metric-note{font-size:12px;line-height:1.5;margin-top:10px}
+    }
+    @media(max-width:800px) and (max-height:740px){
+      #chapter-4 .gain-panel{padding:14px 16px}
+      #chapter-4 .gain-strip .mini{width:180px;margin-bottom:12px}
+      #chapter-4 .gain-strip span{font-size:14px;line-height:1.6}
+      #chapter-4 .gain-strip em{font-size:12px}
+      #chapter-4 .gain-nav{margin-top:6px}
+      #chapter-5 .slide-grid{display:block;overflow-y:auto;overscroll-behavior-y:auto}
+      #chapter-5 .slide-copy{padding-block:16px 26px}
+      #chapter-5 .metric-card{padding:12px 14px}
+    }
+    @media(prefers-reduced-motion:reduce){
+      #chapter-4 .gain-panel,.gain-dot::before{transition:none}
+    }
+    html:not(.js) #chapter-4 .gain-strip{display:block}
+    html:not(.js) #chapter-4 .gain-panel{margin-top:16px;opacity:1;visibility:visible;pointer-events:auto}
+    html:not(.js) .gain-nav{display:none}
+    /* Keep the original illustrated desktop layout; stack only on small screens. */
+    #chapter-5 .metric-mobile{display:none}
+    #chapter-5 .metric-desktop{display:block;margin-top:24px}
+    #chapter-5 .metric-desktop .metric-row{display:flex;gap:24px;align-items:flex-start}
+    #chapter-5 .metric-desktop .metric-card{flex:0 1 466px;padding:0}
+    #chapter-5 .metric-desktop .metric-card-hw{flex-basis:260px}
+    .story.js .rail{--rail-current:0;--rail-step:21px;--rail-half:12px}
+    .rail-caption{position:absolute;right:18px;display:grid;gap:2px;text-align:right;
+      top:calc(var(--rail-current) * var(--rail-step) + var(--rail-half));
+      transform:translateY(-50%);width:max-content;margin:0;padding:0;
+      white-space:nowrap;pointer-events:none}
+    .rail-index{font:500 12px/1.2 var(--mono);letter-spacing:.08em;color:var(--muted)}
+    .rail-topic{font-size:13px;line-height:1.3;font-weight:600;letter-spacing:-.035em;color:var(--blue)}
+    .rail-caption::after{content:"";position:absolute;right:-11px;top:50%;
+      width:7px;height:1px;background:var(--blue);opacity:.5}
+    /* Preview each destination without changing the current chapter. */
+    .rail-dot{position:relative}
+    .rail-dot::after{content:attr(aria-label);position:absolute;right:20px;top:50%;
+      width:max-content;white-space:nowrap;pointer-events:none;
+      font:500 13px/1.4 var(--sans);color:var(--blue);
+      opacity:0;visibility:hidden;transform:translate(4px,-50%);
+      transition:opacity .18s ease,transform .18s ease,visibility .18s}
+    .rail-dot:focus-visible::after{opacity:1;visibility:visible;transform:translate(0,-50%)}
+    .rail-dot:focus-visible~.rail-caption{opacity:0}
+    @media(hover:hover){
+      .rail-dot:hover::after{opacity:1;visibility:visible;transform:translate(0,-50%)}
+      .rail-dot:hover~.rail-caption{opacity:0}
+    }
+    @media(prefers-reduced-motion:reduce){.rail-dot::after{transition:none}}
+    @media(max-width:800px){
+      #chapter-5 .metric-desktop{display:none}
+      #chapter-5 .metric-mobile{display:block}
+      .story.js .rail{right:7px}
+      .rail-caption{top:calc(100% + 16px);right:50%;transform:translateX(50%);
+        justify-items:center;gap:7px;text-align:center}
+      .rail-index{font-size:11px;letter-spacing:0}
+      .rail-topic{writing-mode:vertical-rl;font-size:11px;line-height:1.1;letter-spacing:.04em}
+      .rail-caption::after{right:50%;top:-10px;width:1px;height:6px}
+    }
+    @media(max-width:700px){
+      .story.js .rail{--rail-step:16px;--rail-half:9px}
+    }
+
+    /* The same example answer, decoded with each model's own tokenizer. */
+    .c5-time,.token-count{font-variant-numeric:tabular-nums}
+    .c5-replay{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:2px 0;
+      border:0;border-bottom:1px solid var(--line);background:none;color:var(--muted);
+      font:inherit;font-size:13px;cursor:pointer}
+    .c5-replay:hover{color:var(--blue);border-color:var(--blue)}
+    .c5-replay:focus-visible{outline:2px solid var(--blue);outline-offset:4px}
+    #chapter-5 .hero-actions{display:flex;align-items:center;gap:24px;flex-wrap:wrap}
+    #chapter-5 .metric-mobile .metric-hardware{display:block}
+    #chapter-5 .metric-mobile .metric-hardware strong{display:block;font-size:14px}
+    .metric-hardware .c5-hardware{display:block;width:100%;max-width:440px;margin:2px auto 0}
+    .sample-question{margin:0 0 7px;font-size:15px;line-height:1.4;font-weight:500;color:var(--ink)}
+    .sample-question>span{margin-right:5px;font-size:12px;font-weight:400;color:var(--muted)}
+    .output-summary strong{font-size:23px}
+    .output-summary strong small{font-size:15px;font-weight:500}
+    .output-summary .c5-time{font-size:12px;white-space:nowrap}
+    .token-progress{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:5px;min-height:17px}
+    #chapter-5 .metric-mobile .token-board{display:flex;gap:4px;margin:0;padding:0;border:0;background:none}
+    .token-cell{flex:0 0 11px;width:11px;height:6px;border:0;border-radius:1px;background:var(--blue)}
+    .token-count{font-size:11px;white-space:nowrap;color:var(--muted)}
+    .answer-sample{margin:5px 0 0;padding:10px 9px;border:1px solid var(--line);border-radius:4px;
+      background:var(--section-ground);font-size:18px;line-height:1.5;min-height:27px;color:var(--ink)}
+    .c5-answer-new,.c5-cursor{color:var(--blue)}
+    @media(max-width:800px){
+      #chapter-5 .slide-grid{overflow-y:auto;align-content:safe center}
+      #chapter-5 .metric-mobile .metric-hardware{margin-bottom:8px;padding:6px 10px}
+      #chapter-5 .metric-mobile .metric-card{padding:10px 14px}
+      #chapter-5 .metric-mobile .model-storage{margin-top:9px}
+      #chapter-5 .metric-mobile .model-output{margin-top:9px}
+      #chapter-5 .metric-mobile .model-speed{font-size:11px;margin-top:5px}
+      #chapter-5 .metric-mobile .model-file{font-size:11px}
+      #chapter-5 .metric-note{font-size:11px;line-height:1.5;margin-top:7px}
+      #chapter-5 .hero-actions{gap:20px;margin-top:7px}
+      .c5-replay{font-size:12px;min-height:32px}
+    }
+    @media(max-width:360px){
+      .output-summary strong{font-size:21px}
+      .answer-sample{font-size:16px;padding-inline:7px}
+      .token-cell{flex-basis:9px;width:9px}
+    }
+    @media(prefers-reduced-motion:reduce){.c5-replay{display:none}}
+    html:not(.js) .c5-replay{display:none}
+    .c2-fan{transform-box:fill-box;transform-origin:center}
+    @keyframes gain-arrive{
+      0%{opacity:0;transform:translateX(var(--gain-enter,10px)) scale(.985)}
+      72%{opacity:1;transform:translateX(0) scale(1.008)}
+      100%{opacity:1;transform:none}
+    }
+    @media(max-width:800px) and (prefers-reduced-motion:no-preference){
+      #chapter-4.is-active .gain-panel.is-current{animation:gain-arrive .4s cubic-bezier(.22,.68,.3,1) both}
+    }
+    .shared-question{display:none}
+    .model-purpose{margin:0;font-size:12px;line-height:1.3;font-weight:600;color:var(--muted)}
+    @media(max-width:800px){
+      #chapter-5 .metric-stage{margin-top:9px}
+      #chapter-5 .metric-mobile .metric-card{padding-block:7px}
+      #chapter-5 .metric-mobile .metric-row{gap:8px}
+      #chapter-5 .metric-mobile .model-storage{margin-top:4px}
+      #chapter-5 .metric-mobile .storage-track{height:14px}
+      #chapter-5 .metric-mobile .model-file{margin-top:3px}
+      #chapter-5 .metric-mobile .model-output{margin-top:4px}
+      #chapter-5 .metric-mobile .model-speed{margin-top:3px}
+      .token-progress{margin-top:3px}
+      .metric-mobile .sample-question{display:none}
+      .shared-question{display:block;margin:0 0 6px;font-size:14px;line-height:1.5;font-weight:500}
+      .shared-question span{margin-right:6px;font-size:12px;font-weight:400;color:var(--muted)}
+      .answer-sample{padding-block:5px}
+    }
   </style>
   <script>document.documentElement.classList.add('js');</script>
 </head>
@@ -352,81 +665,272 @@
               <div class="slide-copy">
                 <div class="eyebrow"><span class="tag">OPEN SOURCE</span><span>LOCAL MoE RUNTIME</span></div>
                 <h1>회사 서버에서만 돌던 큰 AI,<br><span class="em-focus">이제 내 PC 한 대에서.</span></h1>
-                <p class="slide-lead">ChatGPT · Claude · Gemini 같은 AI는 회사의 대형 서버에서 돌아갑니다. MoE-Direct는 그만한 덩치의 공개 AI 모델을 보통 PC에서 돌립니다.</p>
+                <p class="slide-lead">ChatGPT · Claude · Gemini 같은 AI는 회사의 대형 서버에서 돌아갑니다. MoE-Direct는 서버에서나 돌리던 크기의 공개 AI 모델을 보통 PC에서 돌립니다.</p>
                 <div class="hero-actions"><a class="button button-primary" href="#demo">실제 작동 보기 <span aria-hidden="true">↗</span></a></div>
               </div>
               <div class="chapter-art">
-                <svg class="scene" viewBox="0 0 560 420" role="img" aria-label="가운데 고정된 공개 AI 모델 글리프. 둘러싸고 있던 회사 서버 랙이 왼쪽 위 작은 상자로 물러나 이전: 회사 서버가 되고, 같은 글리프 주위로 내 PC 한 대가 그려집니다. 모니터에 불이 들어오고 답변 두 줄이 나타납니다.">
-                  <g class="c1-racks tx" style="transform:translate(8.8px,24.22px) scale(.1894);opacity:.55">
-                    <rect x="38" y="96" width="86" height="228" fill="#FFFDF8" stroke="#000000" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="50" y="110" width="62" height="12" fill="#000000"/>
-                    <rect x="50" y="140" width="62" height="12" fill="#000000"/>
-                    <rect x="50" y="170" width="62" height="12" fill="#000000"/>
-                    <rect x="50" y="200" width="62" height="12" fill="#000000"/>
-                    <rect x="50" y="230" width="62" height="12" fill="#000000"/>
-                    <rect x="50" y="260" width="62" height="12" fill="#000000"/>
-                    <rect x="50" y="290" width="62" height="12" fill="#000000"/>
-                    <circle cx="112" cy="116" r="3" fill="#000000"/>
-                    <circle cx="112" cy="146" r="3" fill="#000000"/>
-                    <circle cx="112" cy="176" r="3" fill="#000000"/>
-                    <circle cx="112" cy="206" r="3" fill="#000000"/>
-                    <rect x="134" y="96" width="86" height="228" fill="#FFFDF8" stroke="#000000" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="146" y="110" width="62" height="12" fill="#000000"/>
-                    <rect x="146" y="140" width="62" height="12" fill="#000000"/>
-                    <rect x="146" y="170" width="62" height="12" fill="#000000"/>
-                    <rect x="146" y="200" width="62" height="12" fill="#000000"/>
-                    <rect x="146" y="230" width="62" height="12" fill="#000000"/>
-                    <rect x="146" y="260" width="62" height="12" fill="#000000"/>
-                    <rect x="146" y="290" width="62" height="12" fill="#000000"/>
-                    <circle cx="208" cy="116" r="3" fill="#000000"/>
-                    <circle cx="208" cy="146" r="3" fill="#000000"/>
-                    <circle cx="208" cy="176" r="3" fill="#000000"/>
-                    <circle cx="208" cy="206" r="3" fill="#000000"/>
-                    <rect x="348" y="96" width="86" height="228" fill="#FFFDF8" stroke="#000000" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="360" y="110" width="62" height="12" fill="#000000"/>
-                    <rect x="360" y="140" width="62" height="12" fill="#000000"/>
-                    <rect x="360" y="170" width="62" height="12" fill="#000000"/>
-                    <rect x="360" y="200" width="62" height="12" fill="#000000"/>
-                    <rect x="360" y="230" width="62" height="12" fill="#000000"/>
-                    <rect x="360" y="260" width="62" height="12" fill="#000000"/>
-                    <rect x="360" y="290" width="62" height="12" fill="#000000"/>
-                    <circle cx="422" cy="116" r="3" fill="#000000"/>
-                    <circle cx="422" cy="146" r="3" fill="#000000"/>
-                    <circle cx="422" cy="176" r="3" fill="#000000"/>
-                    <circle cx="422" cy="206" r="3" fill="#000000"/>
+                <svg class="scene" viewBox="0 0 560 420" role="img" aria-label="큰 공개 AI 모델의 전체 그림은 크기와 위치를 유지하고, 아래의 실행 환경이 회사 서버에서 개인용 PC로 바뀝니다. PC 장면의 큰 모델 그림은 SSD 저장 공간의 확대도입니다. 필요한 전문가 데이터를 메모리에 읽어 CPU가 계산하고 GPU와 역할을 나눠 답변을 만드는 기준 PC의 개념도이며, 그림 크기는 실제 장비나 용량의 비율이 아닙니다.">
+                  <defs>
+                    <g id="c1-rack-bay">
+                      <rect width="76" height="12" rx="1" fill="#FFFDF8" stroke="#9AAF9F"/>
+                      <path d="M3 3V9M73 3V9M9 4H48M9 8H48" stroke="#9AAF9F"/>
+                      <rect x="55" y="3" width="7" height="6" rx="1" fill="#B9CDDE"/>
+                      <circle cx="67" cy="6" r="1.5" fill="#536B5C"/>
+                    </g>
+                    <g id="c1-rack">
+                      <rect width="90" height="116" fill="#D6E1D8" stroke="#536B5C" stroke-width="1.8"/>
+                      <path d="M3 10V109M87 10V109M11 5H79" stroke="#718773" stroke-width="2"/>
+                      <use href="#c1-rack-bay" x="7" y="13"/>
+                      <use href="#c1-rack-bay" x="7" y="29"/>
+                      <use href="#c1-rack-bay" x="7" y="45"/>
+                      <use href="#c1-rack-bay" x="7" y="61"/>
+                      <use href="#c1-rack-bay" x="7" y="77"/>
+                      <use href="#c1-rack-bay" x="7" y="93"/>
+                      <path d="M8 116V122M82 116V122" stroke="#536B5C" stroke-width="5"/>
+                    </g>
+                    <linearGradient id="c1-model-light" x1="0" y1="0" x2="1" y2=".16">
+                      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0"/>
+                      <stop offset=".5" stop-color="#FFFFFF" stop-opacity=".28"/>
+                      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+                    </linearGradient>
+                    <clipPath id="c1-model-cell-clip">
+                      <rect x="38" y="60" width="32" height="14" rx="2"/>
+                      <rect x="79" y="60" width="32" height="14" rx="2"/>
+                      <rect x="120" y="60" width="32" height="14" rx="2"/>
+                      <rect x="161" y="60" width="32" height="14" rx="2"/>
+                      <rect x="202" y="60" width="32" height="14" rx="2"/>
+                      <rect x="243" y="60" width="32" height="14" rx="2"/>
+                      <rect x="284" y="60" width="32" height="14" rx="2"/>
+                      <rect x="325" y="60" width="32" height="14" rx="2"/>
+                      <rect x="366" y="60" width="32" height="14" rx="2"/>
+                      <rect x="407" y="60" width="32" height="14" rx="2"/>
+                      <rect x="448" y="60" width="32" height="14" rx="2"/>
+                      <rect x="489" y="60" width="32" height="14" rx="2"/>
+                      <rect x="38" y="82" width="32" height="14" rx="2"/>
+                      <rect x="79" y="82" width="32" height="14" rx="2"/>
+                      <rect x="120" y="82" width="32" height="14" rx="2"/>
+                      <rect x="161" y="82" width="32" height="14" rx="2"/>
+                      <rect x="202" y="82" width="32" height="14" rx="2"/>
+                      <rect x="243" y="82" width="32" height="14" rx="2"/>
+                      <rect x="284" y="82" width="32" height="14" rx="2"/>
+                      <rect x="325" y="82" width="32" height="14" rx="2"/>
+                      <rect x="366" y="82" width="32" height="14" rx="2"/>
+                      <rect x="407" y="82" width="32" height="14" rx="2"/>
+                      <rect x="448" y="82" width="32" height="14" rx="2"/>
+                      <rect x="489" y="82" width="32" height="14" rx="2"/>
+                      <rect x="38" y="104" width="32" height="14" rx="2"/>
+                      <rect x="79" y="104" width="32" height="14" rx="2"/>
+                      <rect x="120" y="104" width="32" height="14" rx="2"/>
+                      <rect x="161" y="104" width="32" height="14" rx="2"/>
+                      <rect x="202" y="104" width="32" height="14" rx="2"/>
+                      <rect x="243" y="104" width="32" height="14" rx="2"/>
+                      <rect x="284" y="104" width="32" height="14" rx="2"/>
+                      <rect x="325" y="104" width="32" height="14" rx="2"/>
+                      <rect x="366" y="104" width="32" height="14" rx="2"/>
+                      <rect x="407" y="104" width="32" height="14" rx="2"/>
+                      <rect x="448" y="104" width="32" height="14" rx="2"/>
+                      <rect x="489" y="104" width="32" height="14" rx="2"/>
+                      <rect x="38" y="126" width="32" height="14" rx="2"/>
+                      <rect x="79" y="126" width="32" height="14" rx="2"/>
+                      <rect x="120" y="126" width="32" height="14" rx="2"/>
+                      <rect x="161" y="126" width="32" height="14" rx="2"/>
+                      <rect x="202" y="126" width="32" height="14" rx="2"/>
+                      <rect x="243" y="126" width="32" height="14" rx="2"/>
+                      <rect x="284" y="126" width="32" height="14" rx="2"/>
+                      <rect x="325" y="126" width="32" height="14" rx="2"/>
+                      <rect x="366" y="126" width="32" height="14" rx="2"/>
+                      <rect x="407" y="126" width="32" height="14" rx="2"/>
+                      <rect x="448" y="126" width="32" height="14" rx="2"/>
+                      <rect x="489" y="126" width="32" height="14" rx="2"/>
+                      <rect x="38" y="148" width="32" height="14" rx="2"/>
+                      <rect x="79" y="148" width="32" height="14" rx="2"/>
+                      <rect x="120" y="148" width="32" height="14" rx="2"/>
+                      <rect x="161" y="148" width="32" height="14" rx="2"/>
+                      <rect x="202" y="148" width="32" height="14" rx="2"/>
+                      <rect x="243" y="148" width="32" height="14" rx="2"/>
+                      <rect x="284" y="148" width="32" height="14" rx="2"/>
+                      <rect x="325" y="148" width="32" height="14" rx="2"/>
+                      <rect x="366" y="148" width="32" height="14" rx="2"/>
+                      <rect x="407" y="148" width="32" height="14" rx="2"/>
+                      <rect x="448" y="148" width="32" height="14" rx="2"/>
+                      <rect x="489" y="148" width="32" height="14" rx="2"/>
+                      <rect x="38" y="170" width="32" height="14" rx="2"/>
+                      <rect x="79" y="170" width="32" height="14" rx="2"/>
+                      <rect x="120" y="170" width="32" height="14" rx="2"/>
+                      <rect x="161" y="170" width="32" height="14" rx="2"/>
+                      <rect x="202" y="170" width="32" height="14" rx="2"/>
+                      <rect x="243" y="170" width="32" height="14" rx="2"/>
+                      <rect x="284" y="170" width="32" height="14" rx="2"/>
+                      <rect x="325" y="170" width="32" height="14" rx="2"/>
+                      <rect x="366" y="170" width="32" height="14" rx="2"/>
+                      <rect x="407" y="170" width="32" height="14" rx="2"/>
+                      <rect x="448" y="170" width="32" height="14" rx="2"/>
+                      <rect x="489" y="170" width="32" height="14" rx="2"/>
+                    </clipPath>
+                  </defs>
+
+                  <text x="24" y="26" fill="#192820" font-size="20" font-weight="600">큰 공개 AI 모델</text>
+                  <text class="c1-same-size" x="536" y="26" fill="#A6402D" font-size="18" font-weight="600" text-anchor="end">크기는 그대로</text>
+                  <g class="c1-model-whole">
+                    <rect x="40" y="62" width="496" height="156" rx="6" fill="#D5E2EC" stroke="#8DA9BA"/>
+                    <rect x="32" y="54" width="504" height="156" rx="6" fill="#E1EBF2" stroke="#8DA9BA"/>
+                    <rect x="24" y="46" width="512" height="156" rx="6" fill="#F3F7F9" stroke="#718DA3" stroke-width="1.5"/>
+                    <g class="c1-model-tiles">
+                      <rect x="38" y="60" width="32" height="14" rx="2" fill="#AFC6DA"/>
+                      <rect x="79" y="60" width="32" height="14" rx="2" fill="#AFC6DA"/>
+                      <rect x="120" y="60" width="32" height="14" rx="2" fill="#AFC6DA"/>
+                      <rect x="161" y="60" width="32" height="14" rx="2" fill="#AFC6DA"/>
+                      <rect x="202" y="60" width="32" height="14" rx="2" fill="#BCD0E0"/>
+                      <rect x="243" y="60" width="32" height="14" rx="2" fill="#BCD0E0"/>
+                      <rect x="284" y="60" width="32" height="14" rx="2" fill="#BCD0E0"/>
+                      <rect x="325" y="60" width="32" height="14" rx="2" fill="#BCD0E0"/>
+                      <rect x="366" y="60" width="32" height="14" rx="2" fill="#A2BDD4"/>
+                      <rect x="407" y="60" width="32" height="14" rx="2" fill="#A2BDD4"/>
+                      <rect x="448" y="60" width="32" height="14" rx="2" fill="#A2BDD4"/>
+                      <rect x="489" y="60" width="32" height="14" rx="2" fill="#A2BDD4"/>
+                      <rect x="38" y="82" width="32" height="14" rx="2" fill="#AFC6DA"/>
+                      <rect x="79" y="82" width="32" height="14" rx="2" fill="#AFC6DA"/>
+                      <rect x="120" y="82" width="32" height="14" rx="2" fill="#AFC6DA"/>
+                      <rect x="161" y="82" width="32" height="14" rx="2" fill="#AFC6DA"/>
+                      <rect x="202" y="82" width="32" height="14" rx="2" fill="#BCD0E0"/>
+                      <rect x="243" y="82" width="32" height="14" rx="2" fill="#BCD0E0"/>
+                      <rect x="284" y="82" width="32" height="14" rx="2" fill="#BCD0E0"/>
+                      <rect x="325" y="82" width="32" height="14" rx="2" fill="#BCD0E0"/>
+                      <rect x="366" y="82" width="32" height="14" rx="2" fill="#A2BDD4"/>
+                      <rect x="407" y="82" width="32" height="14" rx="2" fill="#A2BDD4"/>
+                      <rect x="448" y="82" width="32" height="14" rx="2" fill="#A2BDD4"/>
+                      <rect x="489" y="82" width="32" height="14" rx="2" fill="#A2BDD4"/>
+                      <rect x="38" y="104" width="32" height="14" rx="2" fill="#BCD0E0"/>
+                      <rect x="79" y="104" width="32" height="14" rx="2" fill="#BCD0E0"/>
+                      <rect x="120" y="104" width="32" height="14" rx="2" fill="#BCD0E0"/>
+                      <rect x="161" y="104" width="32" height="14" rx="2" fill="#BCD0E0"/>
+                      <rect x="202" y="104" width="32" height="14" rx="2" fill="#A2BDD4"/>
+                      <rect x="243" y="104" width="32" height="14" rx="2" fill="#A2BDD4"/>
+                      <rect x="284" y="104" width="32" height="14" rx="2" fill="#A2BDD4"/>
+                      <rect x="325" y="104" width="32" height="14" rx="2" fill="#A2BDD4"/>
+                      <rect x="366" y="104" width="32" height="14" rx="2" fill="#AFC6DA"/>
+                      <rect x="407" y="104" width="32" height="14" rx="2" fill="#AFC6DA"/>
+                      <rect x="448" y="104" width="32" height="14" rx="2" fill="#AFC6DA"/>
+                      <rect x="489" y="104" width="32" height="14" rx="2" fill="#AFC6DA"/>
+                      <rect x="38" y="126" width="32" height="14" rx="2" fill="#BCD0E0"/>
+                      <rect x="79" y="126" width="32" height="14" rx="2" fill="#BCD0E0"/>
+                      <rect x="120" y="126" width="32" height="14" rx="2" fill="#BCD0E0"/>
+                      <rect x="161" y="126" width="32" height="14" rx="2" fill="#BCD0E0"/>
+                      <rect x="202" y="126" width="32" height="14" rx="2" fill="#A2BDD4"/>
+                      <rect x="243" y="126" width="32" height="14" rx="2" fill="#A2BDD4"/>
+                      <rect x="284" y="126" width="32" height="14" rx="2" fill="#A2BDD4"/>
+                      <rect x="325" y="126" width="32" height="14" rx="2" fill="#A2BDD4"/>
+                      <rect x="366" y="126" width="32" height="14" rx="2" fill="#AFC6DA"/>
+                      <rect x="407" y="126" width="32" height="14" rx="2" fill="#AFC6DA"/>
+                      <rect x="448" y="126" width="32" height="14" rx="2" fill="#AFC6DA"/>
+                      <rect x="489" y="126" width="32" height="14" rx="2" fill="#AFC6DA"/>
+                      <rect x="38" y="148" width="32" height="14" rx="2" fill="#A2BDD4"/>
+                      <rect x="79" y="148" width="32" height="14" rx="2" fill="#A2BDD4"/>
+                      <rect x="120" y="148" width="32" height="14" rx="2" fill="#A2BDD4"/>
+                      <rect x="161" y="148" width="32" height="14" rx="2" fill="#A2BDD4"/>
+                      <rect x="202" y="148" width="32" height="14" rx="2" fill="#AFC6DA"/>
+                      <rect x="243" y="148" width="32" height="14" rx="2" fill="#AFC6DA"/>
+                      <rect x="284" y="148" width="32" height="14" rx="2" fill="#AFC6DA"/>
+                      <rect x="325" y="148" width="32" height="14" rx="2" fill="#AFC6DA"/>
+                      <rect x="366" y="148" width="32" height="14" rx="2" fill="#BCD0E0"/>
+                      <rect x="407" y="148" width="32" height="14" rx="2" fill="#BCD0E0"/>
+                      <rect x="448" y="148" width="32" height="14" rx="2" fill="#BCD0E0"/>
+                      <rect x="489" y="148" width="32" height="14" rx="2" fill="#BCD0E0"/>
+                      <rect x="38" y="170" width="32" height="14" rx="2" fill="#A2BDD4"/>
+                      <rect x="79" y="170" width="32" height="14" rx="2" fill="#A2BDD4"/>
+                      <rect x="120" y="170" width="32" height="14" rx="2" fill="#A2BDD4"/>
+                      <rect x="161" y="170" width="32" height="14" rx="2" fill="#A2BDD4"/>
+                      <rect x="202" y="170" width="32" height="14" rx="2" fill="#AFC6DA"/>
+                      <rect x="243" y="170" width="32" height="14" rx="2" fill="#AFC6DA"/>
+                      <rect x="284" y="170" width="32" height="14" rx="2" fill="#AFC6DA"/>
+                      <rect x="325" y="170" width="32" height="14" rx="2" fill="#AFC6DA"/>
+                      <rect x="366" y="170" width="32" height="14" rx="2" fill="#BCD0E0"/>
+                      <rect x="407" y="170" width="32" height="14" rx="2" fill="#BCD0E0"/>
+                      <rect x="448" y="170" width="32" height="14" rx="2" fill="#BCD0E0"/>
+                      <rect x="489" y="170" width="32" height="14" rx="2" fill="#BCD0E0"/>
+                    </g>
                   </g>
-                  <text class="c1-old" x="38" y="352" fill="#45564B" font-size="17" style="opacity:0">회사 서버</text>
-                  <text class="c1-inset" x="16" y="24" fill="#45564B" font-size="16">이전: 회사 서버</text>
-                  <rect class="c1-glow" x="140" y="84" width="280" height="220" fill="#FFFDF8"/>
-                  <g class="c1-pc" fill="none" stroke="#536B5C" stroke-width="2.5">
-                    <path class="c1-draw" vector-effect="non-scaling-stroke" d="M132 76H428V312H132Z"/>
-                    <path class="c1-draw" vector-effect="non-scaling-stroke" d="M264 312V332H232V338H328V332H296V312"/>
-                    <path class="c1-draw" vector-effect="non-scaling-stroke" d="M446 88H511V307H446Z"/>
+
+                  <g clip-path="url(#c1-model-cell-clip)" aria-hidden="true" pointer-events="none">
+                    <rect class="c1-model-sheen tx" x="-300" y="60" width="300" height="124" fill="url(#c1-model-light)" style="transform:translateX(430px)"/>
                   </g>
-                  <g class="c1-pcdot" fill="#285590">
-                    <circle cx="478" cy="110" r="4"/>
-                    <rect x="462" y="128" width="32" height="5"/>
-                    <rect x="462" y="140" width="32" height="5"/>
+
+                  <g class="c1-server-scene" style="opacity:0">
+                    <path d="M280 219V236M155 254V236H405V254M280 236V254" fill="none" stroke="#8DA9BA" stroke-width="3"/>
+                    <use href="#c1-rack" x="110" y="254"/>
+                    <use href="#c1-rack" x="235" y="254"/>
+                    <use href="#c1-rack" x="360" y="254"/>
+                    <path d="M102 379H458" stroke="#718773" stroke-width="5"/>
+                    <text x="280" y="408" fill="#45564B" font-size="19" text-anchor="middle">회사 서버에서 돌아가던 큰 AI</text>
                   </g>
-                  <g class="c1-answer" fill="#285590">
-                    <rect x="200" y="274" width="160" height="9" rx="3"/>
-                    <rect x="200" y="290" width="118" height="9" rx="3"/>
+
+                  <g class="c1-local-scene">
+                    <text x="280" y="241" fill="#45564B" font-size="17" text-anchor="middle">내 PC의 SSD에 모델 전체 보관</text>
+                    <text x="52" y="265" fill="#285590" font-size="20" font-weight="600">MoE-Direct</text>
+                    <path d="M38 219V291H62M58 287L62 291L58 295M96 303V322M92 318L96 322L100 318" fill="none" stroke="#8DA9BA" stroke-width="1.5"/>
+                    <rect x="63" y="280" width="66" height="23" rx="3" fill="#FFFDF8" stroke="#718773" stroke-width="1.5"/>
+                    <text x="142" y="297" fill="#45564B" font-size="17">메모리</text>
+                    <g class="c1-ram-work" fill="#285590">
+                      <rect x="71" y="287" width="12" height="9" rx="1"/>
+                      <rect x="90" y="287" width="12" height="9" rx="1"/>
+                      <rect x="109" y="287" width="12" height="9" rx="1"/>
+                    </g>
+                    <rect x="53" y="315" width="173" height="45" rx="6" fill="#F1F6F2" stroke="#B9C9BE"/>
+                    <g fill="#FFFDF8" stroke="#718773" stroke-width="1.3">
+                      <rect x="63" y="324" width="66" height="27" rx="3"/>
+                      <rect x="150" y="324" width="66" height="27" rx="3"/>
+                    </g>
+                    <g class="c1-compute-work" fill="#D8E5F0">
+                      <rect x="65" y="326" width="62" height="23" rx="2"/>
+                      <rect x="152" y="326" width="62" height="23" rx="2"/>
+                    </g>
+                    <g fill="#285590" font-size="17" font-weight="600" text-anchor="middle">
+                      <text x="96" y="343">CPU</text>
+                      <text x="183" y="343">GPU</text>
+                    </g>
+                    <path d="M132 335H147M144 332L147 335L144 338M147 341H132M135 338L132 341L135 344" fill="none" stroke="#8DA9BA" stroke-width="1.1"/>
+
+                    <g class="c1-pc-hardware">
+                      <rect x="278" y="270" width="172" height="96" rx="2" fill="#FFFDF8" stroke="#536B5C" stroke-width="2"/>
+                      <path d="M349 367V379H332V386H396V379H379V367" fill="#E2EBE5" stroke="#536B5C" stroke-width="2"/>
+                      <circle cx="364" cy="274" r="1" fill="#9AAF9F"/>
+                      <circle cx="442" cy="361" r="1.5" fill="#285590"/>
+                      <rect x="464" y="251" width="70" height="121" rx="5" fill="#FFFDF8" stroke="#536B5C" stroke-width="2"/>
+                      <path d="M472 260H483M472 264H479M525 273V359" stroke="#B9C9BE" stroke-width="1.5"/>
+                      <circle cx="525" cy="261" r="2.5" fill="#285590"/>
+                      <rect x="471" y="276" width="49" height="68" rx="3" fill="#F1F6F2" stroke="#B9C9BE"/>
+                      <g transform="translate(487,295)">
+                        <circle r="11" fill="#FFFDF8" stroke="#9AAF9F"/>
+                        <g fill="#A6BAAE">
+                          <path d="M0-2C-8-9-9-1-4 1L0 1Z"/>
+                          <path d="M0-2C-8-9-9-1-4 1L0 1Z" transform="rotate(120)"/>
+                          <path d="M0-2C-8-9-9-1-4 1L0 1Z" transform="rotate(240)"/>
+                        </g>
+                        <circle r="2" fill="#536B5C"/>
+                      </g>
+                      <path d="M505 283V306M512 283V306" stroke="#9AAF9F" stroke-width="4"/>
+                      <rect x="477" y="312" width="37" height="9" rx="1" fill="#D6E1D8" stroke="#9AAF9F"/>
+                      <circle cx="484" cy="316.5" r="2.5" fill="#FFFDF8"/>
+                      <circle cx="493" cy="316.5" r="2.5" fill="#FFFDF8"/>
+                      <rect x="477" y="331" width="37" height="9" rx="1" fill="#B9CDDE" stroke="#8DA9BA"/>
+                      <path d="M473 352H516M473 358H516M470 373H480M518 373H528" stroke="#9AAF9F" stroke-width="2"/>
+                    </g>
+                    <path d="M536 210H545V336H514" fill="none" stroke="#8DA9BA" stroke-width="1.2" stroke-dasharray="3 4"/>
+                    <circle cx="514" cy="336" r="2" fill="#8DA9BA"/>
+                    <g class="c1-question">
+                      <rect x="288" y="283" width="151" height="27" rx="4" fill="#E2EBE5"/>
+                      <text x="298" y="301" fill="#45564B" font-size="13">질문</text>
+                      <path d="M332 293H428M332 301H405" stroke="#9AAF9F" stroke-width="2" stroke-linecap="round"/>
+                    </g>
+                    <path class="c1-response" d="M139 360V364H264V337H287M283 333L287 337L283 341" fill="none" stroke="#285590" stroke-width="1.5"/>
+                    <g class="c1-answer">
+                      <rect x="288" y="321" width="151" height="32" rx="4" fill="#E1F0E5"/>
+                      <text x="298" y="341" fill="#285590" font-size="13">답변</text>
+                      <rect class="c1-line-0" x="332" y="330" width="95" height="4" rx="2" fill="#285590"/>
+                      <rect class="c1-line-1" x="332" y="342" width="70" height="4" rx="2" fill="#285590"/>
+                    </g>
+                    <text class="c1-cap" x="280" y="408" fill="#192820" font-size="20" font-weight="500" text-anchor="middle">같은 큰 AI, 내 PC 한 대에서.</text>
                   </g>
-                  <g class="c1-glyph">
-                    <rect x="220" y="126" width="120" height="136" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="244" y="140" width="20" height="20" fill="#285590"/>
-                    <rect x="270" y="140" width="20" height="20" fill="#285590"/>
-                    <rect x="296" y="140" width="20" height="20" fill="#285590"/>
-                    <rect x="244" y="166" width="20" height="20" fill="#285590"/>
-                    <rect x="270" y="166" width="20" height="20" fill="#285590"/>
-                    <rect x="296" y="166" width="20" height="20" fill="#285590"/>
-                    <rect x="244" y="192" width="20" height="20" fill="#285590"/>
-                    <rect x="270" y="192" width="20" height="20" fill="#285590"/>
-                    <rect x="296" y="192" width="20" height="20" fill="#285590"/>
-                    <text x="280" y="242" fill="#192820" font-size="17" text-anchor="middle">공개 AI 모델</text>
-                  </g>
-                  <text class="c1-now" x="132" y="360" fill="#45564B" font-size="16">지금: 내 PC</text>
-                  <text class="c1-cap" x="280" y="396" fill="#192820" font-size="17" text-anchor="middle">같은 모델, 내 PC에서 실행</text>
                 </svg>
               </div>
             </div>
@@ -436,78 +940,105 @@
             <div class="slide-grid">
               <div class="slide-copy">
                 <h2 class="slide-title">통째로 올리지 않고,<br><span class="em-focus">필요한 부분만 그때그때.</span></h2>
-                <p class="slide-lead">모델을 메모리에 다 올리는 대신 답을 만들 때 필요한 부분만 SSD에서 읽어옵니다.</p>
+                <p class="slide-lead">큰 AI는 저장해 두고, 계산할 때 필요한 부분만 작은 작업 공간으로 꺼내 씁니다.</p>
               </div>
               <div class="chapter-art">
-                <svg class="scene" viewBox="0 0 560 350" role="img" aria-label="작동 개념도. SSD에 모델을 보관한 채 필요한 전문가 칸만 메모리의 임시 보관 자리로 복사되고, GPU가 계산해 글 조각을 내놓습니다. 다음 계산에서는 두 자리를 재사용하고 두 자리만 새로 읽습니다.">
-                  <text x="0" y="16" fill="#45564B" font-size="16">SSD · 모델 보관</text>
-                  <g class="c2-cells">
-                    <rect x="0" y="28" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="60" y="28" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="120" y="28" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="180" y="28" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="240" y="28" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="300" y="28" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="360" y="28" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="420" y="28" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="0" y="56" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="60" y="56" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="120" y="56" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="180" y="56" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="240" y="56" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="300" y="56" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="360" y="56" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="420" y="56" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="0" y="84" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="60" y="84" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="120" y="84" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="180" y="84" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="240" y="84" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="300" y="84" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="360" y="84" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="420" y="84" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="0" y="112" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="60" y="112" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="120" y="112" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="180" y="112" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="240" y="112" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="300" y="112" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="360" y="112" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="420" y="112" width="52" height="20" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                <svg class="scene" viewBox="0 0 560 446" role="img" aria-label="큰 AI를 보관하는 저장장치에서 지금 계산에 필요한 일부만 작은 작업 공간인 메모리로 꺼내는 개념도입니다. 파란 칸은 AI의 일부입니다. 꺼내 둔 부분은 다시 쓰고 없는 부분만 더 가져오므로 작업 공간의 크기는 그대로입니다. 기준 PC에서는 CPU가 전문가를 계산하고 GPU와 역할을 나눠 답변을 만듭니다. 칸 수와 교체 순서는 예시입니다.">
+                  <text x="280" y="29" fill="#192820" font-size="22" font-weight="600" text-anchor="middle">큰 AI를, 작은 작업 공간으로.</text>
+
+                  <g class="c2-storage">
+                    <path d="M30 62H211V75H219V102H211V113H30Q24 113 24 107V97A9 9 0 0 0 24 79V68Q24 62 30 62Z" fill="#D6E1D8" stroke="#718773" stroke-width="1.5"/>
+                    <circle cx="31" cy="88" r="3.5" fill="#FFFDF8" stroke="#9AAF9F"/>
+                    <g fill="#A6BAAE" stroke="#718773">
+                      <rect x="46" y="70" width="36" height="35" rx="2"/>
+                      <rect x="95" y="70" width="36" height="35" rx="2"/>
+                      <rect x="144" y="70" width="36" height="35" rx="2"/>
+                      <rect x="189" y="77" width="14" height="23" rx="1"/>
+                    </g>
+                    <path d="M85 77H92M85 88H92M85 99H92M134 77H141M134 88H141M134 99H141M181 84H187M181 93H187M39 108H199M39 67H199" fill="none" stroke="#9AAF9F" stroke-width="1.1"/>
+                    <path d="M212 66H228M212 71H228M220 82H228M220 87H228M220 92H228M220 97H228M212 106H228" stroke="#AF9768" stroke-width="3"/>
+                    <g class="c2-source-a"><rect x="49" y="74" width="30" height="12" rx="1.5" fill="#285590"/><rect x="54.9" y="76.75" width="3.25" height="2.6" rx="0.65" fill="#AFC6DA"/><rect x="60.1" y="76.75" width="3.25" height="2.6" rx="0.65" fill="#AFC6DA"/><rect x="54.9" y="81.3" width="3.25" height="2.6" rx="0.65" fill="#AFC6DA"/><rect x="65.3" y="81.3" width="3.25" height="2.6" rx="0.65" fill="#AFC6DA"/></g>
+                    <g class="c2-source-b"><rect x="49" y="90" width="30" height="12" rx="1.5" fill="#285590"/><rect x="54.9" y="92.75" width="3.25" height="2.6" rx="0.65" fill="#AFC6DA"/><rect x="65.3" y="92.75" width="3.25" height="2.6" rx="0.65" fill="#AFC6DA"/><rect x="60.1" y="97.3" width="3.25" height="2.6" rx="0.65" fill="#AFC6DA"/><rect x="70.5" y="97.3" width="3.25" height="2.6" rx="0.65" fill="#AFC6DA"/></g>
+                    <g class="c2-source-c"><rect x="98" y="74" width="30" height="12" rx="1.5" fill="#285590"/><rect x="109.1" y="76.75" width="3.25" height="2.6" rx="0.65" fill="#AFC6DA"/><rect x="119.5" y="76.75" width="3.25" height="2.6" rx="0.65" fill="#AFC6DA"/><rect x="103.9" y="81.3" width="3.25" height="2.6" rx="0.65" fill="#AFC6DA"/><rect x="109.1" y="81.3" width="3.25" height="2.6" rx="0.65" fill="#AFC6DA"/></g>
+                    <g class="c2-source-d"><rect x="98" y="90" width="30" height="12" rx="1.5" fill="#285590"/><rect x="103.9" y="92.75" width="3.25" height="2.6" rx="0.65" fill="#AFC6DA"/><rect x="119.5" y="92.75" width="3.25" height="2.6" rx="0.65" fill="#AFC6DA"/><rect x="114.3" y="97.3" width="3.25" height="2.6" rx="0.65" fill="#AFC6DA"/><rect x="119.5" y="97.3" width="3.25" height="2.6" rx="0.65" fill="#AFC6DA"/></g>
+                    <g class="c2-source-e"><rect x="147" y="74" width="30" height="12" rx="1.5" fill="#285590"/><rect x="158.1" y="76.75" width="3.25" height="2.6" rx="0.65" fill="#AFC6DA"/><rect x="163.3" y="76.75" width="3.25" height="2.6" rx="0.65" fill="#AFC6DA"/><rect x="152.9" y="81.3" width="3.25" height="2.6" rx="0.65" fill="#AFC6DA"/><rect x="168.5" y="81.3" width="3.25" height="2.6" rx="0.65" fill="#AFC6DA"/></g>
+                    <g class="c2-source-f"><rect x="147" y="90" width="30" height="12" rx="1.5" fill="#285590"/><rect x="152.9" y="92.75" width="3.25" height="2.6" rx="0.65" fill="#AFC6DA"/><rect x="163.3" y="92.75" width="3.25" height="2.6" rx="0.65" fill="#AFC6DA"/><rect x="158.1" y="97.3" width="3.25" height="2.6" rx="0.65" fill="#AFC6DA"/><rect x="163.3" y="97.3" width="3.25" height="2.6" rx="0.65" fill="#AFC6DA"/></g>
+                    <text x="246" y="77" fill="#192820" font-size="21" font-weight="600">큰 AI를 보관하는 곳</text>
+                    <text x="246" y="102" fill="#45564B" font-size="14">저장장치 · SSD</text>
+                    <text x="246" y="126" fill="#45564B" font-size="16">파란 칸은 AI의 일부</text>
                   </g>
-                  <rect class="c2-hl-a0" x="120" y="28" width="52" height="20" fill="#285590"/>
-                  <rect class="c2-hl-a1" x="300" y="56" width="52" height="20" fill="#285590"/>
-                  <rect class="c2-hl-a2" x="60" y="84" width="52" height="20" fill="#285590" style="opacity:0"/>
-                  <rect class="c2-hl-a3" x="360" y="112" width="52" height="20" fill="#285590" style="opacity:0"/>
-                  <rect class="c2-hl-b2" x="180" y="56" width="52" height="20" fill="#285590"/>
-                  <rect class="c2-hl-b3" x="120" y="112" width="52" height="20" fill="#285590"/>
-                  <text x="0" y="166" fill="#45564B" font-size="16">필요한 전문가만 읽기</text>
-                  <path d="M184 152V172M178 166L184 172L190 166" fill="none" stroke="#285590" stroke-width="2" vector-effect="non-scaling-stroke"/>
-                  <text x="0" y="196" fill="#45564B" font-size="16">메모리 · 임시 보관</text>
-                  <g class="c2-slots">
-                    <rect x="0" y="208" width="92" height="34" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="104" y="208" width="92" height="34" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="208" y="208" width="92" height="34" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="312" y="208" width="92" height="34" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                  <path class="c2-read-link" d="M113 117V138H176V155M172 151L176 155L180 151" fill="none" stroke="#8DA9BA" stroke-width="1.5"/>
+
+                  <rect x="20" y="162" width="310" height="194" rx="10" fill="#C6D4CA"/>
+                  <rect class="c2-workspace" x="20" y="156" width="310" height="194" rx="10" fill="#FFFDF8" stroke="#9AAF9F" stroke-width="1.5"/>
+                  <text x="175" y="184" fill="#192820" font-size="19" font-weight="600" text-anchor="middle">지금 쓸 부분을 꺼내 놓는 곳</text>
+                  <g class="c2-slots" fill="#E2EBE5" stroke="#B9C9BE">
+                    <rect x="34" y="201" width="129" height="51" rx="6"/>
+                    <rect x="187" y="201" width="129" height="51" rx="6"/>
+                    <rect x="34" y="279" width="129" height="51" rx="6"/>
+                    <rect x="187" y="279" width="129" height="51" rx="6"/>
                   </g>
-                  <rect class="c2-cp-a0 tx" x="20" y="215" width="52" height="20" fill="#285590"/>
-                  <rect class="c2-cp-a1 tx" x="124" y="215" width="52" height="20" fill="#285590"/>
-                  <rect class="c2-cp-a2 tx" x="228" y="215" width="52" height="20" fill="#285590" style="opacity:0"/>
-                  <rect class="c2-cp-a3 tx" x="332" y="215" width="52" height="20" fill="#285590" style="opacity:0"/>
-                  <rect class="c2-cp-b2 tx" x="228" y="215" width="52" height="20" fill="#285590"/>
-                  <rect class="c2-cp-b3 tx" x="332" y="215" width="52" height="20" fill="#285590"/>
-                  <rect class="c2-slot-0" x="0" y="208" width="92" height="34" fill="none" stroke="#285590" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                  <rect class="c2-slot-1" x="104" y="208" width="92" height="34" fill="none" stroke="#285590" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                  <rect class="c2-slot-2" x="208" y="208" width="92" height="34" fill="none" stroke="#285590" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                  <rect class="c2-slot-3" x="312" y="208" width="92" height="34" fill="none" stroke="#285590" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                  <text class="c2-reuse-0" x="2" y="262" fill="#285590" font-size="16">재사용</text>
-                  <text class="c2-reuse-1" x="106" y="262" fill="#285590" font-size="16">재사용</text>
-                  <path class="c2-link" d="M408 225H428M422 219L428 225L422 231" fill="none" stroke="#285590" stroke-width="2" vector-effect="non-scaling-stroke"/>
-                  <rect class="c2-gpu" x="436" y="202" width="124" height="46" fill="#FFFDF8" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
-                  <text class="c2-gpu-t" x="498" y="231" fill="#192820" font-size="17" text-anchor="middle">GPU · 계산</text>
-                  <rect class="c2-frag-0" x="436" y="262" width="112" height="12" rx="3" fill="#285590"/>
-                  <rect class="c2-frag-1" x="436" y="282" width="84" height="12" rx="3" fill="#285590"/>
-                  <text x="0" y="330" fill="#45564B" font-size="16">개념도 · 칸 수는 예시</text>
+                  <text class="c2-reuse" x="175" y="270" fill="#285590" font-size="16" font-weight="500" text-anchor="middle">꺼내 둔 건 다시 사용</text>
+                  <text class="c2-new-note" x="175" y="344" fill="#285590" font-size="15" text-anchor="middle">없는 부분만 더 가져오기</text>
+
+                  <g class="c2-compute">
+                    <rect x="365" y="180" width="175" height="130" rx="10" fill="#EAF0EB" stroke="#B9C9BE"/>
+                    <text x="452" y="205" fill="#192820" font-size="17" font-weight="600" text-anchor="middle">내 PC가 계산합니다</text>
+                    <g class="c2-cpu">
+                      <path d="M383 229H377M383 239H377M383 249H377M383 259H377M431 229H437M431 239H437M431 249H437M431 259H437M391 224V218M401 224V218M411 224V218M421 224V218M391 266V272M401 266V272M411 266V272M421 266V272" stroke="#9AAF9F" stroke-width="2"/>
+                      <rect x="383" y="224" width="48" height="42" rx="4" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.4"/>
+                      <rect class="c2-cpu-core" x="391" y="232" width="32" height="26" rx="2" fill="#285590"/>
+                      <path d="M398 238H416M398 245H409M398 252H416" stroke="#AFC6DA" stroke-width="2"/>
+                      <text x="407" y="291" fill="#45564B" font-size="14" text-anchor="middle">CPU</text>
+                    </g>
+                    <g class="c2-gpu">
+                      <rect x="455" y="229" width="60" height="34" rx="3" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.3"/>
+                      <path d="M456 229V223H461M456 263V268H461M467 265V269H502V265" fill="none" stroke="#536B5C" stroke-width="1.2"/>
+                      <g fill="#E2EBE5" stroke="#9AAF9F"><circle cx="470" cy="246" r="11"/><circle cx="500" cy="246" r="11"/></g>
+                      <g fill="none" stroke="#9AAF9F" stroke-width="1.3">
+                        <path class="c2-fan" d="M470 236V256M460 246H480M463 239L477 253M463 253L477 239"/>
+                        <path class="c2-fan" d="M500 236V256M490 246H510M493 239L507 253M493 253L507 239"/>
+                      </g>
+                      <g fill="#285590"><circle cx="470" cy="246" r="3"/><circle cx="500" cy="246" r="3"/></g>
+                      <text x="485" y="291" fill="#45564B" font-size="14" text-anchor="middle">GPU</text>
+                    </g>
+                  </g>
+                  <path class="c2-link" d="M331 226H350V245H376M371 241L376 245L371 249" fill="none" stroke="#285590" stroke-width="1.5"/>
+                  <path d="M30 363V370H320V363" fill="none" stroke="#9AAF9F" stroke-width="1.3"/>
+                  <text x="175" y="397" fill="#45564B" font-size="17" text-anchor="middle">작은 작업 공간 그대로</text>
+                  <text x="175" y="417" fill="#45564B" font-size="13" text-anchor="middle">메모리 · RAM</text>
+                  <path class="c2-output-link" d="M541 253H551V401H541M545 397L541 401L545 405" fill="none" stroke="#285590" stroke-width="1.5"/>
+                  <g class="c2-output">
+                    <rect x="279" y="378" width="261" height="46" rx="7" fill="#FFFDF8" stroke="#B9C9BE"/>
+                    <text x="294" y="407" fill="#45564B" font-size="18">답변</text>
+                    <rect class="c2-frag-0" x="347" y="390" width="173" height="6" rx="3" fill="#285590"/>
+                    <rect class="c2-frag-1" x="347" y="408" width="133" height="6" rx="3" fill="#285590"/>
+                  </g>
+                  <g class="c2-piece-a tx">
+                    <rect x="37" y="204" width="123" height="45" rx="4" fill="#285590"/>
+                    <rect x="67.7" y="215.5" width="11" height="8.8" rx="2" fill="#AFC6DA"/><rect x="85.3" y="215.5" width="11" height="8.8" rx="2" fill="#AFC6DA"/><rect x="67.7" y="230.9" width="11" height="8.8" rx="2" fill="#AFC6DA"/><rect x="102.9" y="230.9" width="11" height="8.8" rx="2" fill="#AFC6DA"/>
+                  </g>
+                  <g class="c2-piece-b tx">
+                    <rect x="190" y="204" width="123" height="45" rx="4" fill="#285590"/>
+                    <rect x="220.7" y="215.5" width="11" height="8.8" rx="2" fill="#AFC6DA"/><rect x="255.9" y="215.5" width="11" height="8.8" rx="2" fill="#AFC6DA"/><rect x="238.3" y="230.9" width="11" height="8.8" rx="2" fill="#AFC6DA"/><rect x="273.5" y="230.9" width="11" height="8.8" rx="2" fill="#AFC6DA"/>
+                  </g>
+                  <g class="c2-piece-c tx" style="opacity:0">
+                    <rect x="37" y="282" width="123" height="45" rx="4" fill="#285590"/>
+                    <rect x="85.3" y="293.5" width="11" height="8.8" rx="2" fill="#AFC6DA"/><rect x="120.5" y="293.5" width="11" height="8.8" rx="2" fill="#AFC6DA"/><rect x="67.7" y="308.9" width="11" height="8.8" rx="2" fill="#AFC6DA"/><rect x="85.3" y="308.9" width="11" height="8.8" rx="2" fill="#AFC6DA"/>
+                  </g>
+                  <g class="c2-piece-d tx" style="opacity:0">
+                    <rect x="190" y="282" width="123" height="45" rx="4" fill="#285590"/>
+                    <rect x="220.7" y="293.5" width="11" height="8.8" rx="2" fill="#AFC6DA"/><rect x="273.5" y="293.5" width="11" height="8.8" rx="2" fill="#AFC6DA"/><rect x="255.9" y="308.9" width="11" height="8.8" rx="2" fill="#AFC6DA"/><rect x="273.5" y="308.9" width="11" height="8.8" rx="2" fill="#AFC6DA"/>
+                  </g>
+                  <g class="c2-piece-e tx">
+                    <rect x="37" y="282" width="123" height="45" rx="4" fill="#285590"/>
+                    <rect x="85.3" y="293.5" width="11" height="8.8" rx="2" fill="#AFC6DA"/><rect x="102.9" y="293.5" width="11" height="8.8" rx="2" fill="#AFC6DA"/><rect x="67.7" y="308.9" width="11" height="8.8" rx="2" fill="#AFC6DA"/><rect x="120.5" y="308.9" width="11" height="8.8" rx="2" fill="#AFC6DA"/>
+                  </g>
+                  <g class="c2-piece-f tx">
+                    <rect x="190" y="282" width="123" height="45" rx="4" fill="#285590"/>
+                    <rect x="220.7" y="293.5" width="11" height="8.8" rx="2" fill="#AFC6DA"/><rect x="255.9" y="293.5" width="11" height="8.8" rx="2" fill="#AFC6DA"/><rect x="238.3" y="308.9" width="11" height="8.8" rx="2" fill="#AFC6DA"/><rect x="255.9" y="308.9" width="11" height="8.8" rx="2" fill="#AFC6DA"/>
+                  </g>
+                  <text x="280" y="440" fill="#45564B" font-size="13" text-anchor="middle">작동 개념 · 칸 수와 교체 순서는 예시</text>
                 </svg>
               </div>
             </div>
@@ -521,43 +1052,99 @@
                 <div class="hero-actions"><a class="button button-primary" href="https://youtu.be/JDfrWMxwczk" target="_blank" rel="noopener noreferrer">시연 영상 보기 <span aria-hidden="true">↗</span></a></div>
               </div>
               <div class="chapter-art">
-                <svg class="scene" viewBox="0 0 560 460" role="img" aria-label="크기 비교. 내 PC 메모리 32GB 한 칸 옆에 모델 파일 447GB를 나타내는 열네 칸 탑이 서 있고, 13배 이상이라고 적혀 있습니다. 탑에서 전문가 조각 몇 개가 PC의 고정된 작업 공간으로 옮겨오고 응답 확인 표시가 붙습니다.">
-                  <g class="c3-cam tx" >
-                    <rect x="40" y="374" width="84" height="24" fill="#536B5C" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="176" y="374" width="84" height="24" fill="#285590" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="176" y="348" width="84" height="24" fill="#285590" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="176" y="322" width="84" height="24" fill="#285590" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="176" y="296" width="84" height="24" fill="#285590" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="176" y="270" width="84" height="24" fill="#285590" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="176" y="244" width="84" height="24" fill="#285590" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="176" y="218" width="84" height="24" fill="#285590" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="176" y="192" width="84" height="24" fill="#285590" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="176" y="166" width="84" height="24" fill="#285590" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="176" y="140" width="84" height="24" fill="#285590" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="176" y="114" width="84" height="24" fill="#285590" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="176" y="88" width="84" height="24" fill="#285590" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="176" y="62" width="84" height="24" fill="#285590" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="176" y="36" width="84" height="24" fill="#285590" stroke="#FFFDF8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+                <svg class="scene" viewBox="0 0 560 460" role="img" aria-label="크기 비교. PC의 메모리 32GB보다 13배 이상 큰 447GB 모델 파일을 저장장치에 그대로 둡니다. 그중 필요한 일부만 PC로 옮겨 계산하고 실제로 응답한 결과를 보여줍니다.">
+                  <defs>
+                    <linearGradient id="c3-data-surface" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3A679B"/><stop offset=".7" stop-color="#285590"/><stop offset="1" stop-color="#234B7C"/></linearGradient>
+                    <g id="c3-memory-unit">
+                      <rect width="84" height="24" rx="2" fill="#536B5C" stroke="#3D5445" stroke-width="1" vector-effect="non-scaling-stroke"/>
+                      <path d="M3 2H81" stroke="#A7BFAF" stroke-opacity=".55"/>
+                      <g fill="#334B3D" stroke="#9AAF9F" stroke-width=".7"><rect x="7" y="5" width="18" height="13" rx="1"/><rect x="33" y="5" width="18" height="13" rx="1"/><rect x="59" y="5" width="18" height="13" rx="1"/></g>
+                      <path d="M11 9H21M37 9H47M63 9H73" stroke="#A7BFAF" stroke-opacity=".55"/>
+                      <path d="M26 11H32M52 11H58M16 18V20M42 18V20M68 18V20" fill="none" stroke="#A7BFAF" stroke-width=".8"/>
+                      <path d="M8 22H76" stroke="#CBB77E" stroke-width="2" stroke-dasharray="3 2"/>
+                    </g>
+                    <g id="c3-data-base">
+                      <rect width="84" height="24" rx="2" fill="url(#c3-data-surface)" stroke="#234B7C" stroke-width=".8" vector-effect="non-scaling-stroke"/>
+                      <path d="M3 2H81" stroke="#B7CDE4" stroke-opacity=".45"/>
+                      <path d="M3 22H81" stroke="#173D6C" stroke-opacity=".55"/>
+                      <path d="M7 5V19" stroke="#9AB9D8" stroke-width="1.3" stroke-opacity=".6"/>
+                    </g>
+                    <g id="c3-data-a">
+                      <use href="#c3-data-base"/>
+                      <path d="M14 7H40M14 12H31M14 17H44" fill="none" stroke="#C4D7E9" stroke-width="1.5" stroke-linecap="round"/>
+                      <g fill="#B8D0E5"><rect x="54" y="6" width="6" height="5" rx="1"/><rect x="63" y="6" width="6" height="5" rx="1" opacity=".5"/><rect x="72" y="6" width="6" height="5" rx="1"/><rect x="54" y="14" width="6" height="5" rx="1" opacity=".5"/><rect x="63" y="14" width="6" height="5" rx="1"/><rect x="72" y="14" width="6" height="5" rx="1" opacity=".5"/></g>
+                    </g>
+                    <g id="c3-data-b">
+                      <use href="#c3-data-base"/>
+                      <path d="M14 7H34M14 12H44M14 17H36" fill="none" stroke="#C4D7E9" stroke-width="1.5" stroke-linecap="round"/>
+                      <g fill="#B8D0E5"><rect x="54" y="6" width="6" height="5" rx="1" opacity=".5"/><rect x="63" y="6" width="6" height="5" rx="1"/><rect x="72" y="6" width="6" height="5" rx="1"/><rect x="54" y="14" width="6" height="5" rx="1"/><rect x="63" y="14" width="6" height="5" rx="1"/><rect x="72" y="14" width="6" height="5" rx="1" opacity=".5"/></g>
+                    </g>
+                    <g id="c3-data-c">
+                      <use href="#c3-data-base"/>
+                      <path d="M14 7H44M14 12H37M14 17H29" fill="none" stroke="#C4D7E9" stroke-width="1.5" stroke-linecap="round"/>
+                      <g fill="#B8D0E5"><rect x="54" y="6" width="6" height="5" rx="1"/><rect x="63" y="6" width="6" height="5" rx="1" opacity=".5"/><rect x="72" y="6" width="6" height="5" rx="1"/><rect x="54" y="14" width="6" height="5" rx="1"/><rect x="63" y="14" width="6" height="5" rx="1" opacity=".5"/><rect x="72" y="14" width="6" height="5" rx="1"/></g>
+                    </g>
+                    <g id="c3-data-piece">
+                      <rect width="18" height="18" rx="1.5" fill="url(#c3-data-surface)" stroke="#234B7C" stroke-width=".7"/>
+                      <path d="M4 5H14M4 9H11M4 13H13" fill="none" stroke="#C4D7E9" stroke-width="1.3" stroke-linecap="round"/>
+                    </g>
+                  </defs>
+                  <g class="c3-cam tx">
+                    <use class="c3-memory-unit" href="#c3-memory-unit" x="40" y="374"/>
+                    <use class="c3-data-unit" href="#c3-data-a" x="176" y="374"/>
+                    <use class="c3-data-unit" href="#c3-data-b" x="176" y="348"/>
+                    <use class="c3-data-unit" href="#c3-data-c" x="176" y="322"/>
+                    <use class="c3-data-unit" href="#c3-data-a" x="176" y="296"/>
+                    <use class="c3-data-unit" href="#c3-data-b" x="176" y="270"/>
+                    <use class="c3-data-unit" href="#c3-data-c" x="176" y="244"/>
+                    <use class="c3-data-unit" href="#c3-data-a" x="176" y="218"/>
+                    <use class="c3-data-unit" href="#c3-data-b" x="176" y="192"/>
+                    <use class="c3-data-unit" href="#c3-data-c" x="176" y="166"/>
+                    <use class="c3-data-unit" href="#c3-data-a" x="176" y="140"/>
+                    <use class="c3-data-unit" href="#c3-data-b" x="176" y="114"/>
+                    <use class="c3-data-unit" href="#c3-data-c" x="176" y="88"/>
+                    <use class="c3-data-unit" href="#c3-data-a" x="176" y="62"/>
+                    <use class="c3-data-unit" href="#c3-data-b" x="176" y="36"/>
                   </g>
-                  <text x="24" y="424" fill="#45564B" font-size="16">내 PC 메모리 32GB</text>
-                  <text class="c3-lab" x="160" y="26" fill="#45564B" font-size="16">모델 파일 447GB</text>
+                  <text class="c3-memory-label" x="82" y="424" fill="#45564B" font-size="16" text-anchor="middle">메모리 32GB</text>
+                  <text class="c3-lab" x="218" y="26" fill="#45564B" font-size="16" text-anchor="middle">큰 AI · 447GB</text>
                   <path class="c3-brk" d="M272 36H282M282 36V398M272 398H282" fill="none" stroke="#536B5C" stroke-width="2" vector-effect="non-scaling-stroke"/>
-                  <text class="c3-mult" x="292" y="222" fill="#192820" font-size="18">13배 이상</text>
+                  <g class="c3-mult" fill="#192820" text-anchor="middle"><text x="324" y="219" font-size="34" font-weight="800">13배</text><text x="324" y="244" font-size="16">이상</text></g>
+                  <g class="c3-context">
+                    <text class="c3-memory-title" x="82" y="364" fill="#45564B" font-size="16" text-anchor="middle">PC의 작업 공간</text>
+                    <text class="c3-data-label" x="218" y="424" fill="#45564B" font-size="16" text-anchor="middle">전체는 저장장치에</text>
+                  </g>
+                  <g class="c3-route">
+                    <text x="306" y="122" fill="#285590" font-size="18" font-weight="500">일부만 꺼내 쓰고</text>
+                    <path d="M273 141H348Q366 141 366 159V285Q366 303 384 303H390M384 297L390 303L384 309" fill="none" stroke="#285590" stroke-width="1.8" stroke-dasharray="5 5"/>
+                  </g>
                   <g class="c3-pc">
-                    <rect x="372" y="258" width="152" height="100" fill="#FFFDF8" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+                    <rect class="c3-monitor" x="372" y="258" width="152" height="100" fill="#FFFDF8" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
                     <rect x="384" y="270" width="128" height="76" fill="#E2EBE5" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                    <path d="M436 358V374H412V380H460V374H436" fill="none" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
-                    <rect x="532" y="268" width="24" height="90" fill="none" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
-                    <text x="372" y="400" fill="#45564B" font-size="16">내 PC</text>
+                    <path class="c3-monitor-stand" d="M442 358V372H424V380H472V372H454V358" fill="#FFFDF8" stroke="#536B5C" stroke-width="2" vector-effect="non-scaling-stroke"/>
+                    <g class="c3-tower">
+                      <rect x="532" y="268" width="24" height="108" rx="2" fill="#FFFDF8" stroke="#536B5C" stroke-width="2" vector-effect="non-scaling-stroke"/>
+                      <path d="M551 270V374" stroke="#B9C9BE" stroke-width="1.2"/>
+                      <circle cx="542" cy="279" r="2.5" fill="#285590"/>
+                      <path d="M538 290H546M538 296H543" stroke="#718773" stroke-width="1.5" stroke-linecap="round"/>
+                      <path d="M538 324H547M538 331H547M538 338H547M538 345H547M538 352H547M538 359H547" stroke="#9AAF9F" stroke-width="1.5" stroke-linecap="round"/>
+                      <path d="M537 376V380M551 376V380" stroke="#536B5C" stroke-width="2"/>
+                    </g>
+                    <path class="c3-ground" d="M370 380H558" stroke="#9AAF9F" stroke-width="1.2"/>
+                    <text class="c3-pc-label" x="464" y="406" fill="#45564B" font-size="16" text-anchor="middle">내 PC에서 계산</text>
+                    <rect class="c3-question" x="414" y="278" width="85" height="12" rx="3" fill="#B9C9BE"/>
                   </g>
                   <g class="c3-tile" fill="#285590">
-                    <rect class="c3-t0 tx" x="398" y="296" width="18" height="18"/>
-                    <rect class="c3-t1 tx" x="424" y="296" width="18" height="18"/>
-                    <rect class="c3-t2 tx" x="450" y="296" width="18" height="18"/>
+                    <g class="c3-t0 tx"><use href="#c3-data-piece" x="398" y="296"/></g>
+                    <g class="c3-t1 tx"><use href="#c3-data-piece" x="424" y="296"/></g>
+                    <g class="c3-t2 tx"><use href="#c3-data-piece" x="450" y="296"/></g>
+                  </g>
+                  <g class="c3-reply">
+                    <rect x="394" y="323" width="97" height="6" rx="3" fill="#285590"/>
+                    <rect x="394" y="334" width="69" height="6" rx="3" fill="#285590"/>
                   </g>
                   <g class="c3-ok">
-                    <path d="M374 421L379 427L389 415" fill="none" stroke="#285590" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
-                    <text x="396" y="428" fill="#285590" font-size="16">응답 확인</text>
+                    <text x="464" y="433" fill="#285590" font-size="16" text-anchor="middle"><tspan aria-hidden="true">✓ </tspan>실제 응답 확인</text>
                   </g>
                 </svg>
               </div>
@@ -569,54 +1156,139 @@
               <div class="slide-copy">
                 <h2 class="slide-title">내 PC 안에서,<span class="em-focus"> 요금도 제한도 없이.</span></h2>
                 <p class="slide-lead">쓰는 동안 바뀌는 것 세 가지입니다.</p>
-                <div class="gain-strip">
-                  <div>
-                    <svg class="mini" viewBox="0 0 200 130" role="img" aria-label="데스크톱 한 대 안에서 질문과 답이 오가고, 인터넷 플러그는 둘로 떨어져 있습니다.">
-                      <rect x="10" y="14" width="116" height="74" fill="#FFFDF8" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
-                      <path d="M58 88V100H40V105H96V100H78V88" fill="none" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
-                      <rect x="136" y="14" width="30" height="91" fill="none" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
-                      <rect class="m1-b0" x="20" y="26" width="64" height="15" rx="4" fill="#285590"/>
-                      <rect class="m1-b1" x="50" y="50" width="64" height="15" rx="4" fill="#536B5C"/>
-                      <g stroke="#536B5C" stroke-width="2" fill="none">
-                        <path class="m1-pl tx" vector-effect="non-scaling-stroke" d="M96 116H116V128H96Z"/>
-                        <path class="m1-pl tx" vector-effect="non-scaling-stroke" d="M116 119H124M116 125H124"/>
-                        <path class="m1-pr tx" vector-effect="non-scaling-stroke" d="M134 116H156V128H134Z"/>
+                <div class="gain-strip" aria-label="내 PC에서 달라지는 세 가지">
+                  <div class="gain-panel is-current" id="gain-1" role="group" aria-roledescription="슬라이드" aria-label="1 / 3 · 내 PC에서 실행">
+                    <svg class="mini" viewBox="0 0 200 130" role="img" aria-label="인터넷 연결선이 사라지고 지구본에 연결 없음이 표시됩니다. PC 화면은 켜진 채로, 연결이 끊긴 뒤 질문과 답변이 PC 안에 차례로 나타납니다.">
+                      <rect x="6" y="22" width="112" height="76" fill="#FFFDF8" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+                      <path d="M51 98V104H36V108H88V104H73V98" fill="none" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+                      <rect x="127" y="26" width="22" height="83" fill="#FFFDF8" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+                      <circle cx="138" cy="38" r="2.5" fill="#285590"/>
+                      <path d="M132 87H144M132 93H144M132 99H144" stroke="#B9C9BE" stroke-width="1.5"/>
+                      <g class="m1-b0">
+                        <rect x="50" y="33" width="57" height="16" rx="4" fill="#D5E1D8"/>
+                        <text x="78.5" y="45" fill="#45564B" font-size="10.5" text-anchor="middle">질문</text>
                       </g>
+                      <rect class="m1-b1" x="17" y="61" width="80" height="6" rx="3" fill="#285590"/>
+                      <rect class="m1-answer-next" x="17" y="76" width="61" height="6" rx="3" fill="#285590"/>
+                      <text x="178" y="17" fill="#45564B" font-size="12" text-anchor="middle">인터넷</text>
+                      <path class="m1-link" d="M149 61H154Q157 61 157 58V49Q157 46 160 46H161" fill="none" stroke="#536B5C" stroke-width="1.5" stroke-dasharray="2 3" opacity="0"/>
+                      <g class="m1-globe" stroke="#9BA7A0" stroke-width="1.4" fill="none">
+                        <circle cx="178" cy="46" r="17"/>
+                        <ellipse cx="178" cy="46" rx="7" ry="17"/>
+                        <path d="M161 46H195M164 37H192M164 55H192"/>
+                      </g>
+                      <path class="m1-off-slash" d="M164 61L192 31" fill="none" stroke="#66776B" stroke-width="2.3" stroke-linecap="round"/>
+                      <text class="m1-off-label" x="176" y="82" fill="#536B5C" font-size="10.5" text-anchor="middle">연결 없음</text>
+                      <text class="m1-local" x="78" y="125" fill="#285590" font-size="12" font-weight="500" text-anchor="middle">PC에서 계속 응답</text>
                     </svg>
                     <strong>내 PC 안에서 돌아갑니다</strong><span>인터넷이 끊겨도 쓸 수 있고, 대화 내용이 남의 서버로 가지 않습니다.</span>
                   </div>
-                  <div>
-                    <svg class="mini" viewBox="0 0 200 130" role="img" aria-label="프로그램 창을 요청 세 건이 지나가고, 프로그램 이용료 0원 표시는 그대로입니다.">
-                      <rect x="14" y="12" width="132" height="74" fill="#FFFDF8" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
-                      <path d="M14 30H146" stroke="#536B5C" stroke-width="1.5" fill="none" vector-effect="non-scaling-stroke"/>
-                      <g fill="#536B5C"><circle cx="24" cy="21" r="3"/><circle cx="34" cy="21" r="3"/><circle cx="44" cy="21" r="3"/></g>
-                      <rect class="m2-c0 tx" x="152" y="38" width="30" height="11" rx="2" fill="#285590"/>
-                      <rect class="m2-c1 tx" x="152" y="54" width="30" height="11" rx="2" fill="#285590"/>
-                      <rect class="m2-c2 tx" x="152" y="70" width="30" height="11" rx="2" fill="#285590"/>
-                      <text x="14" y="118" fill="#45564B" font-size="16">프로그램 이용료 0원</text>
+                  <div class="gain-panel" id="gain-2" role="group" aria-roledescription="슬라이드" aria-label="2 / 3 · 요금·사용량 제한 없이">
+                    <svg class="mini" viewBox="0 0 200 130" role="img" aria-label="프로그램 창 안에서 질문과 답변이 두 차례 이어집니다. 사선이 그어진 동전은 프로그램 이용료 없음을, 무한대 표시는 사용 횟수 제한 없음을 뜻합니다. 대화가 이어져도 프로그램 이용료는 0원입니다.">
+                      <rect x="6" y="12" width="134" height="89" fill="#FFFDF8" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+                      <path d="M6 28H140" stroke="#536B5C" stroke-width="1.5" fill="none" vector-effect="non-scaling-stroke"/>
+                      <g fill="#536B5C"><circle cx="15" cy="20" r="2.5"/><circle cx="24" cy="20" r="2.5"/><circle cx="33" cy="20" r="2.5"/></g>
+                      <g class="m2-question tx">
+                        <rect x="78" y="34" width="51" height="12" rx="4" fill="#D5E1D8"/>
+                        <path d="M120 43L130 50L127 42" fill="#D5E1D8"/>
+                        <path d="M86 40H116" stroke="#708879" stroke-width="1.8" stroke-linecap="round"/>
+                      </g>
+                      <g class="m2-answer tx">
+                        <rect x="17" y="51" width="82" height="12" rx="4" fill="#285590"/>
+                        <path d="M20 59L15 67L30 60" fill="#285590"/>
+                        <path d="M26 57H82" stroke="#FFFDF8" stroke-width="1.8" stroke-linecap="round"/>
+                      </g>
+                      <g class="m2-question tx">
+                        <rect x="85" y="68" width="44" height="12" rx="4" fill="#D5E1D8"/>
+                        <path d="M120 77L130 84L127 76" fill="#D5E1D8"/>
+                        <path d="M93 74H117" stroke="#708879" stroke-width="1.8" stroke-linecap="round"/>
+                      </g>
+                      <g class="m2-answer tx">
+                        <rect x="17" y="85" width="70" height="11" rx="4" fill="#285590"/>
+                        <path d="M20 92L16 98L29 93" fill="#285590"/>
+                        <path d="M26 90.5H69" stroke="#FFFDF8" stroke-width="1.8" stroke-linecap="round"/>
+                      </g>
+                      <g class="m2-no-fee">
+                        <circle cx="172" cy="38" r="19" fill="#F1F5F2" stroke="#536B5C" stroke-width="1.6"/>
+                        <circle cx="172" cy="38" r="15" fill="none" stroke="#B9C9BE" stroke-width="1"/>
+                        <text x="172" y="44.5" fill="#536B5C" font-size="19" text-anchor="middle">₩</text>
+                        <path d="M157 53L187 23" stroke="#285590" stroke-width="2.5" stroke-linecap="round"/>
+                      </g>
+                      <path class="m2-unlimited" d="M172 81C158 64 147 65 147 81C147 97 158 98 172 81C186 64 197 65 197 81C197 97 186 98 172 81Z" fill="none" stroke="#285590" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+                      <text class="m2-fee-label" x="6" y="122" fill="#45564B" font-size="14">프로그램 이용료 <tspan fill="#285590" font-weight="700">0원</tspan></text>
                     </svg>
                     <strong>요금도 사용량 제한도 없이</strong><span>무료로 공개된 오픈소스입니다. 내 장비가 허락하는 만큼 씁니다.</span>
                   </div>
-                  <div>
-                    <svg class="mini" viewBox="0 0 200 130" role="img" aria-label="뒤쪽 서버 랙이 물러나고 앞의 데스크톱이 켜진 채 남습니다. 아래에 GPU와 SSD 표시가 있습니다.">
-                      <g class="m3-rack tx" style="transform:translate(34.48px,3.72px) scale(.82);opacity:.45">
-                        <rect x="104" y="4" width="64" height="100" fill="#FFFDF8" stroke="#000000" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                        <path d="M104 28H168M104 52H168M104 76H168" stroke="#000000" stroke-width="1.5" fill="none" vector-effect="non-scaling-stroke"/>
+                  <div class="gain-panel" id="gain-3" role="group" aria-roledescription="슬라이드" aria-label="3 / 3 · 서버급 장비 없이">
+                    <svg class="mini" viewBox="0 0 240 156" overflow="hidden" role="img" aria-label="서버에 마련된 내부 표시창에서 AI가 작동합니다. 개인용 PC가 오른쪽에서 들어오며 서버 장비를 화면 밖으로 밀어냅니다. 같은 AI 표시가 PC 본체의 내부 표시창에 자리 잡으며 작동을 이어갑니다. 마지막에는 서버 없이 PC만 남고, 모니터에 답변이 생성됩니다.">
+                      <defs>
+                        <g id="c4-server-bay"><rect width="47" height="16" rx="1" fill="#FFFDF8" stroke="#718773"/><path d="M5 5H29M5 10H29" stroke="#9AAF9F"/><circle cx="39" cy="8" r="2" fill="#718773"/></g>
+                        <g id="c4-server-unit"><rect width="59" height="130" rx="2" fill="#E2EBE5" stroke="#536B5C" stroke-width="2"/><use href="#c4-server-bay" x="6" y="10"/><use href="#c4-server-bay" x="6" y="34"/><use href="#c4-server-bay" x="6" y="58"/><use href="#c4-server-bay" x="6" y="82"/><use href="#c4-server-bay" x="6" y="106"/><path d="M7 131V136M52 131V136" stroke="#536B5C" stroke-width="3"/></g>
+                        <g id="c4-ai-window"><rect width="47" height="40" rx="2" fill="#FFFDF8" stroke="#718773" stroke-width="1.2"/><rect x="3" y="3" width="41" height="34" rx="1" fill="#D6E3F0"/></g>
+                        <g id="c4-server-ai-unit"><rect width="59" height="130" rx="2" fill="#E2EBE5" stroke="#536B5C" stroke-width="2"/><use href="#c4-ai-window" x="6" y="12"/><use href="#c4-server-bay" x="6" y="58"/><use href="#c4-server-bay" x="6" y="82"/><use href="#c4-server-bay" x="6" y="106"/><path d="M7 131V136M52 131V136" stroke="#536B5C" stroke-width="3"/></g>
+                      </defs>
+                      <g class="m3-server tx" style="transform:translate(-152px,5px);opacity:0">
+                        <use href="#c4-server-unit" x="6" y="4"/><use class="m3-server-ai-bay" href="#c4-server-ai-unit" x="76" y="4"/>
                       </g>
-                      <rect x="8" y="24" width="100" height="64" fill="#FFFDF8" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
-                      <path d="M50 88V98H34V103H82V98H66V88" fill="none" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
-                      <rect x="116" y="32" width="26" height="72" fill="#FFFDF8" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+                      <g class="m3-pc tx" style="transform:translate(7px,1px) scale(.94)">
+                      <path d="M4 139H235" fill="none" stroke="#9AAF9F" stroke-width="1.5"/>
+                      <path d="M110 88H122V112H136" fill="none" stroke="#718773" stroke-width="1.5" stroke-linejoin="round"/>
+                      <rect x="7" y="29" width="106" height="72" rx="3" fill="#FFFDF8" stroke="#536B5C" stroke-width="2" vector-effect="non-scaling-stroke"/>
+                      <rect x="13" y="35" width="94" height="58" rx="1" fill="#F1F5F2"/>
+                      <path d="M52 101V117H40M68 101V117H81M40 118H81" fill="none" stroke="#536B5C" stroke-width="2" stroke-linejoin="round"/>
+                      <circle cx="60" cy="97" r="1.6" fill="#536B5C"/>
+                      <text x="20" y="54" fill="#536B5C" font-size="10" font-weight="600">질문</text>
+                      <rect x="48" y="43" width="50" height="14" rx="4" fill="#D5E1D8"/>
+                      <path d="M91 55L99 61V51" fill="#D5E1D8"/>
+                      <path d="M55 50H88" stroke="#718773" stroke-width="1.6" stroke-linecap="round"/>
+                      <g class="m3-reply">
+                        <rect x="21" y="65" width="74" height="20" rx="4" fill="#285590"/>
+                        <path d="M25 79L19 89L35 81" fill="#285590"/>
+                        <path class="m3-output-line" d="M29 72H79M29 78H67" fill="none" stroke="#FFFDF8" stroke-width="1.7" stroke-linecap="round"/>
+                      </g>
+                      <path d="M22 125H96L101 133H17Z" fill="#FFFDF8" stroke="#718773" stroke-width="1.3" stroke-linejoin="round"/>
+                      <path d="M27 128H91M31 131H86" stroke="#B9C9BE" stroke-width="1.3" stroke-dasharray="3 2"/>
+                      <rect x="113" y="123" width="10" height="13" rx="5" fill="#FFFDF8" stroke="#718773" stroke-width="1.3"/><path d="M118 125V128" stroke="#718773"/>
+                      <rect x="137" y="12" width="91" height="123" rx="4" fill="#FFFDF8" stroke="#536B5C" stroke-width="2" vector-effect="non-scaling-stroke"/>
+                      <path d="M211 13V134" stroke="#718773" stroke-width="1.3"/>
+                      <rect x="145" y="23" width="59" height="100" rx="2" fill="#E2EBE5" stroke="#B9C9BE"/>
+                      <circle cx="219" cy="23" r="3" fill="#285590"/><path d="M217 33H222M217 39H222M216 106H223M216 111H223M216 116H223M216 121H223" stroke="#718773" stroke-width="1.3"/>
+                      <path d="M153 67V70M192 67V70M152 104H186M180 99V118M160 101V118" fill="none" stroke="#B9C9BE" stroke-width="1.1"/>
+                      <use class="m3-pc-ai-window" href="#c4-ai-window" x="151" y="27"/>
                       <g class="m3-chip">
-                        <rect x="8" y="110" width="14" height="10" fill="#285590"/>
-                        <text x="26" y="120" fill="#45564B" font-size="16">GPU</text>
-                        <rect x="72" y="110" width="14" height="10" fill="#285590"/>
-                        <text x="90" y="120" fill="#45564B" font-size="16">SSD</text>
+                        <rect x="145" y="70" width="59" height="26" rx="3" fill="#D6E3F0" stroke="#285590" stroke-width="1.4"/>
+                        <path d="M142 68V97M152 97V100M157 97V100M162 97V100M167 97V100M172 97V100" stroke="#718773" stroke-width="1.2"/>
+                        <g fill="#FFFDF8" stroke="#285590" stroke-width="1.1"><circle cx="161" cy="83" r="9"/><circle cx="188" cy="83" r="9"/></g>
+                        <g fill="none" stroke="#285590" stroke-width="2" stroke-linecap="round"><path d="M161 76L163 81M168 83L163 85M161 90L159 85M154 83L159 81M188 76L190 81M195 83L190 85M188 90L186 85M181 83L186 81"/></g>
+                        <g fill="#285590"><circle cx="161" cy="83" r="2.1"/><circle cx="188" cy="83" r="2.1"/></g>
+                        <rect x="153" y="109" width="44" height="10" rx="2" fill="#FFFDF8" stroke="#536B5C" stroke-width="1.2"/>
+                        <circle cx="157" cy="114" r="1.5" fill="none" stroke="#718773"/><rect x="162" y="111" width="10" height="6" rx="1" fill="#285590"/><rect x="175" y="111" width="10" height="6" rx="1" fill="#285590"/>
+                        <path d="M192 111V117M195 111V117" stroke="#AD8541" stroke-width="1.2"/>
+                      </g>
+                      <path d="M145 135V139M219 135V139" stroke="#536B5C" stroke-width="3"/>
+                      </g>
+                      <!-- The same AI content fits a built-in window in either machine. -->
+                      <g class="m3-ai-core tx" style="transform:translate(148.94px,26.38px) scale(.94)">
+                        <text x="23.5" y="24" fill="#285590" font-size="19" font-weight="700" text-anchor="middle">AI</text>
+                        <g fill="#285590"><rect class="m3-ai-light" x="12" y="29" width="5" height="2" rx="1"/><rect class="m3-ai-light" x="21" y="29" width="5" height="2" rx="1"/><rect class="m3-ai-light" x="30" y="29" width="5" height="2" rx="1"/></g>
+                      </g>
+                      <g class="m3-local-proof">
+                        <circle cx="55" cy="146" r="7" fill="#E1F0E5" stroke="#718773"/>
+                        <path d="M51.5 146L54 148.5L58.5 143.5" fill="none" stroke="#2D6545" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+                        <text x="68" y="150" fill="#285590" font-size="12" font-weight="600">서버 없이, 내 PC에서</text>
                       </g>
                     </svg>
                     <strong>서버급 장비 없이, 지금 가진 PC로</strong><span>서버 장비를 새로 들이지 않고, 이미 쓰고 있는 데스크톱에서 실행합니다.</span><em>Windows · NVIDIA 그래픽카드 · NVMe SSD</em>
                   </div>
                 </div>
-                <p class="swipe-hint" aria-hidden="true">옆으로 넘기기 →</p>
+                <div class="gain-nav">
+                  <div class="gain-dots" role="group" aria-label="혜택 슬라이드 이동">
+                    <button class="gain-dot" type="button" data-gain="0" aria-controls="gain-1" aria-label="내 PC에서 실행" aria-current="true"></button>
+                    <button class="gain-dot" type="button" data-gain="1" aria-controls="gain-2" aria-label="요금·사용량 제한 없이"></button>
+                    <button class="gain-dot" type="button" data-gain="2" aria-controls="gain-3" aria-label="서버급 장비 없이"></button>
+                  </div>
+                  <span class="gain-label" aria-live="polite">내 PC에서 실행</span>
+                </div>
               </div>
             </div>
           </article>
@@ -624,241 +1296,147 @@
           <article class="chapter chapter-solo" id="chapter-5" role="group" aria-roledescription="장" aria-label="5 / 5">
             <div class="slide-grid">
               <div class="slide-copy">
-                <h2 class="slide-title"><span class="em-focus">측정한 만큼만</span><span> 말합니다.</span></h2>
-                <p class="slide-lead">기준 PC에서 실제로 잰 수치와 그 등급을 그대로 싣습니다.</p>
-                <div class="hero-actions"><a class="text-link" href="#results">측정 결과 살펴보기 <span aria-hidden="true">↓</span></a></div>
-                <div class="metric-stage">
+                <h2 class="slide-title">개인용 PC 한 대로,<span class="em-focus"> 여기까지.</span></h2>
+                <p class="slide-lead">측정한 만큼만 말합니다.</p>
+                <div class="hero-actions"><a class="text-link" href="#results">측정 결과 살펴보기 <span aria-hidden="true">↓</span></a><button class="c5-replay" type="button">예시 다시 보기 <span aria-hidden="true">↻</span></button></div>
+                <div class="metric-stage metric-desktop">
                   <div class="metric-row">
-                    <div class="metric-card metric-card-hw">
-                      <svg class="scene-card" viewBox="0 0 260 340" role="img" aria-label="기준 PC. 메모리 32GB, RTX 5080 16GB, Gen5 NVMe.">
-                        <rect x="0" y="0" width="260" height="340" fill="#FFFDF8"/>
-                        <text x="20" y="34" fill="#45564B" font-size="17">기준 PC</text>
-                        <rect x="20" y="54" width="150" height="96" fill="#FFFDF8" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
-                        <path d="M86 150V166H62V172H130V166H106V150" fill="none" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
-                        <rect x="182" y="54" width="44" height="112" fill="none" stroke="#536B5C" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
-                        <text x="20" y="208" fill="#192820" font-size="19">메모리 32GB</text>
-                        <text x="20" y="238" fill="#45564B" font-size="16">RTX 5080 16GB</text>
-                        <text x="20" y="262" fill="#45564B" font-size="16">Gen5 NVMe</text>
+                    <div class="metric-card metric-card-hw"><svg class="scene-card c5-hardware" viewBox="0 0 260 416" role="img" aria-label="개인용 PC 한 대의 작동 개념도. 큰 AI는 Gen5 NVMe SSD에 보관하고, 필요한 전문가 데이터를 RAM으로 읽어 CPU에서 계산합니다. GPU는 나머지 연산을 나눠 맡습니다. 두 모델을 각각 실행한 기준 환경은 RAM 32GB, RTX 5080 16GB입니다.">
+                        <rect width="260" height="416" fill="#FFFDF8"/>
+                        <text x="18" y="30" fill="#192820" font-size="20" font-weight="600">개인용 PC 한 대</text>
+                        <text x="18" y="53" fill="#45564B" font-size="13">두 모델을 각각 실행했습니다</text>
+                        <rect x="18" y="73" width="224" height="105" rx="4" fill="#F1F5F2" stroke="#536B5C"/>
+                        <text x="30" y="97" fill="#192820" font-size="15" font-weight="600">SSD · 보관</text>
+                        <text x="229" y="96" fill="#45564B" font-size="11" text-anchor="end">Gen5 NVMe</text>
+                        <rect class="c5-store" x="30" y="110" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="44" y="110" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="58" y="110" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="72" y="110" width="11" height="8" rx="1.5" fill="#285590"/><rect class="c5-store" x="86" y="110" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="100" y="110" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="114" y="110" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="128" y="110" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="142" y="110" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="156" y="110" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="170" y="110" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="184" y="110" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="198" y="110" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="212" y="110" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="30" y="123" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="44" y="123" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="58" y="123" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="72" y="123" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="86" y="123" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="100" y="123" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="114" y="123" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="128" y="123" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="142" y="123" width="11" height="8" rx="1.5" fill="#285590"/><rect class="c5-store" x="156" y="123" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="170" y="123" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="184" y="123" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="198" y="123" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="212" y="123" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="30" y="136" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="44" y="136" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="58" y="136" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="72" y="136" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="86" y="136" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="100" y="136" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="114" y="136" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="128" y="136" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="142" y="136" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="156" y="136" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="170" y="136" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="184" y="136" width="11" height="8" rx="1.5" fill="#285590"/><rect class="c5-store" x="198" y="136" width="11" height="8" rx="1.5" fill="#D5E1D8"/><rect class="c5-store" x="212" y="136" width="11" height="8" rx="1.5" fill="#D5E1D8"/>
+                        <text x="30" y="163" fill="#45564B" font-size="12">큰 AI는 넉넉한 저장 공간에</text>
+                        <path d="M119 178V213M115 208L119 213L123 208" fill="none" stroke="#536B5C" stroke-width="1.2"/>
+                        <path d="M108 183V196M103 188V200" stroke="#B9C9BE" stroke-width="1.5"/>
+                        <text x="137" y="200" fill="#285590" font-size="12">필요한 조각만 빠르게</text>
+                        <rect x="42" y="213" width="176" height="66" rx="4" fill="#F1F5F2" stroke="#536B5C"/>
+                        <text x="55" y="236" fill="#192820" font-size="15" font-weight="600">RAM · 임시 보관</text>
+                        <rect class="c5-ram-piece" x="56" y="253" width="17" height="9" rx="1.5" fill="#285590"/><rect class="c5-ram-piece" x="79" y="253" width="17" height="9" rx="1.5" fill="#285590"/><rect class="c5-ram-piece" x="102" y="253" width="17" height="9" rx="1.5" fill="#285590"/>
+                        <text x="205" y="262" fill="#45564B" font-size="12" text-anchor="end">32GB</text>
+                        <path d="M119 279V293H75V321M71 316L75 321L79 316" fill="none" stroke="#536B5C" stroke-width="1.2"/>
+                        <text x="127" y="300" fill="#45564B" font-size="11">역할을 나눠 계산</text>
+                        <rect x="18" y="310" width="224" height="74" rx="5" fill="none" stroke="#B9C9BE"/>
+                        <rect x="30" y="321" width="90" height="52" rx="4" fill="#F1F5F2" stroke="#536B5C"/>
+                        <text x="75" y="342" fill="#192820" font-size="12" font-weight="600" text-anchor="middle">CPU · 조각 계산</text>
+                        <rect class="c5-cpu-piece" x="46" y="352" width="11" height="8" rx="1.5" fill="#285590"/><rect class="c5-cpu-piece" x="63" y="352" width="11" height="8" rx="1.5" fill="#285590"/><rect class="c5-cpu-piece" x="80" y="352" width="11" height="8" rx="1.5" fill="#285590"/>
+                        <path d="M125 342H138M135 339L138 342L135 345M138 352H125M128 349L125 352L128 355" fill="none" stroke="#536B5C"/>
+                        <rect x="143" y="321" width="87" height="52" rx="4" fill="#F1F5F2" stroke="#536B5C"/>
+                        <text x="186" y="342" fill="#192820" font-size="13" font-weight="600" text-anchor="middle">GPU · 그 외</text>
+                        <path d="M159 355H214M159 361H198" stroke="#B9C9BE" stroke-width="3"/>
+                        <text x="18" y="401" fill="#45564B" font-size="12">RTX 5080 16GB · 작동 개념도</text>
+                      </svg></div>
+                    <div class="metric-card">
+                      <svg class="scene-card" data-output-model="qwen" viewBox="0 0 466 416" role="img" aria-label="Qwen3.5-122B Q4_K_M. 전문가 데이터 72.8GB. 실측 5.59–5.69 tok/s. 검증 통과. 같은 예시 답변을 8토큰으로 나누어 평균 출력 속도로 재생합니다. 최초 응답 대기는 제외합니다.">
+                        <rect width="466" height="416" fill="#FFFDF8"/>
+                        <text x="20" y="17" fill="#45564B" font-size="12" font-weight="600">동작과 속도를 검증</text>
+                        <text x="20" y="41" fill="#192820" font-size="17" font-weight="600">Qwen3.5-122B · Q4_K_M</text>
+                        <text x="20" y="62" fill="#45564B" font-size="16">꺼내 쓰는 AI 데이터</text>
+                        <rect class="c5-bar sx" x="20" y="73" width="71" height="24" fill="#A6402D"/>
+                        <text x="20" y="123" fill="#192820" font-size="21" font-weight="600">72.8 <tspan font-size="14" font-weight="400">GB</tspan></text>
+                        <text x="446" y="123" fill="#2D6545" font-size="14" text-anchor="end">검증 통과</text>
+                        <text x="20" y="144" fill="#45564B" font-size="13">전문가 부분 기준</text>
+                        <path d="M20 163H446" stroke="#D5E1D8"/>
+                        <text x="20" y="191" fill="#45564B" font-size="14">질문</text>
+                        <text x="58" y="191" fill="#192820" font-size="19" font-weight="500">대한민국의 수도는?</text>
+                        <text x="20" y="228" fill="#285590" font-size="25" font-weight="700">1초에 약 5.6<tspan font-size="17" font-weight="500"> 조각</tspan></text>
+                        <text class="c5-time" x="446" y="228" fill="#45564B" font-size="14" text-anchor="end">출력 <tspan class="c5-seconds">1.4</tspan>초</text>
+                        <rect class="c5-token c5-qm" x="20" y="248" width="14" height="7" rx="1.5" fill="#285590"/><rect class="c5-token c5-qm" x="40" y="248" width="14" height="7" rx="1.5" fill="#285590"/><rect class="c5-token c5-qm" x="60" y="248" width="14" height="7" rx="1.5" fill="#285590"/><rect class="c5-token c5-qm" x="80" y="248" width="14" height="7" rx="1.5" fill="#285590"/><rect class="c5-token c5-qm" x="100" y="248" width="14" height="7" rx="1.5" fill="#285590"/><rect class="c5-token c5-qm" x="120" y="248" width="14" height="7" rx="1.5" fill="#285590"/><rect class="c5-token c5-qm" x="140" y="248" width="14" height="7" rx="1.5" fill="#285590"/><rect class="c5-token c5-qm" x="160" y="248" width="14" height="7" rx="1.5" fill="#285590"/>
+                        <text x="446" y="257" fill="#45564B" font-size="13" text-anchor="end"><tspan class="c5-count">8</tspan> / 8조각</text>
+                        <rect x="20" y="276" width="426" height="79" rx="6" fill="#F1F5F2" stroke="#D5E1D8"/>
+                        <text x="34" y="298" fill="#45564B" font-size="12">답변 예시</text>
+                        <text x="34" y="331" fill="#192820" font-size="24" font-weight="500" xml:space="preserve"><tspan class="c5-answer-old">대한민국의 수도는 서울입니다.</tspan><tspan class="c5-answer-new" fill="#285590"></tspan><tspan class="c5-cursor" fill="#285590" opacity="0">▏</tspan></text>
+                        <text x="20" y="379" fill="#45564B" font-size="13">한 칸이 생길 때마다, 글 조각을 이어 씁니다</text>
+                        <text x="20" y="402" fill="#45564B" font-size="14">실측 5.59–5.69 tok/s</text>
+                        
                       </svg>
                     </div>
                     <div class="metric-card">
-                      <svg class="scene-card" viewBox="0 0 466 340" role="img" aria-label="Qwen3.5-122B Q4_K_M. SSD의 전문가 데이터 72.8GB, 5.59에서 5.69 tok/s, 검증 통과. 10초로 환산하면 글 조각 약 56개.">
-                        <rect x="0" y="0" width="466" height="340" fill="#FFFDF8"/>
-                        <text x="20" y="34" fill="#192820" font-size="17">Qwen3.5-122B · Q4_K_M</text>
-                        <text x="20" y="66" fill="#45564B" font-size="16">SSD의 전문가 데이터</text>
-                        <rect x="20" y="76" width="426" height="18" fill="#D5E1D8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                        <rect class="c5-bar sx" x="20" y="76" width="71" height="18" fill="#285590"/>
-                        <text x="20" y="118" fill="#45564B" font-size="17">72.8 GB</text>
-                        <text x="20" y="182" fill="#192820" font-size="26" font-weight="700">5.59–5.69 tok/s</text>
-                        <text x="20" y="210" fill="#2D6545" font-size="16">검증 통과</text>
-                        <text x="20" y="246" fill="#45564B" font-size="16">글 조각(토큰)</text>
-                        <text class="c5-total" x="446" y="246" fill="#192820" font-size="18" text-anchor="end">≈ 56개</text>
-                        <rect x="20" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="54" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="88" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="122" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="156" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="190" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="224" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="258" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="292" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="326" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="360" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="394" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="20" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="54" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="88" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="122" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="156" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="190" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="224" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="258" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="292" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="326" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="360" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="394" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="20" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="54" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="88" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="122" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="156" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="190" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="224" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="258" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="292" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="326" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="360" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="394" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="20" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="54" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="88" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="122" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="156" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="190" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="224" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="258" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="292" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="326" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="360" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="394" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="20" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="54" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="88" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="122" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="156" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="190" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="224" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="258" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="292" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="326" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="360" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="394" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                        <rect class="c5-qm" x="20" y="256" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="54" y="256" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="88" y="256" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="122" y="256" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="156" y="256" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="190" y="256" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="224" y="256" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="258" y="256" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="292" y="256" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="326" y="256" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="360" y="256" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="394" y="256" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="20" y="271" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="54" y="271" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="88" y="271" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="122" y="271" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="156" y="271" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="190" y="271" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="224" y="271" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="258" y="271" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="292" y="271" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="326" y="271" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="360" y="271" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="394" y="271" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="20" y="286" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="54" y="286" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="88" y="286" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="122" y="286" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="156" y="286" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="190" y="286" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="224" y="286" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="258" y="286" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="292" y="286" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="326" y="286" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="360" y="286" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="394" y="286" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="20" y="301" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="54" y="301" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="88" y="301" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="122" y="301" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="156" y="301" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="190" y="301" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="224" y="301" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="258" y="301" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="292" y="301" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="326" y="301" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="360" y="301" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="394" y="301" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="20" y="316" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="54" y="316" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="88" y="316" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="122" y="316" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="156" y="316" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="190" y="316" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="224" y="316" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-qm" x="258" y="316" width="26" height="9" rx="2" fill="#285590"/>
-                      </svg>
-                    </div>
-                    <div class="metric-card">
-                      <svg class="scene-card" viewBox="0 0 466 340" role="img" aria-label="Kimi K2.6 mixed-quant. SSD의 전문가 데이터 436GB, 전체 모델 파일 447GB, 1.03 tok/s, 탐색 측정이라 대화형 사용에는 부적합합니다. 10초로 환산하면 글 조각 약 10개.">
-                        <rect x="0" y="0" width="466" height="340" fill="#FFFDF8"/>
-                        <text x="20" y="34" fill="#192820" font-size="17">Kimi K2.6 · mixed-quant</text>
-                        <text x="20" y="66" fill="#45564B" font-size="16">SSD의 전문가 데이터</text>
-                        <rect x="20" y="76" width="426" height="18" fill="#D5E1D8" stroke="#536B5C" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
-                        <rect class="c5-bar sx" x="20" y="76" width="426" height="18" fill="#285590"/>
-                        <text x="20" y="118" fill="#45564B" font-size="17">436 GB</text>
-                        <text x="20" y="144" fill="#45564B" font-size="16">전체 모델 파일 447GB</text>
-                        <text x="20" y="182" fill="#192820" font-size="26" font-weight="700">1.03 tok/s</text>
-                        <text x="20" y="210" fill="#77551C" font-size="16">탐색 측정(PROBE) · 대화형 사용 부적합</text>
-                        <text x="20" y="246" fill="#45564B" font-size="16">글 조각(토큰)</text>
-                        <text class="c5-total" x="446" y="246" fill="#192820" font-size="18" text-anchor="end">≈ 10개</text>
-                        <rect x="20" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="54" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="88" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="122" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="156" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="190" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="224" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="258" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="292" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="326" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="360" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="394" y="256" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="20" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="54" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="88" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="122" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="156" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="190" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="224" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="258" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="292" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="326" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="360" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="394" y="271" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="20" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="54" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="88" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="122" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="156" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="190" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="224" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="258" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="292" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="326" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="360" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="394" y="286" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="20" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="54" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="88" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="122" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="156" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="190" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="224" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="258" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="292" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="326" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="360" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="394" y="301" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="20" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="54" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="88" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="122" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="156" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="190" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="224" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="258" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="292" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="326" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="360" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                  <rect x="394" y="316" width="26" height="9" rx="2" fill="#D5E1D8" stroke="#536B5C" stroke-width="1" vector-effect="non-scaling-stroke"/>
-                        <rect class="c5-km" x="20" y="256" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-km" x="54" y="256" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-km" x="88" y="256" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-km" x="122" y="256" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-km" x="156" y="256" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-km" x="190" y="256" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-km" x="224" y="256" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-km" x="258" y="256" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-km" x="292" y="256" width="26" height="9" rx="2" fill="#285590"/>
-                  <rect class="c5-km" x="326" y="256" width="26" height="9" rx="2" fill="#285590"/>
+                      <svg class="scene-card" data-output-model="kimi" viewBox="0 0 466 416" role="img" aria-label="Kimi K2.6 mixed-quant. 전문가 데이터 436GB. 실측 1.03 tok/s. 탐색 측정(PROBE). 같은 예시 답변을 12토큰으로 나누어 평균 출력 속도로 재생합니다. 최초 응답 대기는 제외합니다.">
+                        <rect width="466" height="416" fill="#FFFDF8"/>
+                        <text x="20" y="17" fill="#45564B" font-size="12" font-weight="600">더 큰 모델의 실행 탐색</text>
+                        <text x="20" y="41" fill="#192820" font-size="17" font-weight="600">Kimi K2.6 · mixed-quant</text>
+                        <text x="20" y="62" fill="#45564B" font-size="16">꺼내 쓰는 AI 데이터</text>
+                        <rect class="c5-bar sx" x="20" y="73" width="426" height="24" fill="#A6402D"/>
+                        <text x="20" y="123" fill="#192820" font-size="21" font-weight="600">436 <tspan font-size="14" font-weight="400">GB</tspan></text>
+                        <text x="446" y="123" fill="#77551C" font-size="14" text-anchor="end">탐색 측정(PROBE)</text>
+                        <text x="20" y="144" fill="#45564B" font-size="13">전문가 부분 · 전체 모델 파일 447GB</text>
+                        <path d="M20 163H446" stroke="#D5E1D8"/>
+                        <text x="20" y="191" fill="#45564B" font-size="14">질문</text>
+                        <text x="58" y="191" fill="#192820" font-size="19" font-weight="500">대한민국의 수도는?</text>
+                        <text x="20" y="228" fill="#285590" font-size="25" font-weight="700">1초에 약 1.0<tspan font-size="17" font-weight="500"> 조각</tspan></text>
+                        <text class="c5-time" x="446" y="228" fill="#45564B" font-size="14" text-anchor="end">출력 <tspan class="c5-seconds">11.7</tspan>초</text>
+                        <rect class="c5-token c5-km" x="20" y="248" width="14" height="7" rx="1.5" fill="#285590"/><rect class="c5-token c5-km" x="40" y="248" width="14" height="7" rx="1.5" fill="#285590"/><rect class="c5-token c5-km" x="60" y="248" width="14" height="7" rx="1.5" fill="#285590"/><rect class="c5-token c5-km" x="80" y="248" width="14" height="7" rx="1.5" fill="#285590"/><rect class="c5-token c5-km" x="100" y="248" width="14" height="7" rx="1.5" fill="#285590"/><rect class="c5-token c5-km" x="120" y="248" width="14" height="7" rx="1.5" fill="#285590"/><rect class="c5-token c5-km" x="140" y="248" width="14" height="7" rx="1.5" fill="#285590"/><rect class="c5-token c5-km" x="160" y="248" width="14" height="7" rx="1.5" fill="#285590"/><rect class="c5-token c5-km" x="180" y="248" width="14" height="7" rx="1.5" fill="#285590"/><rect class="c5-token c5-km" x="200" y="248" width="14" height="7" rx="1.5" fill="#285590"/><rect class="c5-token c5-km" x="220" y="248" width="14" height="7" rx="1.5" fill="#285590"/><rect class="c5-token c5-km" x="240" y="248" width="14" height="7" rx="1.5" fill="#285590"/>
+                        <text x="446" y="257" fill="#45564B" font-size="13" text-anchor="end"><tspan class="c5-count">12</tspan> / 12조각</text>
+                        <rect x="20" y="276" width="426" height="79" rx="6" fill="#F1F5F2" stroke="#D5E1D8"/>
+                        <text x="34" y="298" fill="#45564B" font-size="12">답변 예시</text>
+                        <text x="34" y="331" fill="#192820" font-size="24" font-weight="500" xml:space="preserve"><tspan class="c5-answer-old">대한민국의 수도는 서울입니다.</tspan><tspan class="c5-answer-new" fill="#285590"></tspan><tspan class="c5-cursor" fill="#285590" opacity="0">▏</tspan></text>
+                        <text x="20" y="379" fill="#45564B" font-size="13">한 칸이 생길 때마다, 글 조각을 이어 씁니다</text>
+                        <text x="20" y="402" fill="#45564B" font-size="14">실측 1.03 tok/s</text>
+                        <text x="446" y="402" fill="#77551C" font-size="14" text-anchor="end">대화형 사용 부적합</text>
                       </svg>
                     </div>
                   </div>
-                  <p class="metric-note">측정 속도를 10초로 환산한 예시 · 5.64 tok/s 기준</p>
-                  <p class="swipe-hint" aria-hidden="true">옆으로 넘기기 →</p>
+                  <p class="metric-note">실측 속도로 예시 문장 재생 · 첫 응답 대기 시간 제외<br>한 칸 = 글 조각(토큰) 하나 · 모델마다 나누는 방식이 다릅니다 · 토큰 수는 각 모델의 토크나이저로 예시 문장을 센 값입니다.</p>
+                </div>
+                <div class="metric-stage metric-mobile">
+                  <div class="metric-hardware">
+                    <strong>이 구조가 개인용 PC 한 대 안에</strong>
+                    <svg class="c5-hardware" viewBox="0 0 330 81" role="img" aria-label="큰 AI는 SSD에 보관하고 필요한 전문가 데이터를 RAM으로 읽어 CPU에서 계산합니다. GPU는 나머지 연산을 나눠 맡습니다. 기준 환경은 Gen5 NVMe, RAM 32GB, RTX 5080 16GB입니다.">
+                      <rect x="1" y="9" width="91" height="51" rx="3" fill="#FFFDF8" stroke="#536B5C"/>
+                      <text x="11" y="29" fill="#192820" font-size="13" font-weight="600">SSD · 보관</text><rect class="c5-store" x="12" y="37" width="7" height="5" rx="1.5" fill="#B9C9BE"/><rect class="c5-store" x="22" y="37" width="7" height="5" rx="1.5" fill="#B9C9BE"/><rect class="c5-store" x="32" y="37" width="7" height="5" rx="1.5" fill="#B9C9BE"/><rect class="c5-store" x="42" y="37" width="7" height="5" rx="1.5" fill="#B9C9BE"/><rect class="c5-store" x="52" y="37" width="7" height="5" rx="1.5" fill="#B9C9BE"/><rect class="c5-store" x="62" y="37" width="7" height="5" rx="1.5" fill="#B9C9BE"/><rect class="c5-store" x="72" y="37" width="7" height="5" rx="1.5" fill="#B9C9BE"/><rect class="c5-store" x="12" y="46" width="7" height="5" rx="1.5" fill="#B9C9BE"/><rect class="c5-store" x="22" y="46" width="7" height="5" rx="1.5" fill="#B9C9BE"/><rect class="c5-store" x="32" y="46" width="7" height="5" rx="1.5" fill="#B9C9BE"/><rect class="c5-store" x="42" y="46" width="7" height="5" rx="1.5" fill="#B9C9BE"/><rect class="c5-store" x="52" y="46" width="7" height="5" rx="1.5" fill="#285590"/><rect class="c5-store" x="62" y="46" width="7" height="5" rx="1.5" fill="#B9C9BE"/><rect class="c5-store" x="72" y="46" width="7" height="5" rx="1.5" fill="#B9C9BE"/>
+                      <path d="M97 35H130M125 31L130 35L125 39M98 29H114M103 24H119" fill="none" stroke="#536B5C"/>
+                      <rect x="136" y="15" width="87" height="45" rx="3" fill="#FFFDF8" stroke="#536B5C"/>
+                      <text x="145" y="34" fill="#192820" font-size="12" font-weight="600">RAM · 임시</text><rect class="c5-ram-piece" x="145" y="46" width="10" height="6" rx="1.5" fill="#285590"/><rect class="c5-ram-piece" x="159" y="46" width="10" height="6" rx="1.5" fill="#285590"/><rect class="c5-ram-piece" x="173" y="46" width="10" height="6" rx="1.5" fill="#285590"/>
+                      <path d="M228 35H237V25H247M242 21L247 25L242 29" fill="none" stroke="#536B5C"/>
+                      <rect x="251" y="5" width="78" height="57" rx="3" fill="#FFFDF8" stroke="#536B5C"/>
+                      <text x="290" y="21" fill="#192820" font-size="10" font-weight="600" text-anchor="middle">CPU · 조각 계산</text><rect class="c5-cpu-piece" x="263" y="28" width="9" height="6" rx="1.5" fill="#285590"/><rect class="c5-cpu-piece" x="276" y="28" width="9" height="6" rx="1.5" fill="#285590"/><rect class="c5-cpu-piece" x="289" y="28" width="9" height="6" rx="1.5" fill="#285590"/>
+                      <path d="M257 40H323" stroke="#B9C9BE"/>
+                      <text x="290" y="55" fill="#45564B" font-size="11" font-weight="600" text-anchor="middle">GPU · 그 외</text>
+                      <text x="1" y="77" fill="#45564B" font-size="11">Gen5 NVMe</text>
+                      <text x="136" y="77" fill="#45564B" font-size="11">32GB</text>
+                      <text x="330" y="77" fill="#45564B" font-size="11" text-anchor="end">RTX 5080 16GB</text>
+                    </svg>
+                  </div>
+                  <p class="shared-question"><span>질문 예시</span>대한민국의 수도는?</p>
+                  <div class="metric-row">
+                    <div class="metric-card" data-output-model="qwen">
+                      <p class="model-purpose">동작과 속도를 검증</p>
+                      <div class="model-heading"><h3>Qwen3.5-122B<small>Q4_K_M</small></h3><span class="model-grade">검증 통과</span></div>
+                      <div class="model-storage">
+                        <div class="metric-label"><span>꺼내 쓰는 AI 데이터</span><strong>72.8 <small>GB</small></strong></div>
+                        <div class="storage-track" aria-hidden="true"><span class="c5-bar sx" style="width:16.7%"></span></div>
+                        <p class="model-file">전문가 부분 기준</p>
+                      </div>
+                      <div class="model-output">
+                        <p class="sample-question"><span>질문</span> 대한민국의 수도는?</p>
+                        <div class="output-summary"><strong>1초에 약 5.6<small> 조각</small></strong><span class="c5-time">출력 <span class="c5-seconds">1.4</span>초</span></div>
+                        <div class="token-progress"><div class="token-board" aria-hidden="true"><span class="token-cell c5-token c5-qm"></span><span class="token-cell c5-token c5-qm"></span><span class="token-cell c5-token c5-qm"></span><span class="token-cell c5-token c5-qm"></span><span class="token-cell c5-token c5-qm"></span><span class="token-cell c5-token c5-qm"></span><span class="token-cell c5-token c5-qm"></span><span class="token-cell c5-token c5-qm"></span></div><span class="token-count"><span class="c5-count">8</span> / 8조각</span></div>
+                        <p class="answer-sample"><span class="sr-only">답변 예시: 대한민국의 수도는 서울입니다.</span><span aria-hidden="true"><span class="c5-answer-old">대한민국의 수도는 서울입니다.</span><span class="c5-answer-new"></span><span class="c5-cursor" style="opacity:0">▏</span></span></p>
+                        <div class="model-speed"><span>실측 5.59–5.69 tok/s</span></div>
+                      </div>
+                    </div>
+                    <div class="metric-card" data-output-model="kimi">
+                      <p class="model-purpose">더 큰 모델의 실행 탐색</p>
+                      <div class="model-heading"><h3>Kimi K2.6<small>mixed-quant</small></h3><span class="model-grade model-grade-probe">탐색 측정(PROBE)</span></div>
+                      <div class="model-storage">
+                        <div class="metric-label"><span>꺼내 쓰는 AI 데이터</span><strong>436 <small>GB</small></strong></div>
+                        <div class="storage-track" aria-hidden="true"><span class="c5-bar sx" style="width:100.0%"></span></div>
+                        <p class="model-file">전문가 부분 · 전체 모델 파일 447GB</p>
+                      </div>
+                      <div class="model-output">
+                        <p class="sample-question"><span>질문</span> 대한민국의 수도는?</p>
+                        <div class="output-summary"><strong>1초에 약 1.0<small> 조각</small></strong><span class="c5-time">출력 <span class="c5-seconds">11.7</span>초</span></div>
+                        <div class="token-progress"><div class="token-board" aria-hidden="true"><span class="token-cell c5-token c5-km"></span><span class="token-cell c5-token c5-km"></span><span class="token-cell c5-token c5-km"></span><span class="token-cell c5-token c5-km"></span><span class="token-cell c5-token c5-km"></span><span class="token-cell c5-token c5-km"></span><span class="token-cell c5-token c5-km"></span><span class="token-cell c5-token c5-km"></span><span class="token-cell c5-token c5-km"></span><span class="token-cell c5-token c5-km"></span><span class="token-cell c5-token c5-km"></span><span class="token-cell c5-token c5-km"></span></div><span class="token-count"><span class="c5-count">12</span> / 12조각</span></div>
+                        <p class="answer-sample"><span class="sr-only">답변 예시: 대한민국의 수도는 서울입니다.</span><span aria-hidden="true"><span class="c5-answer-old">대한민국의 수도는 서울입니다.</span><span class="c5-answer-new"></span><span class="c5-cursor" style="opacity:0">▏</span></span></p>
+                        <div class="model-speed"><span>실측 1.03 tok/s</span><em>대화형 사용 부적합</em></div>
+                      </div>
+                    </div>
+                  </div>
+                  <p class="metric-note">실측 속도 재생 · 첫 응답 대기 제외<br>한 칸 = 1토큰 · 각 모델 토크나이저로 센 값</p>
                 </div>
               </div>
             </div>
@@ -866,12 +1444,13 @@
 
         </div>
         <div class="scroll-cue" aria-hidden="true"><span>아래로 스크롤</span><i></i></div>
-        <nav class="rail" aria-label="장 이동">
-          <button class="rail-dot" type="button" data-go="1" aria-label="1장으로" aria-current="true"></button>
-          <button class="rail-dot" type="button" data-go="2" aria-label="2장으로"></button>
-          <button class="rail-dot" type="button" data-go="3" aria-label="3장으로"></button>
-          <button class="rail-dot" type="button" data-go="4" aria-label="4장으로"></button>
-          <button class="rail-dot" type="button" data-go="5" aria-label="5장으로"></button>
+        <nav class="rail" aria-label="전체 5장 이동">
+          <button class="rail-dot" type="button" data-go="1" data-label="가능성" aria-label="1장 · 내 PC의 가능성" aria-current="true"></button>
+          <button class="rail-dot" type="button" data-go="2" data-label="작동 원리" aria-label="2장 · 필요한 부분만"></button>
+          <button class="rail-dot" type="button" data-go="3" data-label="실제 구동" aria-label="3장 · 실제로 돌아갑니다"></button>
+          <button class="rail-dot" type="button" data-go="4" data-label="사용 경험" aria-label="4장 · 내 PC에서의 자유"></button>
+          <button class="rail-dot" type="button" data-go="5" data-label="측정 결과" aria-label="5장 · 실제 크기와 속도"></button>
+          <span class="rail-caption" aria-live="polite"><span class="rail-index" aria-hidden="true">01</span><span class="rail-topic">가능성</span></span>
         </nav>
       </div>
     </div>
@@ -1026,6 +1605,12 @@
     var chapters = story.querySelectorAll('.chapter');
     var dots = story.querySelectorAll('.rail-dot');
     var cue = story.querySelector('.scroll-cue');
+    var gainStrip = story.querySelector('.gain-strip');
+    var gainPanels = story.querySelectorAll('.gain-panel');
+    var gainDots = story.querySelectorAll('.gain-dot');
+    var gainLabel = story.querySelector('.gain-label');
+    var gainCompact = window.matchMedia('(max-width:800px)');
+    var gainActive = 0;
     var count = chapters.length;
     if (!stage || count < 2) { return; }
 
@@ -1043,7 +1628,7 @@
        becomes active, runs once over DUR[i] ms, holds its end state, and is
        cancelled (never accumulated) when the chapter goes away. The markup is
        authored in the end state, so a cancel restores exactly that. */
-    var DUR = [5000, 6000, 5500, 4500, 6000];
+    var DUR = [5500, 6000, 6000, 4500, 14000];
     var EASE = 'cubic-bezier(.33,0,.15,1)';
     var SOFT = 'cubic-bezier(.4,0,.2,1)';
 
@@ -1056,61 +1641,63 @@
     function step(sel, spec) { spec.sel = sel; return spec; }
 
     function chapter1() {
-      var out = [
-        step('.c1-racks', { a: .18, b: .62, ease: EASE, kf: [
-          { transform: 'none', opacity: 1 },
-          { transform: 'translate(8.8px,24.22px) scale(.1894)', opacity: .55 }] }),
-        step('.c1-old', fade(.18, .34, 1, 0)),
-        step('.c1-inset', fade(.44, .60, 0, 1)),
-        step('.c1-glow', fade(.58, .76, 0, 1)),
-        step('.c1-pcdot', fade(.56, .70, 0, 1)),
-        step('.c1-answer', fade(.80, .92, 0, 1)),
-        step('.c1-now', fade(.60, .72, 0, 1)),
-        step('.c1-cap', fade(.80, .94, 0, 1))
+      return [
+        // The whole model stays at the same size and position in both scenes.
+        step('.c1-server-scene', fade(.24, .38, 1, 0)),
+        step('.c1-same-size', fade(.38, .50, 0, 1)),
+        step('.c1-local-scene', fade(.38, .53, 0, 1)),
+        step('.c1-question', fade(.51, .60, 0, 1)),
+        step('.c1-ram-work', fade(.61, .69, 0, 1)),
+        step('.c1-compute-work', fade(.69, .78, 0, 1)),
+        step('.c1-response', fade(.78, .84, 0, 1)),
+        step('.c1-answer', fade(.82, .88, 0, 1)),
+        step('.c1-line-0', fade(.86, .93, 0, 1)),
+        step('.c1-line-1', fade(.93, 1, 0, 1)),
+        step('.c1-cap', fade(.82, .98, 0, 1))
       ];
-      out.push(step('.c1-draw', { a: .20, b: .60, ease: SOFT, draw: true, stagger: .06 }));
-      return out;
     }
 
     function chapter2() {
-      var out = [
-        step('.c2-hl-a0', fade(.10, .18, 0, 1)),
-        step('.c2-hl-a1', fade(.11, .19, 0, 1)),
-        step('.c2-hl-a2', { a: .12, b: .62, ease: 'linear', kf: [
-          { opacity: 0 }, { opacity: 1, offset: .16 }, { opacity: 1, offset: .82 }, { opacity: 0 }] }),
-        step('.c2-hl-a3', { a: .13, b: .63, ease: 'linear', kf: [
-          { opacity: 0 }, { opacity: 1, offset: .16 }, { opacity: 1, offset: .82 }, { opacity: 0 }] }),
-        step('.c2-cp-a0', shift(.20, .34, 'translate(100px,-187px)')),
-        step('.c2-cp-a1', shift(.22, .36, 'translate(176px,-159px)')),
-        step('.c2-cp-a2', { a: .24, b: .72, ease: 'linear', kf: [
-          { transform: 'translate(-168px,-131px)', opacity: 0 },
-          { transform: 'translate(-168px,-131px)', opacity: 1, offset: .04 },
-          { transform: 'none', opacity: 1, offset: .29, easing: EASE },
-          { transform: 'none', opacity: 1, offset: .80 },
-          { transform: 'none', opacity: 0 }] }),
-        step('.c2-cp-a3', { a: .26, b: .74, ease: 'linear', kf: [
-          { transform: 'translate(28px,-103px)', opacity: 0 },
-          { transform: 'translate(28px,-103px)', opacity: 1, offset: .04 },
-          { transform: 'none', opacity: 1, offset: .29, easing: EASE },
-          { transform: 'none', opacity: 1, offset: .80 },
-          { transform: 'none', opacity: 0 }] }),
-        step('.c2-slot-0', fade(.30, .40, 0, 1)),
-        step('.c2-slot-1', fade(.31, .41, 0, 1)),
-        step('.c2-slot-2', fade(.32, .42, 0, 1)),
-        step('.c2-slot-3', fade(.33, .43, 0, 1)),
-        step('.c2-link', fade(.40, .48, .25, 1)),
-        step('.c2-gpu', fade(.40, .50, .3, 1)),
-        step('.c2-gpu-t', fade(.40, .50, .3, 1)),
-        step('.c2-frag-0', fade(.50, .58, 0, 1)),
-        step('.c2-hl-b2', fade(.62, .68, 0, 1)),
-        step('.c2-hl-b3', fade(.63, .69, 0, 1)),
-        step('.c2-reuse-0', fade(.60, .68, 0, 1)),
-        step('.c2-reuse-1', fade(.61, .69, 0, 1)),
-        step('.c2-cp-b2', shift(.68, .80, 'translate(-48px,-159px)')),
-        step('.c2-cp-b3', shift(.70, .82, 'translate(-212px,-103px)')),
-        step('.c2-frag-1', fade(.84, .92, 0, 1))
+      // Copy from the pictured SSD. No expert weight travels through the GPU.
+      function readPiece(a, b, x, y, ox, oy, replace) {
+        var from = 'translate(' + (ox - (x + 61.5) * .24) + 'px,' + (oy - (y + 22.5) * .24) + 'px) scale(.24)';
+        var mid = 'translate(' + (ox - (x + 61.5) * .46) + 'px,' + (139 - (y + 22.5) * .46) + 'px) scale(.46)';
+        if (replace) {
+          return {a:a, b:b, ease:'linear', kf:[
+            {transform:from,opacity:0},
+            {transform:from,opacity:1,offset:.04},
+            {transform:mid,opacity:1,offset:.16,easing:SOFT},
+            {transform:'none',opacity:1,offset:.37},
+            {transform:'none',opacity:1,offset:.85,easing:SOFT},
+            {transform:'translate(0,12px)',opacity:0}]};
+        }
+        return {a:a, b:b, ease:'linear', kf:[
+          {transform:from,opacity:0},
+          {transform:from,opacity:1,offset:.08},
+          {transform:mid,opacity:1,offset:.45,easing:SOFT},
+          {transform:'none',opacity:1}]};
+      }
+      return [
+        step('.c2-piece-a', readPiece(.06, .24, 37, 204, 64, 80, false)),
+        step('.c2-piece-b', readPiece(.09, .27, 190, 204, 64, 96, false)),
+        step('.c2-piece-c', readPiece(.12, .66, 37, 282, 113, 80, true)),
+        step('.c2-piece-d', readPiece(.15, .69, 190, 282, 113, 96, true)),
+        step('.c2-link', fade(.32, .39, .25, 1)),
+        step('.c2-cpu-core', {a:.34, b:1, ease:'linear', kf:[
+          {fill:'#A6BAAE'}, {fill:'#285590',offset:.16},
+          {fill:'#285590',offset:.29}, {fill:'#A6BAAE',offset:.50},
+          {fill:'#A6BAAE',offset:.74}, {fill:'#285590',offset:.90},
+          {fill:'#285590'}]}),
+        step('.c2-fan', {a:.34, b:1, ease:'linear', kf:[
+          {transform:'rotate(0deg)'}, {transform:'rotate(720deg)'}]}),
+        step('.c2-output-link', fade(.40, .46, .25, 1)),
+        step('.c2-frag-0', fade(.44, .51, 0, 1)),
+        step('.c2-reuse', fade(.55, .63, 0, 1)),
+        step('.c2-piece-e', readPiece(.70, .83, 37, 282, 162, 80, false)),
+        step('.c2-piece-f', readPiece(.73, .86, 190, 282, 162, 96, false)),
+        step('.c2-new-note', fade(.84, .91, 0, 1)),
+        step('.c2-frag-1', fade(.92, 1, 0, 1))
       ];
-      return out;
     }
 
     function chapter3() {
@@ -1120,6 +1707,10 @@
         step('.c3-brk', fade(.54, .66, 0, 1)),
         step('.c3-mult', fade(.56, .68, 0, 1)),
         step('.c3-pc', fade(.58, .70, 0, 1)),
+        step('.c3-context', fade(.52, .65, 0, 1)),
+        step('.c3-route', fade(.62, .74, 0, 1)),
+        step('.c3-question', fade(.66, .76, 0, 1)),
+        step('.c3-reply', fade(.90, .98, 0, 1)),
         step('.c3-t0', { a: .70, b: .84, ease: EASE, kf: [
           { transform: 'translate(-189px,-156px)', opacity: 0 },
           { transform: 'translate(-189px,-156px)', opacity: 1, offset: .14 },
@@ -1138,33 +1729,82 @@
 
     function chapter4() {
       return [
-        step('.m1-b0', fade(.04, .12, 0, 1)),
-        step('.m1-b1', fade(.12, .20, 0, 1)),
-        step('.m1-pl', shift(.14, .26, 'translate(9px,0px)', SOFT)),
-        step('.m1-pr', shift(.14, .26, 'translate(-9px,0px)', SOFT)),
-        step('.m2-c0', shift(.28, .40, 'translate(-186px,0px)', SOFT)),
-        step('.m2-c1', shift(.33, .45, 'translate(-186px,0px)', SOFT)),
-        step('.m2-c2', shift(.38, .50, 'translate(-186px,0px)', SOFT)),
-        step('.m3-rack', { a: .54, b: .70, ease: EASE, kf: [
-          { transform: 'none', opacity: .9 },
-          { transform: 'translate(34.48px,3.72px) scale(.82)', opacity: .45 }] }),
-        step('.m3-chip', fade(.66, .78, 0, 1))
+        step('.m1-globe', { a:0, b:.16, ease:'linear', kf:[
+          {stroke:'#285590'}, {stroke:'#285590', offset:.5}, {stroke:'#9BA7A0'}] }),
+        step('.m1-link', fade(.08, .16, 1, 0)),
+        step('.m1-off-slash', fade(.12, .18, 0, 1)),
+        step('.m1-off-label', fade(.16, .22, 0, 1)),
+        step('.m1-b0', fade(.25, .30, 0, 1)),
+        step('.m1-b1', fade(.32, .39, 0, 1)),
+        step('.m1-answer-next', fade(.40, .47, 0, 1)),
+        step('.m1-local', fade(.42, .49, 0, 1)),
+        step('.m2-question', { a:.24, b:.33, stagger:.24, ease:SOFT, kf:[
+          {transform:'translate(5px,0)', opacity:0}, {transform:'none', opacity:1}] }),
+        step('.m2-answer', { a:.36, b:.46, stagger:.24, ease:SOFT, kf:[
+          {transform:'translate(-5px,0)', opacity:0}, {transform:'none', opacity:1}] }),
+        // Keep the AI visible while the PC replaces the server housing.
+        step('.m3-ai-light', { a:.54, b:.95, stagger:.025, ease:'linear', kf:[
+          {opacity:.4}, {opacity:1, offset:.17}, {opacity:.4, offset:.33},
+          {opacity:1, offset:.5}, {opacity:.4, offset:.67}, {opacity:1, offset:.83}, {opacity:1}] }),
+        step('.m3-server', { a:.72, b:.86, ease:SOFT, kf:[
+          {transform:'translate(49px,5px)', opacity:1},
+          {transform:'translate(-152px,5px)', opacity:0}] }),
+        step('.m3-pc', { a:.68, b:.86, ease:SOFT, kf:[
+          {transform:'translate(264px,1px) scale(.94)'},
+          {transform:'translate(7px,1px) scale(.94)'}] }),
+        step('.m3-ai-core', { a:.68, b:.86, ease:SOFT, kf:[
+          {transform:'translate(131px,21px) scale(1)'}, {transform:'translate(148.94px,26.38px) scale(.94)'}] }),
+        step('.m3-reply', fade(.87, .93, 0, 1)),
+        step('.m3-local-proof', fade(.90, .97, 0, 1)),
+        step('.m3-output-line', { a:.90, b:1, draw:true })
       ];
     }
 
-    /* Chapter 5 fills a fixed board of 60 marks. Illustrative time runs 0 to
-       10 s across the window, so mark k lights at k / rate seconds. */
-    var C5_A = .20, C5_B = .87;
+    /* Example text only, not a recorded response or end-to-end latency test.
+       Tokenizer sources (answer text only; no BOS/EOS or thinking tokens):
+       https://huggingface.co/Qwen/Qwen3.5-122B-A10B/blob/dc4d348443bc740c68e2d77492492c11606384d5/tokenizer.json
+       https://huggingface.co/moonshotai/Kimi-K2.6/blob/7eb5002f6aadc958aed6a9177b7ed26bb94011bb/tokenization_kimi.py
+       https://huggingface.co/moonshotai/Kimi-K2.6/blob/7eb5002f6aadc958aed6a9177b7ed26bb94011bb/tiktoken.model
+       Decode cumulative bytes: Kimi's ninth token is an incomplete syllable,
+       so it counts as a piece but does not display a replacement character. */
+    var C5_START_MS = 1200;
+    var C5_EXAMPLE = {"qwen": {"rate": 5.64, "prefixes": ["", "대한", "대한민", "대한민국의", "대한민국의 수도", "대한민국의 수도는", "대한민국의 수도는 서울", "대한민국의 수도는 서울입니다", "대한민국의 수도는 서울입니다."]}, "kimi": {"rate": 1.03, "prefixes": ["", "대", "대한", "대한민", "대한민국의", "대한민국의 수", "대한민국의 수도", "대한민국의 수도는", "대한민국의 수도는 서", "대한민국의 수도는 서", "대한민국의 수도는 서울", "대한민국의 수도는 서울입니다", "대한민국의 수도는 서울입니다."]}};
 
     function chapter5() {
-      var out = [
-        step('.c5-bar', { a: .10, b: .30, ease: EASE, kf: [
-          { transform: 'scaleX(0)' }, { transform: 'none' }], stagger: .04 }),
-        step('.c5-total', fade(.88, .96, 0, 1))
+      function transfer(a, b, from) {
+        return { a:a, b:b, ease:SOFT, stagger:.006, kf:[
+          {transform:from, opacity:0}, {transform:from, opacity:1, offset:.12},
+          {transform:'none', opacity:1}] };
+      }
+      return [
+        step('.c5-bar', { a:.015, b:.075, ease:EASE, kf:[
+          {transform:'scaleX(0)'}, {transform:'none'}], stagger:.01 }),
+        step('.c5-time', fade(0, 1, 1, 1)),
+        step('.c5-store', fade(.01, .035, 0, 1)),
+        step('.c5-ram-piece', transfer(.035, .06, gainCompact.matches ? 'translate(-70px,0)' : 'translate(0,-75px)')),
+        step('.c5-cpu-piece', transfer(.067, .085, gainCompact.matches ? 'translate(-112px,18px)' : 'translate(10px,-99px)'))
       ];
-      out.push({ sel: '.c5-qm', rate: 5.64 });
-      out.push({ sel: '.c5-km', rate: 1.03 });
-      return out;
+    }
+
+    function showAnswers(root, seconds) {
+      var models = root.querySelectorAll('[data-output-model]');
+      for (var m = 0; m < models.length; m++) {
+        var card = models[m];
+        var sample = C5_EXAMPLE[card.getAttribute('data-output-model')];
+        var total = sample.prefixes.length - 1;
+        var elapsed = Math.max(0, Math.min(seconds, total / sample.rate));
+        var n = Math.min(total, Math.floor(elapsed * sample.rate + .000001));
+        card.querySelector('.c5-seconds').textContent = elapsed.toFixed(1);
+        if (card.getAttribute('data-token-count') === String(n)) { continue; }
+        card.setAttribute('data-token-count', String(n));
+        card.querySelector('.c5-count').textContent = String(n);
+        var oldText = n === total ? sample.prefixes[n] : sample.prefixes[Math.max(0, n - 1)];
+        card.querySelector('.c5-answer-old').textContent = oldText;
+        card.querySelector('.c5-answer-new').textContent = sample.prefixes[n].slice(oldText.length);
+        card.querySelector('.c5-cursor').style.opacity = n < total ? '1' : '0';
+        var marks = card.querySelectorAll('.c5-token');
+        for (var t = 0; t < marks.length; t++) { marks[t].style.opacity = t < n ? '1' : '0'; }
+      }
     }
 
     var MAKE = [chapter1, chapter2, chapter3, chapter4, chapter5];
@@ -1174,18 +1814,15 @@
       if (plans[i]) { return plans[i]; }
       var specs = MAKE[i]();
       var root = chapters[i];
+      if (i === 4) {
+        root = root.querySelector(gainCompact.matches ? '.metric-mobile' : '.metric-desktop');
+      }
       var list = [];
       for (var k = 0; k < specs.length; k++) {
         var spec = specs[k];
         var els = root.querySelectorAll(spec.sel);
         for (var e = 0; e < els.length; e++) {
           var el = els[e];
-          if (spec.rate) {
-            var t = (e + 1) / spec.rate / 10;
-            var a = C5_A + (C5_B - C5_A) * t;
-            list.push({ el: el, kf: [{ opacity: 0 }, { opacity: 1 }], a: a, b: a + .018, ease: 'linear' });
-            continue;
-          }
           var off = (spec.stagger || 0) * e;
           var kf = spec.kf;
           if (spec.draw) {
@@ -1201,8 +1838,12 @@
     }
 
     var running = [];
+    var elapsedFrame = 0;
 
     function stop() {
+      window.cancelAnimationFrame(elapsedFrame);
+      elapsedFrame = 0;
+      showAnswers(chapters[4], Infinity);
       for (var k = 0; k < running.length; k++) { running[k].cancel(); }
       running = [];
       story.removeAttribute('data-playing');
@@ -1213,18 +1854,52 @@
       if (still || !('animate' in Element.prototype)) { return; }
       var list = plan(i);
       var d = DUR[i];
+      var gainStart = 0, gainSpan = 1;
+      if (i === 3 && gainCompact.matches) {
+        list = list.filter(function (it) { return gainPanels[gainActive].contains(it.el); });
+        gainStart = Math.min.apply(null, list.map(function (it) { return it.a; }));
+        gainSpan = Math.max.apply(null, list.map(function (it) { return it.b; })) - gainStart;
+        d = 2200;
+      }
       for (var k = 0; k < list.length; k++) {
         var it = list[k];
-        var dur = Math.max(1, (it.b - it.a) * d);
+        var dur = Math.max(1, (it.b - it.a) / gainSpan * d);
         var anim = it.el.animate(it.kf, {
-          duration: dur, delay: Math.max(0, it.a * d), easing: it.ease, fill: 'both'
+          duration: dur, delay: Math.max(0, (it.a - gainStart) / gainSpan * d), easing: it.ease, fill: 'both'
         });
         if (mode === 'end') { anim.finish(); }
         else if (mode === 'mid') { anim.currentTime = 0.45 * d; anim.pause(); }
         running.push(anim);
       }
+      if (i === 0) {
+        // Decorative light only: stop/reduced-motion follows the chapter lifecycle.
+        var sheen = chapters[0].querySelector('.c1-model-sheen');
+        var drift = sheen.animate([
+          {transform:'translateX(0)'}, {transform:'translateX(830px)'}
+        ], {duration:12000, iterations:Infinity, easing:'linear', fill:'both'});
+        if (mode) { drift.pause(); drift.currentTime = 6000; }
+        running.push(drift);
+      }
+      if (i === 4) {
+        var clock = null;
+        for (var c = 0; c < running.length; c++) {
+          if (running[c].effect.target.classList.contains('c5-time')) { clock = running[c]; break; }
+        }
+        var metric = chapters[4].querySelector(gainCompact.matches ? '.metric-mobile' : '.metric-desktop');
+        function paintElapsed() {
+          showAnswers(metric, ((clock.currentTime || 0) - C5_START_MS) / 1000);
+          if (clock.playState === 'running') { elapsedFrame = window.requestAnimationFrame(paintElapsed); }
+          else { elapsedFrame = 0; }
+        }
+        if (clock) { paintElapsed(); }
+      }
       story.setAttribute('data-playing', String(i + 1));
     }
+
+    story.querySelector('.c5-replay').addEventListener('click', function () {
+      mode = '';
+      play(4);
+    });
 
     var active = -1;
     var frame = 0;
@@ -1243,10 +1918,73 @@
     }
     sense();
 
+    function syncGains() {
+      for (var j = 0; j < gainPanels.length; j++) {
+        var current = j === gainActive;
+        gainPanels[j].classList.toggle('is-current', current);
+        if (gainCompact.matches) {
+          gainPanels[j].setAttribute('aria-hidden', current ? 'false' : 'true');
+        } else {
+          gainPanels[j].removeAttribute('aria-hidden');
+        }
+        if (current) { gainDots[j].setAttribute('aria-current', 'true'); }
+        else { gainDots[j].removeAttribute('aria-current'); }
+      }
+      gainLabel.textContent = gainDots[gainActive].getAttribute('aria-label');
+    }
+
+    function selectGain(next) {
+      next = Math.max(0, Math.min(gainPanels.length - 1, next));
+      if (next === gainActive) { return; }
+      gainStrip.style.setProperty('--gain-enter', next > gainActive ? '10px' : '-10px');
+      gainActive = next;
+      syncGains();
+      if (active === 3 && !loose) { play(3); }
+    }
+    syncGains();
+
+    for (var gd = 0; gd < gainDots.length; gd++) {
+      gainDots[gd].addEventListener('click', function () {
+        selectGain(Number(this.getAttribute('data-gain')));
+      });
+    }
+    var gainPointer = null;
+    gainStrip.addEventListener('pointerdown', function (ev) {
+      if (!gainCompact.matches || !ev.isPrimary || ev.button !== 0) { return; }
+      gainPointer = { id: ev.pointerId, x: ev.clientX, y: ev.clientY };
+      gainStrip.setPointerCapture(ev.pointerId);
+    });
+    gainStrip.addEventListener('pointerup', function (ev) {
+      if (!gainPointer || gainPointer.id !== ev.pointerId) { return; }
+      var dx = ev.clientX - gainPointer.x;
+      var dy = ev.clientY - gainPointer.y;
+      gainPointer = null;
+      if (Math.abs(dx) >= 40 && Math.abs(dx) > Math.abs(dy) * 1.25) {
+        selectGain(gainActive + (dx < 0 ? 1 : -1));
+      }
+    });
+    gainStrip.addEventListener('pointercancel', function () { gainPointer = null; });
+    story.querySelector('.gain-nav').addEventListener('keydown', function (ev) {
+      if (ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight') { return; }
+      ev.preventDefault();
+      selectGain(gainActive + (ev.key === 'ArrowRight' ? 1 : -1));
+      gainDots[gainActive].focus();
+    });
+    gainCompact.addEventListener('change', function () {
+      gainPointer = null;
+      syncGains();
+      plans[4] = null;
+      if (active === 3 && !loose) { play(3); }
+      if (active === 4 && !loose) { play(4); }
+    });
+
     function mark(i) {
       if (i === active) { return; }
       active = i;
       story.setAttribute('data-chapter', String(i + 1));
+      story.querySelector('.rail').style.setProperty('--rail-current', String(i));
+      story.querySelector('.rail-index').textContent = ('0' + (i + 1)).slice(-2);
+      story.querySelector('.rail-topic').textContent = dots[i].getAttribute('data-label');
       for (var k = 0; k < count; k++) {
         var on = k === i;
         chapters[k].classList.toggle('is-active', on);
