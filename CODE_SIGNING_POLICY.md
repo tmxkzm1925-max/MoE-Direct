@@ -3,8 +3,9 @@
 Status: the application to the SignPath Foundation's free open-source code
 signing program was declined at the project's current stage (2026-08-09; the
 program weighs established usage metrics, which a project this young does not
-have yet). A re-application is possible once those exist. All releases to date
-are unsigned; the README and the release notes say so plainly. Everything
+have yet). A re-application is possible once those exist. The project-built Windows
+binaries remain unsigned; the README and release notes say so plainly. Windows code
+signing is separate from GitHub release artifact attestations. Everything
 below describes what would be signed once a signing relationship exists - and
 the runtime integrity chain in "Integrity beyond the signature" holds with or
 without one.
@@ -42,13 +43,15 @@ redistributed unmodified):
     configuration: MSVC/Ninja, Release, `GGML_CUDA=OFF`, `GGML_BACKEND_DL=ON`,
     `GGML_CPU_ALL_VARIANTS=ON`, with the CUDA backend DLL carried unmodified
     from the upstream release.
-  - **v0.3-preview.** Its engine delta is scheduled for v0.3.1. Until that
-    lands, the source state is identified by the per-file hashes in
-    `BUILD_RECEIPT.txt` rather than by a patch, and the same receipt is where
-    the build is described: build directory `build-moedirect-s0-cuda`, MSVC
-    2022 Build Tools (vcvars64) with ninja, built with the CUDA backend
-    enabled rather than carrying the upstream DLL. The exact configure line
-    ships with the v0.3.1 patch.
+  - **v0.3-preview.** Its original `BUILD_RECEIPT.txt` records per-file source hashes
+    and the CUDA-enabled build. The v0.3.1 source package does not reconstruct that
+    earlier source state.
+  - **v0.3.1.** The [source and build package](patches/v0.3.1/README.md) reconstructs
+    release tree `77e6cb26213d7719db707980b17168a81ad97691` from pinned llama.cpp
+    `b10057` and the exact patch. Two clean CUDA-off builds produced matching hashes
+    for 17 named outputs: 16 runtime files and the unshipped engine selftest. The
+    separately supplied `ggml-cuda.dll` and three NVIDIA runtime DLLs are outside
+    that reproduction claim; their provenance and hashes are in `BUILD_RECEIPT.txt`.
 - The launcher and repacker are plain-text source in this repository; the
   bundle copy is byte-identical to the repository copy.
 - Because signing changes the bytes of a PE file, reproducibility statements
@@ -81,8 +84,9 @@ carries its own integrity chain, enforced at runtime:
 
 - `bundle_manifest.json`: every file in the bundle is hash-listed and the
   launcher refuses to start on any mismatch, extra or missing file
-- repacked model data is SHA-256 verified against the source model in full
-  (every record, no sampling) and served fail-closed
+- packed model data is SHA-256 verified against the source model in full
+  (every record, no sampling) and served fail-closed; virtual repacks copy no payload
+  and instead verify the manifest, record addresses and source header binding
 - `SHA256SUMS.txt` accompanies every release zip
 
 ## AI involvement

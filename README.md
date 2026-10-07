@@ -17,8 +17,9 @@ No modified weights.
 
 </div>
 
-One consumer desktop - 32 GB RAM, one RTX 5080, a Gen5 NVMe - and three models it has no
-business holding in memory, the largest about thirteen times its RAM:
+Earlier measurements on one consumer desktop - 32 GB RAM, one RTX 5080, a Gen5 NVMe -
+show three models it has no business holding in memory, the largest about thirteen times
+its RAM. These are historical results, not new v0.3.1 benchmarks:
 
 | the model | routed-expert data on disk | what that desktop measured | grade |
 |---|---|---|---|
@@ -67,20 +68,32 @@ packed path (the opt-in virtual repack needs the model plus a manifest and its p
 from the [supported list](#supported-models).
 
 1. **Download** the runtime zip (`moe-direct-<version>-win-x64.zip`) and `SHA256SUMS.txt` from
-   [Releases](../../releases), right-click the zip, Properties, tick **Unblock**, then extract
-   with Windows "Extract All" into a new, empty folder. Checking the download is one paste, not
-   a hex comparison. In Explorer, open the folder that holds both downloaded files, right-click
-   empty space > Open in Terminal (PowerShell), then paste:
+   [Releases](../../releases). Before unblocking or extracting, verify the download below.
+   Checking the download is one paste, not a hex comparison. In Explorer, open the folder
+   that holds both downloaded files, right-click empty space > Open in Terminal (PowerShell),
+   then paste:
 
    ```powershell
-   $e,$n=((Get-Content .\SHA256SUMS.txt -Raw).Trim() -split '\s+');$a=(Get-FileHash ".\$n" -Algorithm SHA256).Hash;if($a -eq $e){'OK: hash matches'}else{'MISMATCH: download again'}
+   $zip = 'moe-direct-v0.3.1-win-x64.zip'
+   $pattern = '^([0-9a-fA-F]{64})[ \t]+\*?' + [regex]::Escape($zip) + '$'
+   $rows = @(Get-Content -LiteralPath '.\SHA256SUMS.txt' -ErrorAction Stop |
+       Where-Object { $_ -match $pattern })
+   if ($rows.Count -ne 1) { throw 'Checksum entry missing or duplicated.' }
+   $expected = ($rows[0] -split '\s+')[0]
+   $actual = (Get-FileHash -LiteralPath (Join-Path (Get-Location) $zip) -Algorithm SHA256 -ErrorAction Stop).Hash
+   if ($actual -ne $expected) { throw 'MISMATCH: download again' }
+   'OK: hash matches'
    ```
 
    If you skip it, the launcher's own sealed-manifest check still catches files changed or
    corrupted **inside the extracted bundle** on every start - what it cannot do is check the
    zip you just downloaded against the published checksum; that is what this paste is for. A
    checksum from the same page proves the download is intact, not who published it - releases
-   are unsigned for now, so publisher trust rests on the GitHub account and the HTTPS path.
+   have unsigned Windows executables. Windows executable signing is separate from GitHub
+   release artifact attestations; check the release notes for the verification evidence
+   published with this release.
+   After `OK`, right-click the zip, Properties, tick **Unblock**, then extract with Windows
+   "Extract All" into a new, empty folder.
 2. Download **every shard** of one exact tested GGUF and revision from
    [docs/models.md](docs/models.md), and keep all shards in one folder. **Place your GGUF**
    under `<drive>:\moe-models\<any-folder>\` and double-click `Start-MoeDirect.cmd`. Pick your
@@ -88,6 +101,7 @@ from the [supported list](#supported-models).
 3. **Approve the one-time repack** (the launcher shows the exact disk cost and time before
    writing anything), press Enter when the status screen appears, and connect any
    OpenAI-compatible client to the printed URL.
+   To stop the server, type `stop` + Enter or press Ctrl+C; after Ctrl+C the command shell may also ask `Terminate batch job (Y/N)?` - the launcher has already shut the server down and printed its `[moe-launcher] status=` line by then, so either answer is safe.
 
 That is the whole loop. The first run repacks once (minutes to ~18 minutes here, with live
 progress); every later run goes straight to serving. A **cold** session's first conversation is
@@ -125,9 +139,15 @@ through the experimental template path, clearly labelled.
 Exact repositories, pinned revisions, minimum cache budgets, prefetch states and the template
 path: **[docs/models.md](docs/models.md)**.
 
+In v0.3.1, catalog prefetch is enabled only for the validated Qwen3.5-122B row.
+The gpt-oss-120b, Qwen35B, Qwen397B, Kimi K2.6 and DSV4 rows remain off, including
+`init` requests. This is a prefetch policy, not a ban on serving those models.
+`adapt` is offered as a request but cannot activate in this release.
+
 ## Measured results
 
-Every number ships with the conditions it was measured under; these are the headlines.
+These historical results retain their original builds, protocols and grades; they are
+not measurements of the v0.3.1 release binary. Full conditions are linked below.
 
 | What | Result | Evidence |
 |---|---|---|
@@ -147,33 +167,26 @@ each release's notes.
 
 Work ships one piece per release, when it is measured, not on a schedule.
 
-- **v0.3 shipped as a preview; v0.3.1 is what we are building now.** Up through v0.2.3, running a model
+- **v0.3 introduced the virtual preview; v0.3.1 ships the foundation and release fixes.** Up through v0.2.3, running a model
   here meant a one-time repack that wrote a second packed copy of the experts — your disk
   paid the model's size again, just to get the layout the engine wanted. From v0.3 the
   repack can be virtual: a small manifest, no data moved, space cost exactly 1.0x, reading
-  experts straight out of the file you already have. And it ships with measured numbers,
-  not promises — in a preregistered A/B, prefetch (on by default for the two catalog rows
-  that carry it, the 122B test model among them) made in-place decode about 14% faster at
+  experts straight out of the file you already have. The preview included a preregistered A/B: prefetch made in-place decode about 14% faster at
   under 2% extra bytes read. That number is a `PROBE`: it compares in-place with prefetch
   against in-place without it, not against the packed path, and it was measured on a working
   tree that predates the release binary rather than re-run on this zip's.
-- **v0.3 is a preview, on purpose.** The honest part: the virtual path is still slower
-  than the packed path today — the experts sit scattered through the original file, so
-  fetching them costs more, and prefetch claws back only part of that. The packed path
-  stays the default and gives up nothing. One rough edge belongs here too: on a virtual
-  run the launcher's status screen still reports the packed path's rows, because it does
-  not yet tell the two modes apart on that screen. `copy integrity` reads `PASS` although
-  a virtual repack copies nothing; `serving validation` and the reference numbers are the
-  packed profile's; and a `-Repro` or `-Smoke` run can go as far as printing
-  `performance gate : PASS`, which is a packed verdict on a path that is not under that
-  gate at all. What actually checks a virtual repack is a separate 8-item plan gate and
-  the engine's own re-derivation, and that screen shows none of it. These gaps are
-  known, measured, and are exactly what the next release exists to close.
-- **Next up, v0.3.1:** the fixes land here. The codebase gets its cleanup pass first —
-  readability and structural work, including the boundary contract the later pieces build
-  on — then the speed recovery work on the in-place path, and adaptive prefetch: prefetch
-  that derives its own starting point for any model family instead of shipping with fixed
-  constants. The goal is an in-place repack you choose for the space, not one you tolerate.
+- **The virtual path remains a preview.** Packed stays the default. v0.3.1 fixes the
+  status screen's distinction between the two paths: virtual copy integrity is N/A,
+  its own 8-item plan gate is shown, serving validation remains unvalidated, and
+  performance remains unmeasured. The reference numbers are labelled as packed-path
+  measurements. This corrects what the screen claims; it does not promote virtual
+  performance or claim parity with packed.
+- **Next, performance and virtual qualification.** In-place speed recovery and
+  adaptive prefetch remain future work. v0.3.1 does not ship the adaptive controller,
+  the Qwen122 prefill default change to `-ub 2048`, or the KV-Q8 opt-in switch. Those
+  features still need their release-specific implementation and validation.
+  The next patch will expose manual prefetch settings; the current launcher keeps
+  unvalidated catalog profiles off.
 - **Then the engine gets its surgery:** the engine-neutral expert-execution core — the parts
   this project owns (the expert store, cache, placement and prefetch) pulled behind a clean
   boundary, with llama.cpp as the first engine behind it.
@@ -214,6 +227,7 @@ The `status=` line the launcher prints, every status code and its fix:
 | Status codes, troubleshooting, reporting problems | [docs/troubleshooting.md](docs/troubleshooting.md) |
 | Known limitations and FAQ | [docs/faq.md](docs/faq.md) |
 | The long version: every technique and every number | [TECHNICAL.md](TECHNICAL.md) |
+| Release source and build provenance | [BUILD_RECEIPT.txt](BUILD_RECEIPT.txt), [Source package](patches/README.md) |
 
 And if you are curious how this actually gets built: some of my working records are up in
 [docs/design-notes/](docs/design-notes/), as-is. They are in Korean — I am a Korean

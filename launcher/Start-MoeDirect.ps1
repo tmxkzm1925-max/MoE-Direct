@@ -7,6 +7,10 @@
       RELEASE_SPEC.md  v0.1 (FROZEN)                           -> "RS <section>"
       bench/techdev/SPEC_PREFETCH_INIT.md      v1.0 (FROZEN)   -> "PI <section>"
       bench/techdev/SPEC_PREFETCH_P4_LAUNCHER.md v1.0 (FROZEN) -> "P4 <section>"
+      bench/techdev/SPEC_PREFETCH_5CT_LAUNCHER.md v1.0 (FROZEN) -> "5CTL <section>"
+      5CTL is ADDITIVE on top of P4 and owns the phase-B collection surface only (the two collect
+      CLI keys, the collection manifest, and the collect refusal enum). Where the two disagree P4
+      wins (5CTL 0, "super": P4 v1.1 is the frozen launcher contract this one is layered onto).
       PI/P4 supersede LS on the prefetch surface ONLY, and only where LAUNCHER_SPEC.md's own
       "later-authority" clause lists it (LS 1-2 prefetch state/wire, LS 5 catalog semantic
       failure disposition, LS 7 engine prefetch_state description, LS 12-3 selection signal,
@@ -88,6 +92,11 @@ param(
     # screen. Raw string for the same reason as the six keys above: a binder failure would kill the
     # run before a status line exists, so this script parses it and reports fail_custom_args.
     [string] $Prefetch,
+    # 5CA 6-2 M-3: the only surface on which a verification wrapper declares its own run mode.
+    # Raw string for the same reason as the keys above - a binder failure would kill the run
+    # before a status line exists - and deliberately NOT a preset key: a persisted mode would
+    # outlive the run that meant it (the -PhaseBCollect precedent, 5CTL 7-1).
+    [string] $RunMode,
     # RV 3: the repack mode opt-in. packed (and absence) = the v0.4 bin repack; virtual = the
     # schema 3.0 in-place plan. Raw string for the same reason as the keys above - a [ValidateSet]
     # binder failure would terminate before a status line exists, so this script parses it itself
@@ -109,6 +118,76 @@ param(
     # second rung of the resolution order: it maps to 'on' when the canonical -ArchTemplate is
     # absent, and "-ExperimentalArchTemplate -ArchTemplate off" resolves to off.
     [switch] $ExperimentalArchTemplate,
+    # 5CTL 1-1: the phase-B collection opt-in. on | off, absent = off. Raw [string] for the same
+    # reason as the keys above - a [ValidateSet] binder failure would terminate before a status line
+    # exists, so this script parses it itself and reports fail_custom_args.
+    # 5CTL 1-1-1 (the R2-M2 closure, and the reason this pair is declared here rather than joining
+    # the allowlist): these two keys deliberately take NO part in Get-CliOverrides or $overrides -
+    # exactly like -RepackMode above and for the same mechanism. That map feeds six consumers
+    # (Get-EffectiveQd, Build-EffectiveConfig, Test-CustomProvenance, Get-QdSource,
+    # Invoke-CustomEditor, Save-UserPreset), and Test-CustomProvenance returns $true for ANY key
+    # outside PERF_NEUTRAL_OVERRIDE_KEYS ('warmstart', one member). A collect request is a campaign
+    # scope mode, not a custom performance value, so letting it in would flip this run's provenance
+    # to custom and break the P4 published-numbers invariant. Resolution happens in the dedicated
+    # collect-request stage (Resolve-CollectRequest) instead.
+    # 5CTL 7-1: NOT a preset key and NOT offered by Invoke-CustomEditor. Collection is bound to a
+    # per-campaign approval, so persisting it would revive collection in a later, unrelated run
+    # whose registered scope no longer holds.
+    [string] $PhaseBCollect,
+    # 5CTL 1-1 / 3-7: the approval record for the campaign this run collects for. Mandatory
+    # companion of "-PhaseBCollect on"; absent, non-fully-qualified or unreadable degrades to
+    # collect OFF with a reason (the run itself still starts - 5CTL 3 is "collect off + reason",
+    # never a launch refusal). "Absolute" here means FULLY-QUALIFIED: [Path]::IsPathRooted alone is
+    # not the test, because on Windows PowerShell 5.1 the drive-relative "C:record.json" and the
+    # current-drive-relative "\record.json" are both rooted=true yet resolve somewhere the caller
+    # did not name. With -PhaseBCollect off (or absent) this value is echoed raw and never resolved,
+    # opened, parsed or hashed.
+    [string] $PhaseBCollectCampaign,
+    # 5CT-REPAIR 1 (B_cap): the collect ledger capacity input, as a DECIMAL uint64 record count.
+    # Raw [string] for the same reason as every key above - a typed binder failure would terminate
+    # before a status line exists - and it is parsed by this script, in the dedicated collect-request
+    # stage, with the same CLI-only discipline as the two keys above: NO part in Get-CliOverrides,
+    # $overrides, the preset allowlist, Invoke-CustomEditor, Test-CustomProvenance or the budget/QD
+    # resolution. It is a campaign capacity setting, not a custom performance value.
+    # Absent on a collect-ON run resolves to COLLECT_MAX_RECORDS_DEFAULT, which is exactly the number
+    # of 320-byte ledger records that fit in the engine's own 512 MiB default buffer - so an absent
+    # value reproduces today's behaviour rather than changing it. A supplied value is validated the
+    # moment it is read (decimal shape, >= 1, checked multiply, engine buf_mb range); every violation
+    # is fail_custom_args, decided long before a child is spawned.
+    # There is deliberately no -PhaseBCollectBufMB companion: buf_mb is DERIVED from this count, so
+    # the two can never be set to disagreeing values.
+    [string] $PhaseBCollectMaxRecords,
+    # 5CT-REPAIR 2 (B_rdv): the rendezvous handover PAIR. The offline traffic driver has no way to
+    # know WHICH run it is talking to - a stale manifest from a previous attempt reads exactly like
+    # this run's - so the queue mints a fresh path + nonce per attempt and hands the same two values
+    # to this launcher and to the driver. The launcher publishes; the driver waits and authenticates.
+    # Raw [string] for the same binder reason as every key above, and CLI-only with the same R2-M2
+    # closure: NO part in Get-CliOverrides, $overrides, the preset allowlist, Invoke-CustomEditor,
+    # Test-CustomProvenance or the budget/QD resolution.
+    # They are a PAIR: one without the other is fail_custom_args, and so is a malformed value. On a
+    # run that did not ask to collect they are ignored outright - not normalised, not opened, not
+    # even shape-checked (the -PhaseBCollectCampaign precedent, and the reason is the same: a value
+    # this run will never consume must not be able to refuse the run).
+    [string] $PhaseBCollectRendezvous,
+    [string] $PhaseBCollectRunNonce,
+    # 5CT-TUPLE 1-1: the collect-only EXPLICIT K/N pair, as "<K>,<N>".
+    # Why it exists: SPEC_PREFETCH_SEAL_V1 4-1 pre-registered two collection windows, W-K7=(7,4) and
+    # W-N5=(6,5), and NO input on this launcher can produce either pair. The init arm computes
+    # K=n_expert_used and N=min(4,QD-1,floor(QD/2)), which at QD8 is (6,4) and only (6,4); the
+    # catalog-fixed arm requires evidence=paired-live, which the DSV4 row does not have, so pinning
+    # an unmeasured pair there would forge an evidence grade. The engine's own env K range is
+    # already open (1..16, PI 4-1) - the missing piece was a launcher surface that says out loud
+    # that this pair is a COLLECTION input and not a recommendation.
+    # Raw [string] for the same binder reason as every key above: a [ValidateSet]/[int] binder
+    # failure terminates before a status line exists. CLI-only with the same R2-M2 closure as the
+    # five keys above: NO part in Get-CliOverrides, $overrides, the preset allowlist,
+    # Invoke-CustomEditor, Test-CustomProvenance or the budget/QD resolution.
+    # Unlike -PhaseBCollectCampaign and the rendezvous pair, a tuple this run does not CONSUME is
+    # fail_custom_args rather than a silent ignore (5CT-TUPLE 1-5/1-6 case 3): the campaign path
+    # still has a raw-echo role on a collect-OFF run, but a tuple that nothing consumes has no role
+    # at all, and an unattended campaign run that "succeeded" while quietly serving (6,4) is exactly
+    # the silent misread this surface exists to prevent.
+    [string] $PhaseBCollectTuple,
     # Dot-source hook for launcher_selftest.ps1: define everything, run nothing.
     [switch] $LibraryMode
 )
@@ -146,28 +225,14 @@ $script:STATUS_LINE_PREFIX = '[moe-launcher] status='
 # LS 5 / LS 7 : complete ASCII line, exact match only, substring detection forbidden.
 $script:ENGINE_POLICY_ANCHOR = '[moe-direct] startup_reject=engine_policy_gate'
 
-# R2-6 engine seal SUCCESS line. 1st source (verified):
-#   bench/moe-direct/repro/moedirect-v2-b10057.patch:14681
-#   LLAMA_LOG_INFO("%s: moe-direct: sealed all=%d host=%d nonhost=%d slots=%d/%d moe_layers=%zu"
-#                  " (matched live=%d host=%d nonhost=%d)\n", ...)
-# emitted once, immediately after ggml_moe_direct_seal() returns >= 0.
-# NOTE Why this is matched differently from the policy anchor: the policy anchor is a frozen fixed
-# wire with no variable fields, so it is required to be an EXACT complete line and substring
-# detection is forbidden. This success line intentionally carries variable numeric fields AND is
-# emitted through the engine's log framework, which prefixes it (real capture:
-# "0.09.636.808 I load_tensors: moe-direct: sealed all=..."). It is therefore matched as a marker
-# CONTAINED IN a complete (newline-terminated) line - a line-start anchor would never fire on a
-# real run. That is a documented difference in kind, not a relaxation of the anchor rule.
-$script:ENGINE_SEAL_MARKER      = 'moe-direct: sealed all='
-# Parsed for the diagnostic log only. slots=X/Y is NOT an equality invariant: a real passing run
-# emitted slots=648/128 (attested slots vs required slots are different quantities).
-# Counter-evidence: bench_results/g4_1a/20260724T223305Z_32dc7208/
-#   srv_err_on1_attempt0_20260724T223532Z.log:2249
-#   "... moe-direct: sealed all=216 host=174 nonhost=42 slots=648/128 moe_layers=36 (matched ...)"
-# The seal's own fail-close already happened upstream (seal_rc < 0 aborts startup), so the
-# presence of this line exactly once IS the attestation.
-$script:ENGINE_SEAL_SLOTS_REGEX = 'slots=(\d+)/(\d+)'
-$script:ENGINE_SEAL_COUNTS_REGEX = 'sealed all=(\d+) host=(\d+) nonhost=(\d+)'
+# Engine post-seal producers: moedirect-v0.3.1-b10057.patch:45136-45149.
+# Raw stderr is always on. Legacy INFO is accepted only in its complete producer grammar.
+# At most one of each representation; if both occur, all six common fields must agree.
+$script:ENGINE_SEAL_RAW_PREFIX = '[moe-direct] sealed:'
+$script:ENGINE_SEAL_RAW_REGEX = '^\[moe-direct\] sealed: all=(?<all>[0-9]+) host=(?<host>[0-9]+) nonhost=(?<nonhost>[0-9]+) slots=(?<have>[0-9]+)/(?<need>[0-9]+) moe_layers=(?<layers>[0-9]+)$'
+$script:ENGINE_SEAL_INFO_PREFIX_REGEX = '^(?:[0-9]+(?:\.[0-9]+){3} I )?load_tensors: moe-direct: sealed '
+$script:ENGINE_SEAL_INFO_REGEX = '^(?:[0-9]+(?:\.[0-9]+){3} I )?load_tensors: moe-direct: sealed all=(?<all>[0-9]+) host=(?<host>[0-9]+) nonhost=(?<nonhost>[0-9]+) slots=(?<have>[0-9]+)/(?<need>[0-9]+) moe_layers=(?<layers>[0-9]+) \(matched live=[0-9]+ host=[0-9]+ nonhost=[0-9]+\)$'
+# Slots are echoed, not compared: attested and required slots are different quantities.
 
 # R2-4 / R3-1 cancel evidence, bound to a TASK ID. 1st sources (verified):
 #   tools/server/server-queue.cpp:441   server_response_reader::stop()
@@ -209,11 +274,12 @@ $script:PREFETCH_ECHO_ON                = 'on'
 $script:PREFETCH_ECHO_QD_BELOW_DEPTH    = 'off(reason=qd_below_prefetch_depth)'
 
 # ---------------------------------------------------------------------------
-# P4 2 : the CLOSED off_reason enum (wire). 13 literals, exhaustively listed - a reason string
+# P4 2 : the CLOSED off_reason enum (wire). 12 literals, exhaustively listed - a reason string
 # outside this table may not be emitted, and every echo is exactly "off(reason=<literal>)".
 # The two v0.4 one-axis literals 'reference_only_live_forbidden' and 'catalog_disabled' are
-# RETIRED with the one-axis prefetch_state field they described; nothing in this generation emits
-# them (selftest asserts their absence).
+# RETIRED with the one-axis prefetch_state field they described, and the pre-P4a engine-floor
+# refusal literal was RETIRED with the env K range opening to 1..16 (PI 4-1, 26-08-27); nothing in
+# this generation emits them (selftest asserts their absence, by name and by source text).
 # ---------------------------------------------------------------------------
 $script:PREFETCH_OFF_REASONS = @(
     # carried over from v0.4 (unchanged meaning)
@@ -227,7 +293,6 @@ $script:PREFETCH_OFF_REASONS = @(
     'derived_t_mismatch',
     # P4 2 step 4 : init opt-in refusals
     'init_t_out_of_range',
-    'engine_env_k_floor_8_pre_p4a',
     'phase4_hold_unresolved',
     # P4 5 : adapt is refused on every path in Phase 4
     'adapt_forbidden_in_repro_bench',
@@ -252,13 +317,127 @@ $script:PREFETCH_ACTIVATION_RUNTIME = @('opt-in-fixed', 'opt-in-adaptive')
 # that mapping is written exactly once, in ConvertTo-PrefetchOptIn.
 $script:PREFETCH_REQUEST_VALUES = @('catalog', 'init', 'adapt')
 $script:PREFETCH_REQUEST_DEFAULT = 'catalog'
+# A6' UI path state. Two script variables, matching the repack-mode precedent term for term: the
+# value the interactive controls wrote (null = they never ran, so nothing of theirs is applied)
+# and the latch that makes the menu row and the pre-identification question mutually exclusive -
+# one run, one offer.
+$script:PrefetchRequestInteractive   = $null
+$script:PrefetchRequestToggleOffered = $false
 # Internal arms. 'none' = no opt-in; the other two are the two ways a K/N pair can be produced.
 $script:PREFETCH_ARM_NONE    = 'none'
 $script:PREFETCH_ARM_CATALOG = 'catalog-fixed'
 $script:PREFETCH_ARM_INIT    = 'init'
 
-# PI 3 invariant 7 : provenance labels. 'env-override' is reserved and has NO issuing path in this
-# atomic step (the offline explicit override is opened together with the engine env K range).
+# ---------------------------------------------------------------------------
+# 5CA bundle load axis. Every literal below is a COPY, and the NORMATIVE source is the clause
+# named beside it in SPEC_PREFETCH_5CA.md (FROZEN) - that clause wins on any conflict.
+# Where the |src ORIGINAL tag lives: SPEC_PREFETCH_5CA_APPENDIX.md, section
+# "계약태그-등기". It is registered there rather than in the spec itself because the spec is A0
+# frozen and planting a tag in it would move core_sha256 / sem / span / rows in
+# A5C_FREEZE_LOCK.json, which means an R-1 reopening and a fresh basis. The registry entry holds
+# the tag and points at the clause; it does not restate the contract.
+#   1-2   external expected identity authority      [[C:prefetch.bundle-identity]]
+#   1-3   deployment root + root-relative literals  [[C:prefetch.cn-containment]]
+#   1-7   reject surface, two namespaces            [[C:prefetch.detail-priority-14]]
+#   6-2   run mode authority (CG-3, M-1..M-5)       [[C:prefetch.runmode-authority]]
+# ---------------------------------------------------------------------------
+
+# 1-2: the expected identity is a SCRIPT CONSTANT, hardcoded on purpose. It may not be read
+# from a file, an env var or the catalog: a value shipped WITH the bundle would be replaced
+# together with a mis-deployed bundle and the exact match would decay into self-comparison.
+# Re-issuing a bundle therefore requires editing these four values, and that edit IS the
+# human approval point (its machine record is the 1-5 release receipt).
+$script:PREFETCH_BUNDLE_IDENTITY = @{
+    schema_version    = 1
+    constants_version = 'v1.0'
+    scope_id          = 'e2d2f8f680bd1f91d8580663cd998733f4d672ebaff89249e5c7a069bf8ad05f'
+    payload_hash      = '147ac3e8aec9dce9e153965aa96f78c0b636dd89374bf1395be1316ac76eec4b'
+}
+$script:PREFETCH_IDENTITY_KEYS = @('schema_version', 'constants_version', 'scope_id', 'payload_hash')
+
+# 1-3 / CN-5: the two admission files are assembled ONLY from the canonical root plus these
+# two spec-fixed relative literals. No externally supplied file path is ever admitted.
+$script:PREFETCH_BUNDLE_REL_MANIFEST = 'prefetch\bundle_v1\MANIFEST.json'
+$script:PREFETCH_BUNDLE_REL_PAYLOAD  = 'prefetch\bundle_v1\seal_v1_payload.json'
+# CN-4 (b): reparse hop ceiling.
+$script:PREFETCH_CN_MAX_HOPS = 32
+
+# 1-6-1 VW-1: the closed set of env keys this spec introduces. They travel in the config.env
+# half of the explicit environment block ONLY. Adding either to ENV_OS_BOOTSTRAP_ALLOWLIST
+# would create a path where the launcher reads the name out of its OWN ambient environment
+# and forwards it to the child, which is exactly what CG-1 forbids.
+$script:PREFETCH_ENV_BUNDLE_VIEW      = 'MOE_DIRECT_PREFETCH_BUNDLE_VIEW'
+$script:PREFETCH_ENV_ACTIVATION_GRANT = 'MOE_DIRECT_PREFETCH_ACTIVATION_GRANT'
+
+# 1-7 (a): the two frozen upper reasons (controller v1.0) and the 14 detail literals.
+# THE ORDER IS THE CONTRACT: it is the resolution priority and the LOWEST INDEX WINS
+# (you cannot judge what you could not read). Exactly one detail is echoed; every other
+# defect found travels in observed.additional_defects[] in this same order.
+$script:PREFETCH_REASON_UNSEALED = 'constants_unsealed'
+$script:PREFETCH_REASON_SCOPE    = 'constants_scope_mismatch'
+$script:PREFETCH_LOAD_DETAILS = @(
+    'bundle_path_escape',
+    'bundle_absent',
+    'bundle_unreadable',
+    'bundle_alias_collision',
+    'bundle_malformed',
+    'bundle_unknown_schema_manifest',
+    'bundle_unknown_schema_payload',
+    'bundle_payload_hash_mismatch',
+    'bundle_cross_field_mismatch',
+    'bundle_domain_violation',
+    'identity_schema_version',
+    'identity_constants_version',
+    'identity_scope_id',
+    'identity_payload_hash')
+# The four identity details are the only ones under the scope-mismatch reason, and their
+# order matches PREFETCH_IDENTITY_KEYS one to one.
+$script:PREFETCH_IDENTITY_DETAILS = @('identity_schema_version', 'identity_constants_version',
+                                      'identity_scope_id', 'identity_payload_hash')
+
+# 2-5 (e): the closed five-value read status. The PATH layer never produces the last three.
+$script:PREFETCH_READ_STATUS = @('ok', 'absent', 'containment_failed', 'access_denied', 'io_error')
+
+# 6-3: the closed mode enum, 8 members. 6-2 M-1 fixes the NAME as 'mode'; 'run_mode' is retired.
+$script:PREFETCH_RUN_MODES = @('product', 'bench', 'repro', 'observe', 'replay',
+                               'paired-live', 'regression', 'official-g')
+$script:PREFETCH_MODE_PRODUCT = 'product'
+# 6-2 M-4 rank 2: declared verification signal AND a declared product mode is an ARGUMENT
+# GRAMMAR violation, not a value resolution, so it refuses the launch the way rank 1 does.
+$script:PREFETCH_RUNMODE_CONFLICT = 'runmode_conflict'
+
+# 1-6-1 VW-3 / 6-3: the closed grammar separator (unit separator, one byte 0x1F) and the
+# engine's own FNV-1a 64 primitive constants.
+$script:PREFETCH_GRAMMAR_SEP = [string][char]0x1F
+# The offset basis has bit 63 set, and PowerShell parses a 16-digit hex literal as a SIGNED
+# Int64 - so writing it as 0x... and casting to uint64 throws at parse-load time (measured).
+# Convert::ToUInt64 with an explicit base is the form that survives.
+$script:PREFETCH_FNV_INIT    = [Convert]::ToUInt64('cbf29ce484222325', 16)
+$script:PREFETCH_FNV_PRIME   = [Convert]::ToUInt64('100000001b3', 16)
+
+# 2-3: the session receipt. CREATE_NEW on purpose - an existing file is an internal defect.
+$script:PREFETCH_RECEIPT_SCHEMA = 'prefetch-5ca-identity-receipt/1'
+$script:PREFETCH_RECEIPT_SUFFIX = '.prefetch-identity-receipt.json'
+# 2-3 accepted schema: session_id is the engine's phaseb_boot_id in "0x%016llx" form. The
+# accepted branch is finalized only once that value has arrived, so a null or a differently
+# shaped string reaching the builder means the finalization order was broken - S6, gate a5p r1.
+$script:PREFETCH_SESSION_ID_PATTERN = '^0x[0-9a-f]{16}$'
+
+# 6-2 M-4: resolved once by Resolve-RunMode and read by everything downstream.
+$script:RunModeResolved = $null
+# 4-3 AN-3: set when M-4 demotes a stored opt-in on a non-product run.
+$script:PrefetchActivationRefusal = $null
+# 1-6: the L-A result for this run, produced once at the environment-assembly point.
+$script:PrefetchLoad = $null
+
+# PI 3 invariant 7 : provenance labels. 'env-override' HAS one issuing path, and exactly one:
+# the collect-only explicit tuple surface (-PhaseBCollectTuple, 5CT-TUPLE 2-2), which replaces the
+# K/N of an already-ON init decision with an operator-supplied pair for a registered collection
+# campaign. It is the "offline explicit override surface" this comment used to describe as a
+# separate follow-on step; that step is this one. The label set itself did not grow - the reserved
+# literal was spent rather than a new one minted, because a new label would re-open the closed set
+# PI 3 invariant 7 fixes. No other path may issue it: the normal user arms still produce
+# 'catalog-validated' or 'init_v1-unvalidated' and nothing else.
 $script:PREFETCH_PROVENANCE_CATALOG = 'catalog-validated'
 $script:PREFETCH_PROVENANCE_INIT    = 'init_v1-unvalidated'
 $script:PREFETCH_PROVENANCE_ENV     = 'env-override'
@@ -269,15 +448,10 @@ $script:PREFETCH_INIT_N_CAP   = 4
 $script:PREFETCH_INIT_T_MIN   = 1
 # PI 4-1 : pred wire is a top-16 ABI (SPEC_PHASEB_WIRE 13.2 'pred u16[16]').
 $script:PREFETCH_INIT_T_MAX   = 16
-# ---------------------------------------------------------------------------
-# P4 2 : TEMPORARY launcher-side copy of the engine's env K range floor.
-# 1st source (verified): bench/moe-direct/repro/moedirect-v2-b10057.patch:11054 - the engine
-# rejects MOE_DIRECT_PREFETCH_K outside "kv < 8 || kv > 16". This constant does NOT decide
-# capability (the seal does); it exists so the launcher cannot print a candidate ON for a family
-# whose t is below the floor the engine would reject. The follow-on atomic step that widens the
-# engine range to 1..16 changes the engine and THIS constant in one commit and one test run.
-# ---------------------------------------------------------------------------
-$script:ENGINE_ENV_K_FLOOR = 8
+# P4 2 note: the TEMPORARY launcher-side copy of the engine's env K floor (a constant holding 8)
+# was removed 26-08-27 with the engine env K range opening to 1..16 (SPEC_PREFETCH_INIT 4-1,
+# ggml-moe-phaseb.cpp resolve_prefetch) - one commit, one test run, as its own comment promised.
+# The launcher-side t gate is PREFETCH_INIT_T_MIN/T_MAX alone.
 # P4 2.5 : catalog-fixed turns ON only for an exactly identified model. Resolve-ProfileSelection
 # already answers this question; 'pinned' is the only verdict that means "the file bytes are the
 # ones the catalog measured".
@@ -293,6 +467,237 @@ function Get-PrefetchOffEcho {
     }
     return ('off(reason=' + $Reason + ')')
 }
+
+# ---------------------------------------------------------------------------
+# The launcher's own version string. This is a property of THIS script, deliberately separate from
+# the catalog's source_tag (which identifies the bundle build): the collection manifest records both
+# (5CTL 2-3), and if the two carried the same value one of the fields would be decoration.
+# RELEASE CHECKLIST ITEM: bump this at a v0.3.1 RC. It is hand-maintained, so it is exactly the
+# kind of copy that drifts - a release gate is the right place to compare it mechanically.
+# ---------------------------------------------------------------------------
+$script:LAUNCHER_VERSION = 'v0.3.1-dev'
+
+# ---------------------------------------------------------------------------
+# 5CTL 1-1 / 2-3 / 3-5 : the phase-B COLLECTION surface constants.
+# Same shape as the P4 block above on purpose - a two-value request enum with an absent-means-off
+# default, one closed refusal enum, and one formatter so a reason cannot be spelled two ways.
+# ---------------------------------------------------------------------------
+$script:COLLECT_REQUEST_VALUES  = @('on', 'off')
+$script:COLLECT_REQUEST_DEFAULT = 'off'
+# 5CTL 2-2-1 : the two publish states of a collection manifest. 'pending' reserves the canonical
+# name before the child is spawned; 'final' replaces it once the run is past ready and the leading
+# segment is verified. Only 'final' is an adoptable sample (5CTL 4-1 condition 1).
+$script:COLLECT_STATE_PENDING = 'pending'
+$script:COLLECT_STATE_FINAL   = 'final'
+$script:COLLECT_MANIFEST_STATES = @('pending', 'final')
+
+# ---------------------------------------------------------------------------
+# 5CTL 3-5 : the CLOSED collect refusal enum (echo wire). 12 literals, exhaustively listed.
+# ORDER IS PRIORITY - when two of them hold at once the one listed FIRST wins. That is what makes
+# "-Repro -Smoke together reports collect_forbidden_smoke" (5CTL 3-1) a property of this table
+# rather than of a condition written out twice.
+# Note 'none' is a member here (unlike PREFETCH_OFF_REASONS): it is the reason value carried by a
+# run that was NOT refused, so the manifest and the EFFECTIVE record can state it positively.
+# There is deliberately NO "engine does not support collection" literal: the launcher does not
+# judge capability (5CTL 0 premise 2 / 3-6). An unsupported build is caught offline, by the absence
+# of the engine's own phaseb_collect key (5CTL 4-1 condition 2).
+# ---------------------------------------------------------------------------
+$script:COLLECT_OFF_REASONS = @(
+    # not refused
+    'none',
+    # 5CTL 3-1 : the two verification modes the launcher can actually observe. Smoke outranks
+    # repro; see the priority note above.
+    'collect_forbidden_smoke',
+    'collect_forbidden_repro',
+    # 5CTL 3-2 : the official qwen122 profile (controller 7 invariant 6)
+    'collect_forbidden_qwen122_official',
+    # 5CTL 3-3 : scope binding needs exact identity, or the manifest's scope fields would be false
+    'collect_identity_not_exact',
+    # 5CTL 1-1 / 3-7 : the campaign approval record - absent/not fully-qualified, schema or
+    # contract-hash violation, and scope disagreement, in that order
+    'collect_campaign_missing',
+    'collect_campaign_invalid',
+    'collect_campaign_scope_mismatch',
+    # 5CTL 3-4 : the four manifest failure points, in the order they can occur
+    'collect_manifest_path_unusable',
+    'collect_manifest_preflight_failed',
+    'collect_manifest_commit_failed',
+    # 5CTL 2-5 : a leading-segment POST that was not confirmed with HTTP 200
+    'collect_prefix_unverified')
+
+# 5CTL 1-4 : collection ON is echoed as a CANDIDATE only - the engine seal, not this launcher,
+# decides whether collection actually happened. Same wording discipline as the P4 candidate line.
+$script:COLLECT_ECHO_ON = 'on(candidate)'
+
+# 5CTL 1-4 : one formatter for the whole enum. Mirrors Get-PrefetchOffEcho, including the loud
+# internal failure - a reason outside the closed table is a defect, not a new wire string.
+function Get-CollectOffEcho {
+    param([string] $Reason)
+    if ($script:COLLECT_OFF_REASONS -cnotcontains $Reason) {
+        Stop-Launcher 'fail_gate_catalog' ('internal: collect off reason outside the closed enum: ' + $Reason)
+    }
+    if ($Reason -ceq 'none') {
+        # 'none' is a member of the enum but it is not an OFF state, so rendering it as
+        # "off(reason=none)" would publish a refusal that did not happen.
+        Stop-Launcher 'fail_gate_catalog' 'internal: Get-CollectOffEcho called with reason=none'
+    }
+    return ('off(reason=' + $Reason + ')')
+}
+
+# ---------------------------------------------------------------------------
+# 5CTL 2-1 : the collection manifest canonical path is the FINAL resolved metrics path with this
+# literal APPENDED - not an extension swap. A profile's defaults.env may point metrics at any
+# extension, so a swap rule is not injective while an append always is.
+#   <metrics absolute path> + '.collection-manifest.json'
+# ---------------------------------------------------------------------------
+$script:COLLECT_MANIFEST_SUFFIX = '.collection-manifest.json'
+
+# ---------------------------------------------------------------------------
+# 5CT-REPAIR 2 (B_rdv) : the rendezvous handover file.
+# Key ORDER is the contract, not a convenience - the driver checks the decoded key sequence
+# verbatim, so reordering this list is a schema change and not an edit.
+# The file is written BOM-less UTF-8 compact JSON with NO trailing newline, and published with
+# Move-FileAtomicNoReplace: create-exclusive, so a second publisher cannot take a live handover.
+# ---------------------------------------------------------------------------
+$script:COLLECT_RDV_SCHEMA = '5ct-collect-rendezvous/1'
+$script:COLLECT_RDV_KEYS = @('schema', 'run_nonce', 'reservation_id', 'manifest_path',
+                             'manifest_sha256', 'manifest_raw_sha256')
+# lowercase GUID "D" format (8-4-4-4-12). Uppercase is a DIFFERENT string on the wire and the
+# driver compares bytes, so the launcher refuses it here rather than silently lowering it.
+$script:COLLECT_RDV_NONCE_RE = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+
+# ---------------------------------------------------------------------------
+# 5CT-REPAIR 1 (B_env / B_cap) : the collect sidecar prefix and the capacity arithmetic.
+#
+# ONE derivation formula, stated once: phaseb_out_prefix := <final metrics absolute path> + '.phaseb'.
+# Every site that needs it - the config builder, the ledger preflight and the warmstart recovery
+# re-derivation - calls Get-CollectOutPrefix rather than re-spelling the concatenation, so a
+# recovery cannot end up describing a different prefix than the one the child was started on.
+# The ledger name below is the ENGINE's, not a choice: ggml-moe-phaseb.cpp:2992 returns '_ledger.pb'
+# for sidecar kind 5 and :3087 appends it to the prefix.
+$script:COLLECT_OUT_SUFFIX    = '.phaseb'
+$script:COLLECT_LEDGER_SUFFIX = '_ledger.pb'
+# sizeof(ggml_moe_phaseb_ledger), static_assert'd at ggml-moe-phaseb.cpp:111.
+$script:COLLECT_LEDGER_RECORD_BYTES = [uint64]320
+# The count of complete 320 B records that fits in the engine's own 512 MiB default:
+# floor(512 * 1048576 / 320) = 1,677,721. An absent -PhaseBCollectMaxRecords therefore derives
+# buf_mb = 512 and reproduces the engine default exactly instead of moving it.
+$script:COLLECT_MAX_RECORDS_DEFAULT = [uint64]1677721
+# The engine reads buf_mb through strtol into a 32-bit long on this platform (:514), so this is the
+# largest value that survives the round trip. Above it, Windows CRT strtol does not fail: it
+# returns LONG_MAX (2,147,483,647) with errno=ERANGE, and the engine never checks errno, so the
+# value silently SATURATES at LONG_MAX rather than reverting to 512 - which is why the launcher's
+# exact round-trip ceiling has to refuse first, before the engine ever sees an out-of-range value.
+$script:COLLECT_BUF_MB_MAX = [uint64]2147483647
+$script:COLLECT_MIB_BYTES  = [uint64]1048576
+# The largest record count whose x320 charge still fits in a uint64: floor(uint64max / 320).
+# Computed through [decimal] rather than written as a literal, and NOT as "[uint64]::MaxValue / 320":
+# that expression evaluates in DOUBLE and rounds the threshold UP to ...352, which lets four counts
+# that really do overflow pass the guard. [decimal] represents every uint64 exactly.
+$script:COLLECT_MAX_RECORDS_CEILING =
+    [uint64][math]::Floor([decimal]([uint64]::MaxValue) / [decimal]$script:COLLECT_LEDGER_RECORD_BYTES)
+
+function Get-CollectOutPrefix {
+    param([string] $MetricsPath)
+    return ([string]$MetricsPath + $script:COLLECT_OUT_SUFFIX)
+}
+
+function Get-CollectLedgerPath {
+    param([string] $OutPrefix)
+    return ([string]$OutPrefix + $script:COLLECT_LEDGER_SUFFIX)
+}
+
+# 5CT-REPAIR 1 (B_cap): margin_bytes = 0, charge_bytes = checked(n * 320), buf_mb = ceil(charge / MiB).
+# margin 0 is exact rather than optimistic: on a collect-only run the ledger group is the ONLY
+# claimant of the shared cap (ggml-moe-phaseb.cpp:3133-3139 charges exactly n*320 and nothing else
+# reserves while the mode is off), so a margin would be padding, not safety.
+# "checked" is the contract word and it is implemented as a pre-multiplication guard, because
+# PowerShell's [uint64] arithmetic wraps silently rather than throwing - an unguarded product would
+# turn a 20-digit request into a small, plausible-looking buffer.
+# Returns a result object rather than throwing so the caller owns the failure status.
+function Get-CollectCapacity {
+    param([uint64] $MaxRecords)
+    if ($MaxRecords -lt [uint64]1) {
+        return @{ ok = $false; reason = 'max_records_bound must be at least 1' }
+    }
+    if ($MaxRecords -gt $script:COLLECT_MAX_RECORDS_CEILING) {
+        return @{ ok = $false
+                  reason = ('max_records_bound ' + [string]$MaxRecords + ' x 320 overflows an unsigned 64-bit charge') }
+    }
+    $charge = [uint64]$MaxRecords * $script:COLLECT_LEDGER_RECORD_BYTES
+    # [decimal], not the default [double]: PowerShell 5.1 evaluates uint64/uint64 as DOUBLE, which
+    # loses integer precision above 2^53 - and the values this guard has to reject are exactly the
+    # ones that live up there. [decimal] carries every uint64 exactly. ('%' on two uint64 operands
+    # already stays UInt64 and is exact, so only the quotient needed widening.)
+    $bufMb = [uint64][math]::Floor([decimal]$charge / [decimal]$script:COLLECT_MIB_BYTES)
+    if (($charge % $script:COLLECT_MIB_BYTES) -ne [uint64]0) { $bufMb = $bufMb + [uint64]1 }
+    if ($bufMb -lt [uint64]1 -or $bufMb -gt $script:COLLECT_BUF_MB_MAX) {
+        return @{ ok = $false
+                  reason = ('the derived buf_mb ' + [string]$bufMb + ' is outside the engine range 1..' +
+                            [string]$script:COLLECT_BUF_MB_MAX) }
+    }
+    return @{ ok = $true; reason = 'none'; max_records = [uint64]$MaxRecords
+              charge_bytes = [uint64]$charge; buf_mb = [uint64]$bufMb }
+}
+
+$script:COLLECT_MANIFEST_SCHEMA_VERSION = 1
+$script:COLLECT_MANIFEST_SPEC_VERSION   = '1.0'
+# 5CTL 2-2 / 2-3 : every collect JSON digest in this launcher is ConvertTo-Json at THIS depth with
+# -Compress, encoded UTF-8 without BOM. The depth is part of the frozen hash formulas (5CTL 3-7).
+$script:COLLECT_JSON_DEPTH = 6
+
+# ---------------------------------------------------------------------------
+# 5CTL 2-3 : manifest top-level keys - 35 literals, and THE ORDER IS PART OF THE CONTRACT (the
+# manifest_sha256 formula serialises this exact sequence). Adding, removing or reordering a key is
+# a schema_version bump, not an edit. The key SET does not depend on state: a pending manifest
+# carries the same 35 keys with the six deferred ones set to JSON null.
+# 'exclusive_prefix' is deliberately absent - it is an OFFLINE verdict the launcher cannot know
+# (5CTL 2-3 / 4-1 condition 8), so the builder records it on its own adoption result instead.
+# ---------------------------------------------------------------------------
+$script:COLLECT_MANIFEST_KEYS = @(
+    'schema_version', 'spec_version', 'state', 'reservation_id', 'launch_started_utc',
+    'launcher_version', 'child_pid', 'engine_bundle_sha256', 'metrics_path', 'model_path',
+    'profile_id', 'source_tag', 'selection_verdict', 'source_shards_sha256',
+    'source_shards_match', 'quantization', 'expect_sha256', 'repack_manifest_sha256',
+    'effective_qd', 'prefetch_k', 'prefetch_n', 'campaign_id', 'campaign_revision',
+    'minimum_sample_count', 'approved_scope_sha256', 'campaign_contract_sha256', 'repro', 'smoke',
+    'collect_requested', 'prefix_request_count', 'prefix_requests', 'ready_qpc',
+    'prefix_done_qpc', 'recovery_restarted', 'manifest_sha256')
+
+# 5CTL 2-3 : the six fields that are JSON null in 'pending' and carry real values in 'final'.
+# Null, never absent - the key set is fixed regardless of state.
+$script:COLLECT_MANIFEST_PENDING_NULL_KEYS = @(
+    'child_pid', 'prefix_request_count', 'prefix_requests', 'ready_qpc', 'prefix_done_qpc',
+    'recovery_restarted')
+
+# 5CTL 2-3 / 2-5 : the leading-segment request records. 'kind' is closed to the two requests this
+# launcher can itself issue (WARMFILE_DESIGN gate 1: restore -> 0 POSTs, recovery-cold -> exactly
+# one, and the generic and file branches are the two shapes that one can take).
+$script:COLLECT_PREFIX_KINDS = @('launcher_warmup', 'launcher_warmfile')
+$script:COLLECT_PREFIX_REQUEST_KEYS = @('ordinal', 'kind', 'dispatch_qpc', 'response_qpc',
+                                        'http_status')
+
+# ---------------------------------------------------------------------------
+# 5CTL 3-7 : the campaign approval record. Three frozen key sequences - the file's exact schema,
+# and the two hash preimages. The launcher REBUILDS an [ordered] object in these exact orders
+# before hashing, so the key order of the input file is irrelevant.
+# The launcher checks scope agreement and the contract hash and copies five fields forward. It does
+# NOT judge cumulative sample counts across runs - that is the offline builder's job (5CTL 4-4),
+# and keeping the split is what preserves premise 2 ("the launcher does not judge").
+# ---------------------------------------------------------------------------
+$script:COLLECT_CAMPAIGN_KEYS = @(
+    'schema_version', 'campaign_id', 'campaign_revision', 'minimum_sample_count',
+    'approved_scope_sha256', 'campaign_contract_sha256')
+$script:COLLECT_CAMPAIGN_SCOPE_KEYS = @(
+    'model_path', 'profile_id', 'expect_sha256', 'repack_manifest_sha256', 'effective_qd',
+    'prefetch_k', 'prefetch_n')
+$script:COLLECT_CAMPAIGN_CONTRACT_KEYS = @(
+    'schema_version', 'campaign_id', 'campaign_revision', 'minimum_sample_count',
+    'approved_scope_sha256')
+# 5CTL 3-7 : the five approved-record fields copied verbatim into the manifest on success.
+$script:COLLECT_CAMPAIGN_COPY_KEYS = @(
+    'campaign_id', 'campaign_revision', 'minimum_sample_count', 'approved_scope_sha256',
+    'campaign_contract_sha256')
 
 # LS 1-7 : user preset required fields + exact schema version.
 # LS 13-2: PRESET_SCHEMA_VERSION stays 1. The unknown-key drop rule already gives both directions
@@ -487,6 +892,29 @@ $script:UNPINNED_NOTE =
 $script:MISMATCH_NOTE =
     'this file has the catalog profile shape but NOT its bytes: every published number for this profile describes a different file, prefetch is off and no reference claim is made'
 
+# LUX-1 B2: the virtual plan path's own answers, kept as constants beside the packed ones so the
+# selftest can compare a RENDER against these - never a constant against another constant. Nothing
+# was copied on this path, so the copy axis may not borrow the packed sentence.
+$script:AXIS_COPY_VIRTUAL_NA      = 'N/A (virtual plan; no payload was copied)'
+$script:AXIS_SERVING_UNVALIDATED_VIRTUAL = 'unvalidated (virtual plan path)'
+# Two lines, rendered in the note continuation column directly under the copy axis. The '8-item'
+# number is a COPY of Assert-VirtualPlanGate's item count: the selftest derives N from that
+# function's own '# (vN)' markers and compares it here, so it is never hand-verified.
+$script:VIRTUAL_COPY_NOTE = @(
+    'the 8-item virtual plan gate and the engine verify the manifest, the',
+    'record addresses and the source header binding instead.')
+# LUX-1 B2: the format gate row on the virtual path. Reaching Show-Status AT ALL means the virtual
+# plan gate already passed - a failure ends the run inside Invoke-LauncherMain step (8) through
+# Stop-Launcher - so this row carries no condition. '8/8' is the same derived copy as above.
+$script:FORMAT_GATE_VIRTUAL_TEXT  = 'PASS (virtual plan gate 8/8)'
+# LUX-1 B2: the virtual path is not performance-gated at all, so it sits in the ladder above every
+# configuration-shaped demotion. -Repro/-Smoke may not reach PASS from here.
+$script:PERF_GATE_VIRTUAL_TEXT    = '[unmeasured] (virtual plan path is not performance-gated)'
+# LUX-1 B2: the catalog's reference rows describe the PACKED path. They are labelled, not hidden -
+# hiding an honest measurement is worse than saying which path it came from.
+$script:REFERENCE_PACKED_ONLY_NOTE =
+    '[packed path only - the rows below were measured on the packed path; this run is a virtual plan]'
+
 # Derived defaults.argv skeleton. NOT a guess: all five shipped catalog profiles carry a
 # byte-identical argument list apart from '--n-cpu-moe <n_layer>' and '-c' (12288 on four,
 # 4096 on qwen35-35b) - measured 26-08-02 over launcher\models.json. The model-dependent slot is
@@ -517,6 +945,54 @@ $script:ENV_PREFETCH_K   = 'MOE_DIRECT_PREFETCH_K'
 $script:ENV_PREFETCH_N   = 'MOE_DIRECT_PREFETCH_N'
 $script:ENV_NO_PREFETCH  = 'MOE_NO_PREFETCH'
 $script:ENV_METRICS      = 'MOE_DIRECT_METRICS'
+# 5CTL 1-2: the phase-B collection flag (5c-T-E, WIRE appendix 14.4). 1st source, verified in
+# D:\moe-tools\llama.cpp-src-b10057 on 26-08-26:
+#   ggml/src/ggml-moe-phaseb.cpp:506  g_pb.collect_raw = (pb_trim_lower(pb_getenv(
+#                                     "MOE_DIRECT_PHASEB_COLLECT")) == "on");
+#                                     -> the ONLY accepted value is the exact string 'on'; any
+#                                     other value and absence are both off, and the flag is
+#                                     independent of the MOE_DIRECT_PHASEB mode.
+#   ggml/include/ggml-moe-phaseb.h:804  ggml_moe_phaseb_collect_on(void) - resolved once at seal
+#                                     time and immutable afterwards.
+#   ggml/src/ggml-moe-direct.cpp:4647  if (ggml_moe_phaseb_collect_on()) j["phaseb_collect"]=true;
+#                                     -> the key exists in the metrics header ONLY when collection
+#                                     is on. That additive key, not this launcher, is the authority
+#                                     on whether a run actually collected (5CTL 3-6 / 4-1 cond 2).
+# NOTE the line numbers above are the 26-08-26 re-survey; the spec text quotes the pre-drift ones
+# (:481 / :772-773 / :2727). The CODE at each of the three sites is unchanged - only its position
+# moved (see PREFETCH_5CT_ROUND_LEDGER A0-2b).
+# 'off' is never injected as a value: absence IS off, which is the same shape P4 uses for K/N.
+$script:ENV_PHASEB_COLLECT = 'MOE_DIRECT_PHASEB_COLLECT'
+# 5CT-REPAIR 1 (B_env): the three OTHER phase-B env keys this launcher now has an opinion about.
+# 1st source, re-read in D:\moe-tools\llama.cpp-src-b10057 on 26-08-27 (ggml/src/ggml-moe-phaseb.cpp,
+# pb_resolve_env at :490):
+#   :494-502  MOE_DIRECT_PHASEB      the MODE - off|trace|equiv|observe, absent/unknown = off. It is
+#                                    INDEPENDENT of the collect flag, which is exactly why a
+#                                    collect-only child must not carry it (B_env: trace, equiv and
+#                                    observe alike take NO part in a collection run).
+#   :507-508  MOE_DIRECT_PHASEB_OUT  the sidecar path PREFIX. Read when the mode is on OR collect is
+#                                    on, so on a collect-only run this key is the only thing that
+#                                    decides where the ledger lands. Absent = empty prefix = the
+#                                    engine writes nothing (:3050 returns 0), which is the defect
+#                                    G run attempt #2 hit: written=0, dropped=2,048,966.
+#   :510-518  MOE_DIRECT_PHASEB_BUF_MB  the shared sidecar buffer cap in MiB, DEFAULT 512. Parsed
+#                                    with strtol into a long, accepted only when the whole string
+#                                    converts and the value is > 0 - so on Windows PowerShell 5.1
+#                                    the reachable ceiling is the 32-bit 2,147,483,647 and anything
+#                                    above it is not "clamped": Windows CRT strtol returns LONG_MAX
+#                                    with errno=ERANGE, and the engine never checks errno, so the
+#                                    value silently SATURATES at LONG_MAX (not 512). That is why
+#                                    the launcher's exact range check has to refuse it first.
+#   :524-526  MOE_DIRECT_PHASEB_TEST_HINT  the fault-injection hint (exact 'rot'). A collect run is a
+#                                    measurement run, so this key is removed with the mode key.
+# Ledger geometry, same file: sizeof(ggml_moe_phaseb_ledger) == 320 is a static_assert (:111), the
+# ledger sidecar suffix is '_ledger.pb' (:2992) appended to the prefix (:3087), and a group push
+# charges exactly n*320 bytes against the shared cap (:3133-3139) - which is what makes margin 0 the
+# EXACT charge on a collect-only run rather than an optimistic one.
+$script:ENV_PHASEB_MODE      = 'MOE_DIRECT_PHASEB'
+$script:ENV_PHASEB_OUT       = 'MOE_DIRECT_PHASEB_OUT'
+$script:ENV_PHASEB_BUF_MB    = 'MOE_DIRECT_PHASEB_BUF_MB'
+$script:ENV_PHASEB_TEST_HINT = 'MOE_DIRECT_PHASEB_TEST_HINT'
 
 # Engine hard caps (1st source: moedirect-v2-b10057.patch:3655-3656).
 $script:ENGINE_QD_MIN = 1
@@ -1255,6 +1731,9 @@ $script:FILE_SHARE_DELETE           = 0x00000004
 $script:FILE_READ_ATTRIBUTES        = 0x00000080
 $script:OPEN_EXISTING               = 3
 $script:CREATE_ALWAYS               = 2
+# 5CA 2-3: the identity receipt is created with CREATE_NEW - an existing file at that name is
+# an internal defect, not something to overwrite.
+$script:CREATE_NEW                  = 1
 $script:FILE_FLAG_NO_BUFFERING      = 0x20000000
 $script:FILE_FLAG_RANDOM_ACCESS     = 0x10000000
 $script:INVALID_HANDLE              = [IntPtr]::new(-1)
@@ -1577,6 +2056,16 @@ function Test-JsonNonNegativeInteger {
     return $false
 }
 
+function Test-JsonInteger {
+    # 5CA 1-4 atoms[]: a rational's num may be negative, so the non-negative predicate above
+    # cannot judge it. Booleans are excluded for the same reason they are there - in .NET a
+    # bool is not an integer, but a permissive test would let one through as 0/1.
+    param($Value)
+    if ($Value -is [bool]) { return $false }
+    return ($Value -is [int] -or $Value -is [long] -or $Value -is [int16] -or
+            $Value -is [byte] -or $Value -is [uint32] -or $Value -is [uint64])
+}
+
 function Test-JsonEmptyArray {
     param($Value)
     if ($Value -is [System.Array]) { return (@($Value).Count -eq 0) }
@@ -1607,6 +2096,20 @@ function Move-FileAtomic {
     $flags = [uint32](0x1 -bor 0x8)   # MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH
     if (-not [MoeLauncher.Native]::MoveFileExW($TempPath, $FinalPath, $flags)) {
         throw ('atomic replace failed (GetLastError=' + [System.Runtime.InteropServices.Marshal]::GetLastWin32Error() + ')')
+    }
+}
+
+# 5CTL 2-2 b: CREATE-EXCLUSIVE publish - the same MoveFileExW with MOVEFILE_WRITE_THROUGH ALONE.
+# Omitting MOVEFILE_REPLACE_EXISTING is the whole mechanism: if the destination already exists the
+# call FAILS instead of overwriting, which is what reserves a collection manifest for exactly one
+# run. The engine has the same protection on its metrics file (CREATE_NEW); before 5CTL the
+# manifest had no counterpart, so a second run could silently take over the first one's name.
+# 0x1 must never be added here - selftest asserts the flag word exactly (5CTL 5 m).
+function Move-FileAtomicNoReplace {
+    param([string] $TempPath, [string] $FinalPath)
+    $flags = [uint32]0x8              # MOVEFILE_WRITE_THROUGH only - NO MOVEFILE_REPLACE_EXISTING
+    if (-not [MoeLauncher.Native]::MoveFileExW($TempPath, $FinalPath, $flags)) {
+        throw ('atomic create-exclusive publish failed (GetLastError=' + [System.Runtime.InteropServices.Marshal]::GetLastWin32Error() + ')')
     }
 }
 
@@ -2974,7 +3477,7 @@ function Invoke-DerivePlan {
 #                       carries the run-level answer, and the two are deliberately separate.
 # ---------------------------------------------------------------------------------------------
 function Get-SurfaceAxes {
-    param([string] $Kind, $Profile, [bool] $CopyVerified)
+    param([string] $Kind, $Profile, [bool] $CopyVerified, [string] $RepackMode = '')
     $copy = $script:AXIS_COPY_PENDING
     if ($CopyVerified) { $copy = $script:AXIS_COPY_PASS }
     $note = $null
@@ -3000,8 +3503,22 @@ function Get-SurfaceAxes {
             $serving = $script:AXIS_SERVING_VALIDATED
         }
     }
-    return @{ kind = $Kind; copy_integrity = $copy; inventory_authority = $inventory
-              serving_validation = $serving; note = $note }
+    # LUX-1 B1/B2: the mode changes what the COPY and SERVING axes can honestly claim, and nothing
+    # else. The inventory axis answers "which selection authority chose the routed tensors", and
+    # that answer is the same on both paths - re-deriving or renaming it here would re-mix the two
+    # axes LS OA-1 exists to keep apart. The per-kind note also stays exactly where it was.
+    # This is a DISPLAY override: no gate is re-run and no verdict is recomputed (B3).
+    $notesVirtual = $null
+    if ($RepackMode -ceq $script:REPACK_MODE_VIRTUAL) {
+        $copy         = $script:AXIS_COPY_VIRTUAL_NA
+        $serving      = $script:AXIS_SERVING_UNVALIDATED_VIRTUAL
+        $notesVirtual = $script:VIRTUAL_COPY_NOTE
+    }
+    $axes = @{ kind = $Kind; copy_integrity = $copy; inventory_authority = $inventory
+               serving_validation = $serving; note = $note }
+    # Added ONLY on the virtual path, so the packed SURFACE_AXES diagnostic keeps its exact key set.
+    if ($null -ne $notesVirtual) { $axes['note_virtual'] = $notesVirtual }
+    return $axes
 }
 
 # endregion
@@ -4923,6 +5440,16 @@ function Stop-ModeMismatch {
 # invariants before it acquires a single resource (:2284, :2404, :8888), so the terminal fail-close
 # already exists. The launcher owns exactly two things - the type/positivity of the fields IT
 # consumes before the engine runs, and the plan-report binding below.
+#
+# LUX-1 B2 CONSTRUCTION RULE - read this before adding, removing or moving an item here. The item
+# count of this function is copied into two rendered strings ($script:FORMAT_GATE_VIRTUAL_TEXT's
+# '8/8' and $script:VIRTUAL_COPY_NOTE's '8-item'), and the selftest derives that count from the
+# '# (vN)' markers below. So:
+#   1. every item carries exactly one '# (vN)' marker, and N is never reused;
+#   2. the 'vgate N:' failure strings stay literal - never built with -f or string concatenation;
+#   3. adding or deleting an item means updating both rendered copies in the same commit.
+# Rules 1 and 3 are enforced by the selftest; rule 2 is NOT detectable by it (a dynamic format or a
+# dead literal leaves both text sets unchanged), which is precisely why it is written down here.
 function Assert-VirtualPlanGate {
     param([string] $OutputDir, [string] $ProfileId, [string] $ExpectSha)
 
@@ -5629,6 +6156,1169 @@ function Remove-ArgvPair {
 
 # The semantic reader. It never terminates: a row it cannot make sense of comes back marked
 # semantic_invalid, and the resolver turns that row's prefetch off with a reason (P4 1-b).
+# ---------------------------------------------------------------------------
+# 5CA 1-3-1 CN-1 .. CN-9 path containment.  [[C:prefetch.cn-containment]]
+#
+# This is an INDEPENDENT SECOND IMPLEMENTATION of the same normative predicate that atom A2
+# implements in prefetch_campaigns/a5c/A5C_Containment.psm1. Two implementations exist because
+# the product launcher must stay a single self-contained file - the module is not part of the
+# release bundle inventory, and shipping it would re-open a frozen release spec. The
+# equivalence of the two is not a hope: launcher_selftest.ps1 runs BOTH over the same fixture
+# set and asserts identical verdicts.
+#
+# The measurement table M-a .. M-n in the spec is why each step looks the way it does:
+#   M-a/M-b/M-k  Resolve-Path resolves NEITHER reparse points NOR 8.3 short names
+#   M-c          the reparse point sits on an ANCESTOR, so every component must be walked
+#   M-d          a junction resolves ONE hop at a time
+#   M-e/M-f      a plain prefix compare passes 'C:\bundle2\x' against root 'C:\bundle'
+#   M-g/M-h      'C:foo' resolves against the process CWD and IsPathRooted says True anyway
+#   M-l          GetFullPath expands only as far as the path exists
+# ---------------------------------------------------------------------------
+if (-not ('MoePrefetch.Native' -as [type])) {
+    Add-Type -Namespace 'MoePrefetch' -Name 'Native' -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+public static extern uint GetLongPathNameW(string lpszShortPath, System.Text.StringBuilder lpszLongPath, uint cchBuffer);
+'@
+}
+
+function Get-PrefetchShortNameOf {
+    # FSO 8.3 short name of an EXISTING entry, or $null. Fallback helper only.
+    param([string] $Path)
+    try {
+        $fso = New-Object -ComObject Scripting.FileSystemObject
+        if ([IO.Directory]::Exists($Path)) { return $fso.GetFolder($Path).ShortName }
+        if ([IO.File]::Exists($Path))      { return $fso.GetFile($Path).ShortName }
+    } catch { }
+    return $null
+}
+
+function Expand-PrefetchLongPath {
+    # CN-4 (a) APPROVED MECHANISM, in order:
+    #   1. Win32 GetLongPathNameW (the documented mechanism)
+    #   2. parent enumeration fallback when 1 fails (n = 0, Win32 error, exception)
+    # Returns @{ Path; Recovered }. 'Recovered' is what lets the caller fail-close on an
+    # unrecovered 8.3 component instead of admitting the input echoed back. A mechanism answer
+    # IS the long name by construction, so a legitimate long name that merely contains a tilde
+    # digit comes back Recovered and must never be rejected on the string alone.
+    # NOTE: DirectoryInfo(...).FullName is NOT an approved mechanism - it is host dependent
+    # (spec M-j), and a normative predicate cannot ride on a host dependent value.
+    param([string] $Path, [int] $Depth = 0)
+    if ($Depth -gt 64) { return @{ Path = $Path; Recovered = $false } }
+    $sb = New-Object System.Text.StringBuilder 32768
+    $n = 0
+    try { $n = [MoePrefetch.Native]::GetLongPathNameW($Path, $sb, [uint32]$sb.Capacity) } catch { $n = 0 }
+    if ($n -gt 0 -and $n -lt $sb.Capacity) {
+        $got = $sb.ToString()
+        if (-not [string]::IsNullOrEmpty($got)) { return @{ Path = $got; Recovered = $true } }
+    }
+    $parent = [IO.Path]::GetDirectoryName($Path)
+    if ([string]::IsNullOrEmpty($parent)) { return @{ Path = $Path; Recovered = $false } }
+    $leaf = [IO.Path]::GetFileName($Path)
+    if ([string]::IsNullOrEmpty($leaf)) { return @{ Path = $Path; Recovered = $false } }
+    $parentLong = (Expand-PrefetchLongPath -Path $parent -Depth ($Depth + 1)).Path
+    $entries = $null
+    try { $entries = [IO.Directory]::GetFileSystemEntries($parentLong) }
+    catch { return @{ Path = $Path; Recovered = $false } }
+    foreach ($e in $entries) {
+        $name = [IO.Path]::GetFileName($e)
+        if ($name.Equals($leaf, [StringComparison]::OrdinalIgnoreCase)) {
+            return @{ Path = $e; Recovered = $true }
+        }
+        $sn = Get-PrefetchShortNameOf -Path $e
+        if ($null -ne $sn -and $sn.Equals($leaf, [StringComparison]::OrdinalIgnoreCase)) {
+            return @{ Path = $e; Recovered = $true }
+        }
+    }
+    return @{ Path = $Path; Recovered = $false }
+}
+
+function Test-PrefetchFullyQualified {
+    # CN-2 absoluteness. IsPathRooted alone is FORBIDDEN (M-h says it answers True for both
+    # 'C:foo' and a leading separator). Accepts drive+separator, UNC, and device forms.
+    param([AllowEmptyString()][string] $Path)
+    if ([string]::IsNullOrEmpty($Path)) { return $false }
+    if ($Path.IndexOf([char]0) -ge 0) { return $false }
+    if ($Path.Length -eq 1) { return $false }
+    $c0 = $Path[0]; $c1 = $Path[1]
+    $isSep0 = ($c0 -eq '\' -or $c0 -eq '/')
+    $isSep1 = ($c1 -eq '\' -or $c1 -eq '/')
+    if ($isSep0 -and $isSep1) { return ($Path.Length -gt 2) }
+    if ($isSep0) { return $false }
+    if ($Path.Length -lt 3) { return $false }
+    if ($Path[1] -ne ':') { return $false }
+    if (-not [char]::IsLetter($Path[0])) { return $false }
+    $c2 = $Path[2]
+    return ($c2 -eq '\' -or $c2 -eq '/')
+}
+
+function ConvertTo-PrefetchLexicalPath {
+    # CN-3 lexical normalization, existence free. CN-2 must pass FIRST - that ordering is what
+    # makes GetFullPath's CWD resolution (M-g) unreachable, and this function enforces it.
+    param([AllowEmptyString()][string] $Path)
+    if (-not (Test-PrefetchFullyQualified -Path $Path)) {
+        throw ("PREFETCH_CN2: not fully qualified: '" + $Path + "'")
+    }
+    return [IO.Path]::GetFullPath($Path)
+}
+
+function Split-PrefetchPathParts {
+    param([string] $Path)
+    $root = [IO.Path]::GetPathRoot($Path)
+    if ([string]::IsNullOrEmpty($root)) { throw ("PREFETCH_CN2: no path root: '" + $Path + "'") }
+    $rest = $Path.Substring($root.Length)
+    $parts = @()
+    foreach ($p in $rest.Split(@('\', '/'), [StringSplitOptions]::RemoveEmptyEntries)) { $parts += $p }
+    return @{ Root = $root; Parts = $parts }
+}
+
+function Resolve-PrefetchRealPath {
+    # CN-4 substantive normalization: walk root to leaf, expand 8.3 names, follow reparse
+    # points one hop at a time and restart CN-2..CN-4 from each target.
+    # Returns @{ Ok; Path; Reason; Hops; MissingLeafOnly }.
+    # MissingLeafOnly carries the CN-8 caveat: every ancestor resolved and only the final
+    # component is missing. The CALLER decides bundle_absent vs bundle_path_escape, because
+    # CN-8 grants 'absent' only AFTER CN-6 has passed.
+    param([string] $Path, [int] $MaxHops = $script:PREFETCH_CN_MAX_HOPS)
+    $hops = 0
+    $current = $null
+    try { $current = ConvertTo-PrefetchLexicalPath -Path $Path }
+    catch { return @{ Ok = $false; Path = $null; Reason = $_.Exception.Message; Hops = 0; MissingLeafOnly = $false } }
+    while ($true) {
+        $split = $null
+        try { $split = Split-PrefetchPathParts -Path $current }
+        catch { return @{ Ok = $false; Path = $null; Reason = $_.Exception.Message; Hops = $hops; MissingLeafOnly = $false } }
+        $acc = $split.Root
+        $n = $split.Parts.Count
+        $restart = $false
+        for ($i = 0; $i -lt $n; $i++) {
+            $part = $split.Parts[$i]
+            $probe = [IO.Path]::Combine($acc, $part)
+            $isLeaf = ($i -eq ($n - 1))
+            $exists = $false
+            try { $exists = ([IO.Directory]::Exists($probe) -or [IO.File]::Exists($probe)) }
+            catch { return @{ Ok = $false; Path = $null; Reason = ("PREFETCH_CN8: probe failed at '" + $probe + "'"); Hops = $hops; MissingLeafOnly = $false } }
+            if (-not $exists) {
+                if ($isLeaf) {
+                    $acc = [IO.Path]::Combine($acc, $part)
+                    return @{ Ok = $false; Path = $acc; Reason = ("PREFETCH_CN8: leaf missing: '" + $acc + "'"); Hops = $hops; MissingLeafOnly = $true }
+                }
+                return @{ Ok = $false; Path = $null; Reason = ("PREFETCH_CN8: ancestor component missing: '" + $probe + "'"); Hops = $hops; MissingLeafOnly = $false }
+            }
+            $long = $null
+            try { $long = Expand-PrefetchLongPath -Path $probe } catch { $long = $null }
+            if ($null -eq $long -or [string]::IsNullOrEmpty($long.Path)) {
+                return @{ Ok = $false; Path = $null; Reason = ("PREFETCH_CN8: cannot expand '" + $probe + "'"); Hops = $hops; MissingLeafOnly = $false }
+            }
+            # CN-4 (a) EFFECT contract, fail-close: both approved mechanisms produced no answer
+            # AND the component is still an 8.3 short name -> the effect is unmet, CN-8 rejects.
+            # Guarding on Recovered (not on the string alone) is what keeps a legitimate long
+            # name containing a tilde digit admitted: a mechanism answer IS the long name.
+            if ((-not $long.Recovered) -and ([IO.Path]::GetFileName($long.Path) -match '~\d')) {
+                return @{ Ok = $false; Path = $null; Reason = ("PREFETCH_CN8: CN-4 (a) unmet, 8.3 not recovered: '" + $long.Path + "'"); Hops = $hops; MissingLeafOnly = $false }
+            }
+            $acc = $long.Path
+            $attrs = $null
+            try { $attrs = [IO.File]::GetAttributes($acc) }
+            catch { return @{ Ok = $false; Path = $null; Reason = ("PREFETCH_CN8: attributes unreadable: '" + $acc + "'"); Hops = $hops; MissingLeafOnly = $false } }
+            if (($attrs -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                $hops++
+                if ($hops -gt $MaxHops) {
+                    return @{ Ok = $false; Path = $null; Reason = ("PREFETCH_CN4: hop ceiling " + $MaxHops + " exceeded at '" + $acc + "'"); Hops = $hops; MissingLeafOnly = $false }
+                }
+                $target = $null
+                try { $target = (Get-Item -LiteralPath $acc -Force -ErrorAction Stop).Target }
+                catch { return @{ Ok = $false; Path = $null; Reason = ("PREFETCH_CN8: cannot read reparse target at '" + $acc + "'"); Hops = $hops; MissingLeafOnly = $false } }
+                $t0 = $null
+                if ($null -ne $target) {
+                    if ($target -is [string]) { $t0 = $target } elseif ($target.Count -gt 0) { $t0 = $target[0] }
+                }
+                if ([string]::IsNullOrEmpty($t0)) {
+                    return @{ Ok = $false; Path = $null; Reason = ("PREFETCH_CN8: reparse Target null or empty at '" + $acc + "'"); Hops = $hops; MissingLeafOnly = $false }
+                }
+                # A RELATIVE target resolves against the component's PARENT, never against the
+                # process CWD (the M-g class again).
+                if (-not (Test-PrefetchFullyQualified -Path $t0)) {
+                    $parent = [IO.Path]::GetDirectoryName($acc)
+                    if ([string]::IsNullOrEmpty($parent)) {
+                        return @{ Ok = $false; Path = $null; Reason = ("PREFETCH_CN4: relative target with no parent at '" + $acc + "'"); Hops = $hops; MissingLeafOnly = $false }
+                    }
+                    $t0 = [IO.Path]::Combine($parent, $t0)
+                }
+                $tail = ''
+                for ($k = $i + 1; $k -lt $n; $k++) { $tail = [IO.Path]::Combine($tail, $split.Parts[$k]) }
+                if ([string]::IsNullOrEmpty($tail)) { $current = $t0 } else { $current = [IO.Path]::Combine($t0, $tail) }
+                try { $current = ConvertTo-PrefetchLexicalPath -Path $current }
+                catch { return @{ Ok = $false; Path = $null; Reason = $_.Exception.Message; Hops = $hops; MissingLeafOnly = $false } }
+                $restart = $true
+                break
+            }
+        }
+        if (-not $restart) { return @{ Ok = $true; Path = $acc; Reason = $null; Hops = $hops; MissingLeafOnly = $false } }
+    }
+}
+
+function Test-PrefetchInsideRoot {
+    # CN-6 boundary-terminated comparison (M-f). Equality with the root itself is rejected too:
+    # the candidate must be STRICTLY inside.
+    param([string] $CanonicalRoot, [string] $Candidate)
+    $rootN = $CanonicalRoot.TrimEnd('\', '/') + '\'
+    if ($Candidate.Equals($rootN.TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)) { return $false }
+    if ($Candidate.Equals($rootN, [StringComparison]::OrdinalIgnoreCase)) { return $false }
+    return $Candidate.StartsWith($rootN, [StringComparison]::OrdinalIgnoreCase)
+}
+
+function Resolve-PrefetchCanonicalRoot {
+    # CN-1: the root must exist, and BOTH Resolve-BundleRoot branches are re-normalized here.
+    # The launcher having already resolved it is not a reason to skip: the -BundleRoot branch
+    # returns (Resolve-Path).ProviderPath while the default branch returns Split-Path -Parent
+    # with NO normalization at all, so the two branches arrive at different normalization levels.
+    param([AllowEmptyString()][string] $BundleRoot)
+    if (-not (Test-PrefetchFullyQualified -Path $BundleRoot)) {
+        return @{ Ok = $false; Path = $null; Reason = ("PREFETCH_CN2: bundle root not fully qualified: '" + $BundleRoot + "'") }
+    }
+    if (-not [IO.Directory]::Exists($BundleRoot)) {
+        # CN-1 is about the ROOT; a missing root is never 'absent'.
+        return @{ Ok = $false; Path = $null; Reason = ("PREFETCH_CN1: bundle root does not exist: '" + $BundleRoot + "'") }
+    }
+    $r = Resolve-PrefetchRealPath -Path $BundleRoot
+    if (-not $r.Ok) { return @{ Ok = $false; Path = $null; Reason = $r.Reason } }
+    return @{ Ok = $true; Path = $r.Path; Reason = $null }
+}
+
+function New-PrefetchAxisRecord {
+    # The path-layer axis record. 'Exists' exists ONLY where the spec defines a value for it:
+    # the containment_failed axis has NO such field, and a property carrying $null is not the
+    # same thing (serialization turns it into null, which is the receipt's observed.*_present
+    # value, not a missing field).
+    param([string] $Axis, [string] $RelativeLiteral,
+          [ValidateSet('admitted', 'absent', 'containment_failed')][string] $PathStatus,
+          [AllowNull()][object] $Path = $null, [AllowNull()][object] $Detail = $null,
+          [AllowNull()][object] $Reason = $null)
+    $h = [ordered]@{ Axis = $Axis; RelativeLiteral = $RelativeLiteral; Path = $Path
+                     PathStatus = $PathStatus; Detail = $Detail }
+    if ($PathStatus -eq 'admitted')   { $h['Exists'] = $true }
+    elseif ($PathStatus -eq 'absent') { $h['Exists'] = $false }
+    $h['Reason'] = $Reason
+    return [pscustomobject]$h
+}
+
+function Get-PrefetchAdmissionPaths {
+    # CN-5 .. CN-8: assemble the two admission files from the canonical root and the two fixed
+    # relative literals, then run the predicate over each. There is NO path here that takes a
+    # file path from outside and validates it - the escape classes are removed by construction,
+    # not by string analysis.
+    param([AllowEmptyString()][string] $BundleRoot)
+    $rootRes = Resolve-PrefetchCanonicalRoot -BundleRoot $BundleRoot
+    $rels = @($script:PREFETCH_BUNDLE_REL_MANIFEST, $script:PREFETCH_BUNDLE_REL_PAYLOAD)
+    $names = @('manifest', 'payload')
+    if (-not $rootRes.Ok) {
+        return [pscustomobject]@{
+            Ok = $false; CanonicalRoot = $null; Reason = $rootRes.Reason
+            Manifest = (New-PrefetchAxisRecord -Axis $names[0] -RelativeLiteral $rels[0] `
+                          -PathStatus 'containment_failed' -Detail 'bundle_path_escape' -Reason $rootRes.Reason)
+            Payload  = (New-PrefetchAxisRecord -Axis $names[1] -RelativeLiteral $rels[1] `
+                          -PathStatus 'containment_failed' -Detail 'bundle_path_escape' -Reason $rootRes.Reason)
+        }
+    }
+    $axes = @()
+    for ($i = 0; $i -lt 2; $i++) {
+        $cand = [IO.Path]::Combine($rootRes.Path, $rels[$i])
+        $lex = $null
+        try { $lex = ConvertTo-PrefetchLexicalPath -Path $cand }
+        catch {
+            $axes += (New-PrefetchAxisRecord -Axis $names[$i] -RelativeLiteral $rels[$i] `
+                        -PathStatus 'containment_failed' -Detail 'bundle_path_escape' -Reason $_.Exception.Message)
+            continue
+        }
+        if (-not (Test-PrefetchInsideRoot -CanonicalRoot $rootRes.Path -Candidate $lex)) {
+            $axes += (New-PrefetchAxisRecord -Axis $names[$i] -RelativeLiteral $rels[$i] `
+                        -PathStatus 'containment_failed' -Detail 'bundle_path_escape' -Reason 'CN-6 boundary')
+            continue
+        }
+        $real = Resolve-PrefetchRealPath -Path $lex
+        if ($real.Ok) {
+            # CN-7: the resolved candidate has to clear CN-6 AGAIN - an ancestor junction that
+            # points outside the root is caught exactly here.
+            if (-not (Test-PrefetchInsideRoot -CanonicalRoot $rootRes.Path -Candidate $real.Path)) {
+                $axes += (New-PrefetchAxisRecord -Axis $names[$i] -RelativeLiteral $rels[$i] `
+                            -PathStatus 'containment_failed' -Detail 'bundle_path_escape' -Reason 'CN-7 boundary')
+            } else {
+                $axes += (New-PrefetchAxisRecord -Axis $names[$i] -RelativeLiteral $rels[$i] `
+                            -PathStatus 'admitted' -Path $real.Path)
+            }
+        } elseif ($real.MissingLeafOnly -and (Test-PrefetchInsideRoot -CanonicalRoot $rootRes.Path -Candidate $real.Path)) {
+            # CN-8 caveat: CN-6 passed and only the leaf is missing -> absent, not escape.
+            $axes += (New-PrefetchAxisRecord -Axis $names[$i] -RelativeLiteral $rels[$i] `
+                        -PathStatus 'absent' -Path $real.Path -Detail 'bundle_absent' -Reason $real.Reason)
+        } else {
+            $axes += (New-PrefetchAxisRecord -Axis $names[$i] -RelativeLiteral $rels[$i] `
+                        -PathStatus 'containment_failed' -Detail 'bundle_path_escape' -Reason $real.Reason)
+        }
+    }
+    return [pscustomobject]@{ Ok = $true; CanonicalRoot = $rootRes.Path; Reason = $null
+                              Manifest = $axes[0]; Payload = $axes[1] }
+}
+
+function Get-PrefetchSha256OfBytes {
+    param([byte[]] $Bytes)
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try { return (([System.BitConverter]::ToString($sha.ComputeHash($Bytes))) -replace '-', '').ToLowerInvariant() }
+    finally { $sha.Dispose() }
+}
+
+function Read-PrefetchAdmittedBytes {
+    # 2-5 (e)-R: read ONE admitted axis through a handle and classify the outcome.
+    #   whole image acquired        -> ok
+    #   data-open denied by an ACL  -> access_denied
+    #   sharing/lock violation, device error, SHORT READ -> io_error
+    #   vanished between the layers -> absent
+    # An access denial met while WALKING THE PATH is not this layer's business: that one is
+    # CN-8 and it says bundle_path_escape.
+    # The share mode is deliberately wide: if we cannot read, that has to be someone else's
+    # lock and not our own open. The identity comes off the SAME handle as the bytes, which is
+    # what makes the alias check mean anything.
+    param([string] $Path)
+    $h = $script:INVALID_HANDLE
+    try {
+        $h = [MoeLauncher.Native]::CreateFileNoSaW($Path, [uint32]$script:GENERIC_READ,
+                 [uint32]($script:FILE_SHARE_READ -bor $script:FILE_SHARE_WRITE -bor $script:FILE_SHARE_DELETE),
+                 [IntPtr]::Zero, [uint32]$script:OPEN_EXISTING, [uint32]0, [IntPtr]::Zero)
+        if ($h -eq $script:INVALID_HANDLE -or $h -eq [IntPtr]::Zero) {
+            $err = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+            if ($err -eq 5) { return @{ Status = 'access_denied'; Raw = $null; Identity = $null; Win32 = $err } }
+            if ($err -eq 2 -or $err -eq 3) { return @{ Status = 'absent'; Raw = $null; Identity = $null; Win32 = $err } }
+            return @{ Status = 'io_error'; Raw = $null; Identity = $null; Win32 = $err }
+        }
+        $ident = [MoeLauncher.Native]::QueryFileId128($h)
+        if ([string]::IsNullOrEmpty($ident)) {
+            # fail-closed: with no file identity the alias check would be silently skipped, and
+            # a read whose subject cannot be named is not an 'ok' read.
+            return @{ Status = 'io_error'; Raw = $null; Identity = $null; Win32 = 0 }
+        }
+        $fs = $null
+        try {
+            $sfh = New-Object Microsoft.Win32.SafeHandles.SafeFileHandle($h, $false)
+            $fs = New-Object System.IO.FileStream($sfh, [System.IO.FileAccess]::Read)
+            $want = [int]$fs.Length
+            if ($want -eq 0) { return @{ Status = 'ok'; Raw = (New-Object byte[] 0); Identity = $ident; Win32 = 0 } }
+            $buf = New-Object byte[] $want
+            $got = 0
+            while ($got -lt $want) {
+                $n = $fs.Read($buf, $got, $want - $got)
+                if ($n -le 0) {
+                    # short read: the whole image was not acquired.
+                    return @{ Status = 'io_error'; Raw = $null; Identity = $ident; Win32 = 0 }
+                }
+                $got += $n
+            }
+            return @{ Status = 'ok'; Raw = $buf; Identity = $ident; Win32 = 0 }
+        } catch [System.UnauthorizedAccessException] {
+            return @{ Status = 'access_denied'; Raw = $null; Identity = $ident; Win32 = 5 }
+        } catch {
+            return @{ Status = 'io_error'; Raw = $null; Identity = $ident; Win32 = 0 }
+        } finally {
+            if ($null -ne $fs) { try { $fs.Dispose() } catch { } }
+        }
+    } catch {
+        return @{ Status = 'io_error'; Raw = $null; Identity = $null; Win32 = 0 }
+    } finally {
+        if ($h -ne $script:INVALID_HANDLE -and $h -ne [IntPtr]::Zero) { [void][MoeLauncher.Native]::CloseHandle($h) }
+    }
+}
+
+function New-PrefetchObservedAxis {
+    # 2-3 dependent rule: a present flag other than true, OR a read status other than ok,
+    # forces BOTH sha256 and bytes to null - and the converse holds too. The launcher may not
+    # state the hash of bytes it did not obtain; a partial read's hash is a false statement,
+    # not a partial truth.
+    #   ok                        -> present true , sha/bytes computed here
+    #   absent                    -> present false, sha/bytes null
+    #   containment_failed        -> present NULL , sha/bytes null   (we could not even resolve
+    #                                which file we are talking about)
+    #   access_denied / io_error  -> present true , sha/bytes null
+    param([string] $ReadStatus, [AllowNull()][object] $Raw)
+    $present = $null
+    if ($ReadStatus -eq 'ok' -or $ReadStatus -eq 'access_denied' -or $ReadStatus -eq 'io_error') { $present = $true }
+    elseif ($ReadStatus -eq 'absent') { $present = $false }
+    $sha = $null; $bytes = $null
+    if ($ReadStatus -eq 'ok' -and $null -ne $Raw) {
+        $sha = Get-PrefetchSha256OfBytes -Bytes $Raw
+        $bytes = [int]$Raw.Length
+    }
+    return @{ present = $present; sha256 = $sha; bytes = $bytes; read_status = $ReadStatus }
+}
+
+# 1-4: the top-level key sets. These are a COPY of the rows of that table - every row there
+# names exactly one of these keys - and the launcher needs them to refuse an unknown key
+# without inventing a second authority for the bundle schema.  [[C:prefetch.manifest-keyset]]
+$script:PREFETCH_MANIFEST_KEYS = @('approval', 'atoms', 'component_binding', 'components',
+                                   'constants_version', 'derivation_ledger_sha256',
+                                   'kn_support_set', 'payload_sha256', 'schema', 'scope_id')
+$script:PREFETCH_PAYLOAD_KEYS = @('atoms', 'constants_version', 'derivation_ledger_sha256',
+                                  'kn_support_set', 'schema_version', 'scope_id')
+# S2 (gate a5p r1): the nested atom shape, from the same table's payload "atoms[] 35" row and
+# the SEAL 5-2 payload schema it points at. The old code stated a LIMIT here - "unknown-key
+# refusal is enforced at the TOP LEVEL only" - and the audit reached through it: an atom
+# carrying an extra nested key was accepted. These two sets close that, and they are the
+# atom's SHAPE, not its per-atom named bounds (those stay in SEAL, uncopied, on purpose).
+$script:PREFETCH_ATOM_KEYS = @('name', 'group', 'type', 'unit', 'value', 'source',
+                               'evidence', 'support')
+$script:PREFETCH_ATOM_SUPPORT_KEYS = @('range', 'behavior_invariant', 'note')
+# S2: 1-4 payload row "atoms[] 35". A bundle whose atom count is internally consistent but not
+# 35 (34 atoms, reissued so every cross-check agrees) used to be accepted. The count belongs to
+# constants_version v1.0, which the 1-2 identity constant already pins, so this literal cannot
+# drift away from the identity independently - it is the same release or it is rejected twice.
+$script:PREFETCH_ATOMS_COUNT = 35
+
+function Test-PrefetchExactKeySet {
+    # Closed nested shape: the object carries these keys and no others. Both directions are
+    # checked on purpose - "no unknown key" alone would accept an atom that dropped one, and a
+    # dropped key reads downstream as a null value rather than as the schema violation it is.
+    # A non-object (including a missing key, which arrives here as $null) is a violation too.
+    param($Obj, [string[]] $Keys)
+    if ($null -eq $Obj -or $null -eq $Obj.PSObject -or $null -eq $Obj.PSObject.Properties) { return $false }
+    $seen = @()
+    foreach ($p in $Obj.PSObject.Properties) {
+        if ($Keys -cnotcontains $p.Name) { return $false }
+        if ($seen -ccontains $p.Name) { return $false }
+        $seen += $p.Name
+    }
+    return ($seen.Count -eq $Keys.Count)
+}
+
+function ConvertTo-PrefetchCanonicalJsonString {
+    # SEAL 5-2 canonical string form (Python json.dumps with ensure_ascii=True): only " and \
+    # and the C0 range are escaped, the five short escapes are preferred, everything at or
+    # above 0x7f goes to \uXXXX. ToCharArray gives UTF-16 code units, so an astral character
+    # is emitted as its surrogate pair - which is what ensure_ascii does too. "/" is NOT
+    # escaped.
+    param([AllowEmptyString()][string] $Text)
+    $sb = New-Object System.Text.StringBuilder
+    [void]$sb.Append('"')
+    foreach ($ch in $Text.ToCharArray()) {
+        $c = [int][char]$ch
+        if     ($c -eq 34) { [void]$sb.Append('\"') }
+        elseif ($c -eq 92) { [void]$sb.Append('\\') }
+        elseif ($c -eq 8)  { [void]$sb.Append('\b') }
+        elseif ($c -eq 9)  { [void]$sb.Append('\t') }
+        elseif ($c -eq 10) { [void]$sb.Append('\n') }
+        elseif ($c -eq 12) { [void]$sb.Append('\f') }
+        elseif ($c -eq 13) { [void]$sb.Append('\r') }
+        elseif ($c -lt 32 -or $c -gt 126) { [void]$sb.Append('\u' + ('{0:x4}' -f $c)) }
+        else { [void]$sb.Append([char]$c) }
+    }
+    [void]$sb.Append('"')
+    return $sb.ToString()
+}
+
+function ConvertTo-PrefetchCanonicalJsonText {
+    # SEAL 5-2 payload preimage: separators (",", ":") - no whitespace at all - ensure_ascii,
+    # allow_nan=False, sort_keys=False (document order kept), UTF-8.
+    #
+    # This is a VERIFIER, not a second producer: nothing is written from it, the only thing it
+    # is ever compared against is the bytes we just read, and a value outside the closed space
+    # the two bundle files actually use (object / array / string / integer) is REFUSED rather
+    # than guessed at. That fail-closed clause is what makes the comparison sufficient and not
+    # merely necessary - a bool, a null, a decimal or a float cannot slip past by being
+    # serialized some plausible way. ConvertFrom-Json on 5.1 keeps document key order
+    # (measured) and gives 1.0 as Decimal, so a non-integer numeric literal is refused here
+    # even though the integer domain checks would also catch it later.
+    param($Value)
+    if ($Value -is [string]) {
+        return @{ ok = $true; text = (ConvertTo-PrefetchCanonicalJsonString -Text $Value) }
+    }
+    if ($Value -is [bool]) { return @{ ok = $false; reason = 'boolean is outside the bundle value space' } }
+    if (Test-JsonInteger $Value) {
+        return @{ ok = $true; text = ([long]$Value).ToString([System.Globalization.CultureInfo]::InvariantCulture) }
+    }
+    if ($Value -is [System.Array]) {
+        $parts = @()
+        foreach ($item in $Value) {
+            $sub = ConvertTo-PrefetchCanonicalJsonText -Value $item
+            if (-not $sub.ok) { return $sub }
+            $parts += $sub.text
+        }
+        return @{ ok = $true; text = ('[' + ($parts -join ',') + ']') }
+    }
+    # PSCustomObject and nothing else: ConvertFrom-Json builds objects as PSCustomObject, and
+    # testing the type rather than "does it have properties" keeps a Decimal (what 1.0 parses
+    # to) or any other .NET value from being walked as if it were a JSON object.
+    if ($Value -is [System.Management.Automation.PSCustomObject]) {
+        $parts = @()
+        foreach ($p in $Value.PSObject.Properties) {
+            $sub = ConvertTo-PrefetchCanonicalJsonText -Value $p.Value
+            if (-not $sub.ok) { return $sub }
+            $parts += ((ConvertTo-PrefetchCanonicalJsonString -Text $p.Name) + ':' + $sub.text)
+        }
+        return @{ ok = $true; text = ('{' + ($parts -join ',') + '}') }
+    }
+    return @{ ok = $false; reason = 'value is outside the bundle value space (object/array/string/integer)' }
+}
+
+function ConvertFrom-PrefetchAdmittedJson {
+    # Strict parse + top-level unknown-key refusal + SEAL 5-2 canonical byte check. Reuses the
+    # launcher's single canonical JSON reader (I-5: the launcher is the ONLY canonical loader
+    # in this system - the engine parses a closed grammar, never JSON).
+    #
+    # S1 (gate a5p r1): the canonical check is new. The parse alone accepted a MANIFEST with a
+    # leading ASCII space, and nothing downstream could notice - the payload's raw bytes are
+    # pinned transitively through identity.payload_hash, but the MANIFEST's are pinned by
+    # nothing. 4-2 N-3 lists "canonical violation" as a bundle_malformed vector, and 4-2 N-6
+    # fixes its fixture precondition ON that ordering (malformed outranks payload_hash
+    # mismatch), so both axes are checked here, which is where malformed is raised.
+    param([byte[]] $Raw, [string[]] $AllowedKeys)
+    $t = ConvertFrom-Utf8Strict -Bytes $Raw
+    if (-not $t.ok) { return @{ ok = $false; reason = $t.reason } }
+    $r = ConvertFrom-JsonStrict -Text $t.text
+    if (-not $r.ok) { return $r }
+    $props = $r.value.PSObject.Properties
+    if ($null -eq $props) { return @{ ok = $false; reason = 'document is not an object' } }
+    foreach ($p in $props) {
+        if ($AllowedKeys -cnotcontains $p.Name) {
+            return @{ ok = $false; reason = ('unknown top-level key: ' + $p.Name) }
+        }
+    }
+    $canon = ConvertTo-PrefetchCanonicalJsonText -Value $r.value
+    if (-not $canon.ok) { return @{ ok = $false; reason = ('not canonical: ' + $canon.reason) } }
+    $want = [System.Text.Encoding]::UTF8.GetBytes($canon.text + "`n")
+    if ($want.Length -ne $Raw.Length) {
+        return @{ ok = $false; reason = ('not canonical: ' + $Raw.Length + ' raw bytes, canonical form is ' + $want.Length) }
+    }
+    for ($i = 0; $i -lt $want.Length; $i++) {
+        if ($want[$i] -ne $Raw[$i]) {
+            return @{ ok = $false; reason = ('not canonical: first difference at byte ' + $i) }
+        }
+    }
+    return @{ ok = $true; value = $r.value }
+}
+
+function ConvertTo-PrefetchKnText {
+    # VW-8 form: K:N pairs joined by commas. Element order is preserved, duplicates and an
+    # empty value are refused. Returning the TEXT rather than the object is what makes the
+    # manifest/payload comparison order sensitive with one string compare - a set comparison
+    # would accept a reordered support set, and the order is what the engine consumes.
+    #
+    # S2 (gate a5p r1): both elements must be UNSIGNED, which is what the 2-3 receipt schema
+    # says ("kn_support_set":[[<uint>,<uint>],...]). The old form cast blindly with [int], so
+    # kn=[[-1,4]] rendered as "-1:4" on both axes, compared equal, and was accepted; a
+    # non-numeric element would not even have compared - the cast would have thrown out of a
+    # function with no catch above it. Refusing here routes to bundle_cross_field_mismatch,
+    # the detail the 1-4 kn_support_set row already assigns, exactly like every other kn
+    # malformation this function rejects (wrong arity, duplicate pair, empty set).
+    param($Value)
+    $items = @($Value)
+    if ($items.Count -eq 0) { return $null }
+    $seen = @{}
+    $out = @()
+    foreach ($p in $items) {
+        $pair = @($p)
+        if ($pair.Count -ne 2) { return $null }
+        if (-not (Test-JsonNonNegativeInteger $pair[0])) { return $null }
+        if (-not (Test-JsonNonNegativeInteger $pair[1])) { return $null }
+        $t = ([string][long]$pair[0]) + ':' + ([string][long]$pair[1])
+        if ($seen.ContainsKey($t)) { return $null }
+        $seen[$t] = $true
+        $out += $t
+    }
+    return ($out -join ',')
+}
+
+function Test-PrefetchBundleContent {
+    # 1-4 consumption and cross-check. SOURCE FIXING: schema_version, constants_version and
+    # scope_id are read from the PAYLOAD top level, and payload_hash is the payload file's own
+    # raw SHA-256. The MANIFEST's same-named fields are used for CROSS-CHECKING ONLY and are
+    # never promoted to identity - identity is a property of the payload, and the manifest is
+    # the envelope that points at it. Promote the envelope and swapping the envelope alone
+    # changes the identity.
+    # components[].path is NOT resolved at runtime (it is repo relative and does not survive
+    # into a deployment); only the payload component's sha256 and bytes are consumed.
+    param($Manifest, $Payload, [byte[]] $ManifestRaw, [byte[]] $PayloadRaw)
+    $defects = @()
+    if ([string](Get-JsonValue -Obj $Manifest -Name 'schema') -cne 'seal-v1-bundle/1') {
+        $defects += 'bundle_unknown_schema_manifest'
+    }
+    $pSchemaV = Get-JsonValue -Obj $Payload -Name 'schema_version'
+    if (-not (Test-JsonNonNegativeInteger $pSchemaV) -or [long]$pSchemaV -ne 1) {
+        $defects += 'bundle_unknown_schema_payload'
+    }
+    $payloadSha = Get-PrefetchSha256OfBytes -Bytes $PayloadRaw
+    if ([string](Get-JsonValue -Obj $Manifest -Name 'payload_sha256') -cne $payloadSha) {
+        $defects += 'bundle_payload_hash_mismatch'
+    }
+    # Get-JsonArray, not @(Get-JsonValue ...): the value accessor writes the array as ONE
+    # pipeline object on purpose (so an empty array stays distinguishable from a missing key),
+    # and wrapping that inline reports a count of 1. The launcher documents this at the
+    # accessor itself; measured here as a cross-field mismatch on a VALID bundle.
+    $comp = $null
+    foreach ($c in (Get-JsonArray -Obj $Manifest -Name 'components')) {
+        if ([string](Get-JsonValue -Obj $c -Name 'role') -ceq 'payload') { $comp = $c; break }
+    }
+    if ($null -eq $comp) {
+        $defects += 'bundle_cross_field_mismatch'
+    } else {
+        if ([string](Get-JsonValue -Obj $comp -Name 'sha256') -cne $payloadSha -or
+            [long](Get-JsonValue -Obj $comp -Name 'bytes') -ne $PayloadRaw.Length) {
+            $defects += 'bundle_payload_hash_mismatch'
+        }
+    }
+    foreach ($row in @('constants_version', 'scope_id', 'derivation_ledger_sha256')) {
+        if ([string](Get-JsonValue -Obj $Manifest -Name $row) -cne
+            [string](Get-JsonValue -Obj $Payload -Name $row)) {
+            $defects += 'bundle_cross_field_mismatch'
+        }
+    }
+    $pKn = ConvertTo-PrefetchKnText -Value (Get-JsonValue -Obj $Payload -Name 'kn_support_set')
+    $mKn = ConvertTo-PrefetchKnText -Value (Get-JsonValue -Obj $Manifest -Name 'kn_support_set')
+    if ($null -eq $pKn -or $mKn -cne $pKn) { $defects += 'bundle_cross_field_mismatch' }
+    $mAtoms = Get-JsonValue -Obj $Manifest -Name 'atoms'
+    $pAtoms = Get-JsonArray -Obj $Payload -Name 'atoms'
+    $cnt = [int](Get-JsonValue -Obj $mAtoms -Name 'count')
+    if (-not ($cnt -eq $pAtoms.Count -and
+              [int](Get-JsonValue -Obj $mAtoms -Name 'sealed') -eq $cnt -and
+              [int](Get-JsonValue -Obj $mAtoms -Name 'unsealed') -eq 0 -and
+              ([int](Get-JsonValue -Obj $mAtoms -Name 'source_M') +
+               [int](Get-JsonValue -Obj $mAtoms -Name 'source_D')) -eq $cnt)) {
+        $defects += 'bundle_cross_field_mismatch'
+    }
+    # atoms[] count, shape, discriminant and domain bound. SCOPE, stated honestly (lead
+    # decision, 26-09-02): the type/value discriminant and the GENERIC domain are enforced here
+    # - uint is a non-negative integer scalar, rational is exactly num/den with den at least
+    # one, and source is one of the two closed values. The PER-ATOM named bounds live in
+    # SPEC_PREFETCH_SEAL_V1 and are deliberately NOT copied: a second copy of those constants
+    # would be a second authority for them, which is the drift class the contract registry
+    # exists to prevent.
+    #
+    # S2 (gate a5p r1) added the first two of the four. The count is the 1-4 payload row's own
+    # "atoms[] 35"; without it a self-consistent 34-atom reissue was accepted, because every
+    # cross-check above only compares the manifest summary against the payload and both had
+    # been moved together. The shape is the SEAL 5-2 atom object, keys exact in both
+    # directions - a missing key is as much a schema violation as an extra one, and the old
+    # code judged neither. Everything sourced from atoms[] answers with the one detail the 1-4
+    # table assigns to that row.
+    if ($pAtoms.Count -ne $script:PREFETCH_ATOMS_COUNT) { $defects += 'bundle_domain_violation' }
+    else {
+        foreach ($a in $pAtoms) {
+            $t = [string](Get-JsonValue -Obj $a -Name 'type')
+            $v = Get-JsonValue -Obj $a -Name 'value'
+            $s = [string](Get-JsonValue -Obj $a -Name 'source')
+            $bad = $false
+            if (-not (Test-PrefetchExactKeySet -Obj $a -Keys $script:PREFETCH_ATOM_KEYS)) { $bad = $true }
+            elseif (-not (Test-PrefetchExactKeySet -Obj (Get-JsonValue -Obj $a -Name 'support') `
+                              -Keys $script:PREFETCH_ATOM_SUPPORT_KEYS)) { $bad = $true }
+            elseif ($s -cne 'M' -and $s -cne 'D') { $bad = $true }
+            elseif ($t -ceq 'uint') {
+                if (-not (Test-JsonNonNegativeInteger $v)) { $bad = $true }
+            } elseif ($t -ceq 'rational') {
+                $num = Get-JsonValue -Obj $v -Name 'num'
+                $den = Get-JsonValue -Obj $v -Name 'den'
+                if ($null -eq $num -or $null -eq $den) { $bad = $true }
+                elseif (-not (Test-JsonInteger $num) -or -not (Test-JsonInteger $den)) { $bad = $true }
+                elseif ([long]$den -lt 1) { $bad = $true }
+            } else { $bad = $true }
+            if ($bad) { $defects += 'bundle_domain_violation'; break }
+        }
+    }
+    # The identity is extracted even when content defects exist: the rejected receipt carries
+    # observed.identity for diagnosis, and 1-7 priority (not this function) decides which
+    # single detail is echoed.
+    $identity = @{
+        schema_version    = $pSchemaV
+        constants_version = [string](Get-JsonValue -Obj $Payload -Name 'constants_version')
+        scope_id          = [string](Get-JsonValue -Obj $Payload -Name 'scope_id')
+        payload_hash      = $payloadSha
+    }
+    return @{ Defects = $defects; Identity = $identity; Kn = $pKn }
+}
+
+function Sort-PrefetchDefects {
+    # 1-7: one run echoes exactly ONE detail, the lowest ranked one, and the rest travel in
+    # observed.additional_defects[] IN THIS SAME ORDER. Duplicates collapse: the same defect on
+    # both axes is one defect literal.
+    param($Defects)
+    $out = @()
+    foreach ($lit in $script:PREFETCH_LOAD_DETAILS) {
+        if ($Defects -ccontains $lit) { $out += $lit }
+    }
+    return $out
+}
+
+function Get-PrefetchIdentityDigest {
+    # 2-3: SHA-256 over the four identity values, each followed by LF, UTF-8, lowercase hex.
+    # This is an OBSERVATION ANCHOR: it creates no new information, and the engine only echoes
+    # it (the engine has no SHA-256 at all).
+    param($Identity)
+    if ($null -eq $Identity) { return $null }
+    $text = ([string]$Identity['schema_version']) + "`n" +
+            ([string]$Identity['constants_version']) + "`n" +
+            ([string]$Identity['scope_id']) + "`n" +
+            ([string]$Identity['payload_hash']) + "`n"
+    return (Get-PrefetchSha256OfBytes -Bytes ([System.Text.Encoding]::UTF8.GetBytes($text)))
+}
+
+function New-PrefetchBundleLoad {
+    # 1-6 stage L-A, in the order this function actually runs - containment first:
+    #   1-3 root-relative admission verdict -> open ONLY the admitted axes, taking identity and
+    #   bytes from the SAME handle (no re-open) -> 1-7 state axis (ranks 1..3) and alias axis
+    #   (rank 4) -> canonical parse of both files, SEAL 5-2 image and unknown top-level key both
+    #   refused -> payload raw sha computed HERE -> 1-4 consumption and cross-check -> payload
+    #   top-level 3 fields -> exact match against the 1-2 script constant -> atoms count, shape,
+    #   discriminant and domain bound -> kn_support_set.
+    # The old comment led with "read both files -> root-relative verdict". That was the reversed
+    # order (gate a5p r1 Q2, closed by the lead in R-1-3): a path that fails admission is never
+    # opened, and narrowing the window between the containment check and the real data open is
+    # the whole reason the order is this way round.
+    #
+    # -ExpectedIdentity is a PARAMETER, and this loader has exactly ONE production call site,
+    # which passes $script:PREFETCH_BUNDLE_IDENTITY. That is not a second authority: it is what
+    # lets the selftest stand up the identity-mismatch vectors and the support-set-growth
+    # positive, both of which are defined by moving the EXPECTED side.
+    # Static assertions in the selftest (5CA W2) pin BOTH halves: the loader call site count is
+    # one, and the 1-2 constant reaches exactly two callees - this function, which compares
+    # against it, and New-PrefetchBundleView, which ships it to the engine so the engine can
+    # compare too. A third callee would be a third place deciding what the expected identity is.
+    #
+    # This function is also the single named producer the selftest calls DIRECTLY for the four
+    # injected vectors (ACL deny / sharing violation), which die at the outer gate and can never
+    # reach L-A through the product path. Duplicating the validator or the receipt assembly for
+    # those is forbidden.
+    #   [[C:prefetch.la-authenticity]]
+    param(
+        [AllowEmptyString()][string] $BundleRoot,
+        [hashtable] $ExpectedIdentity
+    )
+    $defects = @()
+    $adm = Get-PrefetchAdmissionPaths -BundleRoot $BundleRoot
+    $axes = @{ manifest = $adm.Manifest; payload = $adm.Payload }
+    $read = @{}
+    $observed = @{}
+    foreach ($k in @('manifest', 'payload')) {
+        $ax = $axes[$k]
+        if ($ax.PathStatus -eq 'admitted') {
+            $r = Read-PrefetchAdmittedBytes -Path $ax.Path
+        } elseif ($ax.PathStatus -eq 'absent') {
+            $r = @{ Status = 'absent'; Raw = $null; Identity = $null; Win32 = 0 }
+        } else {
+            $r = @{ Status = 'containment_failed'; Raw = $null; Identity = $null; Win32 = 0 }
+        }
+        $read[$k] = $r
+        $observed[$k] = New-PrefetchObservedAxis -ReadStatus $r.Status -Raw $r.Raw
+    }
+
+    # ---- state axis (1-7 priority ranks 1..3)
+    foreach ($k in @('manifest', 'payload')) {
+        switch ($read[$k].Status) {
+            'containment_failed' { $defects += 'bundle_path_escape' }
+            'absent'             { $defects += 'bundle_absent' }
+            'access_denied'      { $defects += 'bundle_unreadable' }
+            'io_error'           { $defects += 'bundle_unreadable' }
+        }
+    }
+    # ---- alias axis (rank 4). Two admission files that open the SAME object turn the 1-4
+    #      cross-check into self-comparison, so every content-axis verdict below it loses its
+    #      meaning. That is why it outranks the content axis and why no content defect is
+    #      raised once it fires.
+    $aliased = $false
+    if ($read['manifest'].Status -eq 'ok' -and $read['payload'].Status -eq 'ok' -and
+        $null -ne $read['manifest'].Identity -and
+        $read['manifest'].Identity -eq $read['payload'].Identity) {
+        $aliased = $true
+        $defects += 'bundle_alias_collision'
+    }
+
+    $identity = $null
+    $kn = $null
+    $bundleRaw = $null
+    if ($read['manifest'].Status -eq 'ok' -and $read['payload'].Status -eq 'ok' -and -not $aliased) {
+        $mParse = ConvertFrom-PrefetchAdmittedJson -Raw $read['manifest'].Raw -AllowedKeys $script:PREFETCH_MANIFEST_KEYS
+        $pParse = ConvertFrom-PrefetchAdmittedJson -Raw $read['payload'].Raw -AllowedKeys $script:PREFETCH_PAYLOAD_KEYS
+        if (-not $mParse.ok -or -not $pParse.ok) {
+            $defects += 'bundle_malformed'
+        } else {
+            $res = Test-PrefetchBundleContent -Manifest $mParse.value -Payload $pParse.value `
+                       -ManifestRaw $read['manifest'].Raw -PayloadRaw $read['payload'].Raw
+            foreach ($d in $res.Defects) { $defects += $d }
+            $identity = $res.Identity
+            $kn = $res.Kn
+            $bundleRaw = [ordered]@{
+                manifest_sha256 = $observed['manifest'].sha256
+                manifest_bytes  = $observed['manifest'].bytes
+                payload_sha256  = $observed['payload'].sha256
+                payload_bytes   = $observed['payload'].bytes
+            }
+        }
+    }
+
+    # ---- identity axis (ranks 11..14). Only reached when an identity could be extracted.
+    $mismatch = @()
+    if ($null -ne $identity) {
+        for ($i = 0; $i -lt $script:PREFETCH_IDENTITY_KEYS.Count; $i++) {
+            $key = $script:PREFETCH_IDENTITY_KEYS[$i]
+            if ([string]$identity[$key] -cne [string]$ExpectedIdentity[$key]) {
+                $mismatch += $key
+                $defects += $script:PREFETCH_IDENTITY_DETAILS[$i]
+            }
+        }
+    }
+
+    $ordered = @(Sort-PrefetchDefects -Defects $defects)
+    if ($ordered.Count -eq 0) {
+        return [pscustomobject]@{
+            Result = 'accepted'; Reason = $null; Detail = $null; AdditionalDefects = @()
+            Identity = $identity; IdentityDigest = (Get-PrefetchIdentityDigest -Identity $identity)
+            BundleRaw = $bundleRaw; KnSupportSet = $kn; Observed = $observed
+            CanonicalRoot = $adm.CanonicalRoot; MismatchFields = @()
+        }
+    }
+    $top = $ordered[0]
+    $reason = $script:PREFETCH_REASON_UNSEALED
+    if ($script:PREFETCH_IDENTITY_DETAILS -ccontains $top) { $reason = $script:PREFETCH_REASON_SCOPE }
+    return [pscustomobject]@{
+        Result = 'rejected'; Reason = $reason; Detail = $top
+        AdditionalDefects = @($ordered | Select-Object -Skip 1)
+        Identity = $identity; IdentityDigest = $null; BundleRaw = $null; KnSupportSet = $null
+        Observed = $observed; CanonicalRoot = $adm.CanonicalRoot; MismatchFields = $mismatch
+    }
+}
+
+function Get-PrefetchLoadOnce {
+    # I-2: read the bundle ONCE per session, never re-read. The environment assembly re-runs on
+    # every config rebuild (preset bind, custom edit, pre-spawn), so the guard is not an
+    # optimization - re-reading would re-open the very window the single read exists to close,
+    # and two reads of a file that changed in between would let the run act on bytes its receipt
+    # never saw. The bundle root cannot change inside a run, so one answer is the whole answer.
+    #
+    # K2-R1-01 (gate a5c_a1_k2 r1, REACHABLE): the guard used to sit inline in the caller, and
+    # the 5CA S5 (c) case COPIED it into the test body - so it was three rebuilds against the
+    # test's own copy, and deleting the product guard would not have turned that case red. The
+    # guard and the read now live here, in one named function both the product path and the
+    # selftest call, which is the same "one named producer, no duplication" discipline L-A
+    # already uses for the loader itself.
+    if ($null -eq $script:PrefetchLoad) {
+        $script:PrefetchLoad = New-PrefetchBundleLoad -BundleRoot (Resolve-BundleRoot) `
+                                   -ExpectedIdentity $script:PREFETCH_BUNDLE_IDENTITY
+    }
+    return $script:PrefetchLoad
+}
+
+function New-PrefetchLaunchAttemptId {
+    # 2-3: a fresh 128-bit random per LAUNCH ATTEMPT, lowercase 32 hex. Both receipt branches
+    # carry it, and 6-3 replay detection is built on it appearing once per session.
+    $b = New-Object byte[] 16
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $rng.GetBytes($b) } finally { $rng.Dispose() }
+    return (([System.BitConverter]::ToString($b)) -replace '-', '').ToLowerInvariant()
+}
+
+function Get-PrefetchFnv1a64 {
+    # 1-6-1 VW-9 / 6-3 PF-6: byte-for-byte the engine's own primitive. BigInteger carries the
+    # modular multiply because PowerShell's native uint64 arithmetic does not wrap - it
+    # promotes or throws, and either one would silently produce a different hash than the
+    # engine's. Output is 16 lowercase hex digits with the leading zeros KEPT (PF-7).
+    param([byte[]] $Bytes)
+    $mod = [System.Numerics.BigInteger]::Pow(2, 64)
+    $prime = [System.Numerics.BigInteger]$script:PREFETCH_FNV_PRIME
+    $h = [System.Numerics.BigInteger]$script:PREFETCH_FNV_INIT
+    foreach ($b in $Bytes) {
+        $hu = ([uint64]$h) -bxor ([uint64]$b)
+        $h = ([System.Numerics.BigInteger]$hu * $prime) % $mod
+    }
+    return ('{0:x16}' -f [uint64]$h)
+}
+
+function Test-PrefetchGrammarValue {
+    # VW-4: the closed value character set. Every member is single-byte ASCII, which is what
+    # guarantees the string survives the UTF-8 / UTF-16 round trip between the launcher's
+    # environment block and the engine's byte-level read.
+    param([AllowEmptyString()][string] $Value)
+    if ([string]::IsNullOrEmpty($Value)) { return $false }
+    return ($Value -cmatch '^[0-9a-zA-Z._:,-]+$')
+}
+
+function New-PrefetchGrammarString {
+    # VW-3 / VW-7 / PF-1: k=v pairs joined by the unit separator, key order fixed by the
+    # caller's ordered map, NO leading or trailing separator, and the integrity field computed
+    # over the preimage of everything before it (the separator in front of it excluded).
+    # The caller names the integrity key; passing $null builds a plain pair string.
+    param([System.Collections.Specialized.OrderedDictionary] $Pairs, [string] $FnvKey)
+    $parts = @()
+    foreach ($k in $Pairs.Keys) {
+        $v = [string]$Pairs[$k]
+        if (-not (Test-PrefetchGrammarValue -Value $v)) {
+            throw ("PREFETCH_VW4: value outside the closed character set for key '" + $k + "'")
+        }
+        $parts += ($k + '=' + $v)
+    }
+    $preimage = $parts -join $script:PREFETCH_GRAMMAR_SEP
+    if ([string]::IsNullOrEmpty($FnvKey)) { return $preimage }
+    $fnv = Get-PrefetchFnv1a64 -Bytes ([System.Text.Encoding]::UTF8.GetBytes($preimage))
+    return ($preimage + $script:PREFETCH_GRAMMAR_SEP + $FnvKey + '=' + $fnv)
+}
+
+function ConvertFrom-PrefetchGrammarString {
+    # The parser half of the same grammar. It exists in the launcher so the selftest can make
+    # the round trip an ASSERTION rather than a claim: the launcher builds a string, this
+    # re-parses it and recomputes the integrity field. Unknown keys, missing keys, a wrong key
+    # order, an empty pair and a leading or trailing separator are all refusals.
+    param([string] $Text, [string[]] $ExpectedKeys, [string] $FnvKey)
+    $sep = $script:PREFETCH_GRAMMAR_SEP
+    if ([string]::IsNullOrEmpty($Text)) { return @{ ok = $false; reason = 'empty' } }
+    if ($Text.StartsWith($sep) -or $Text.EndsWith($sep)) {
+        return @{ ok = $false; reason = 'leading or trailing separator' }
+    }
+    if ($Text.Contains($sep + $sep)) { return @{ ok = $false; reason = 'empty pair' } }
+    $pairs = $Text.Split([char]0x1F)
+    $keys = @()
+    $map = [ordered]@{}
+    foreach ($p in $pairs) {
+        $i = $p.IndexOf('=')
+        if ($i -lt 1) { return @{ ok = $false; reason = ('malformed pair: ' + $p) } }
+        $k = $p.Substring(0, $i)
+        $v = $p.Substring($i + 1)
+        if ($map.Contains($k)) { return @{ ok = $false; reason = ('duplicate key: ' + $k) } }
+        if (-not (Test-PrefetchGrammarValue -Value $v)) {
+            return @{ ok = $false; reason = ('value outside the closed set: ' + $k) }
+        }
+        $keys += $k
+        $map[$k] = $v
+    }
+    $want = @($ExpectedKeys)
+    if ($FnvKey) { $want += $FnvKey }
+    if (($keys -join ',') -cne ($want -join ',')) {
+        return @{ ok = $false; reason = ('key set or order mismatch: ' + ($keys -join ',')) }
+    }
+    if ($FnvKey) {
+        $cut = $Text.LastIndexOf($sep + $FnvKey + '=')
+        $preimage = $Text.Substring(0, $cut)
+        $expect = Get-PrefetchFnv1a64 -Bytes ([System.Text.Encoding]::UTF8.GetBytes($preimage))
+        if ($map[$FnvKey] -cne $expect) {
+            return @{ ok = $false; reason = 'integrity field mismatch' }
+        }
+    }
+    return @{ ok = $true; value = $map }
+}
+
+# 1-6-1 VW-10: the view key table, order fixed, exactly 12 keys.
+$script:PREFETCH_VIEW_KEYS = @('v', 'esv', 'ecv', 'escope', 'eph', 'asv', 'acv', 'ascope',
+                               'aph', 'kn', 'digest')
+# 6-3: the grant key table, order fixed, exactly 8 keys. 'kn' is deliberately ABSENT - the
+# view is its single authority, and a value with two authorities and no comparison between
+# them is a value nobody can resolve.
+$script:PREFETCH_GRANT_KEYS = @('v', 'mode', 'attempt', 'sv', 'cv', 'scope', 'ph')
+
+function New-PrefetchBundleView {
+    # 1-6-1: the activation_bundle_view payload. Issued on EVERY accepted load, whatever the
+    # mode and whatever the activation verdict - that separation is why the identity digest is
+    # observable in a run where adaptation is off.
+    # expected and actual both travel: the engine re-checks them against each other, and a
+    # single copy plus "the launcher says they matched" is the self-comparison this contract
+    # exists to remove.
+    param($Load, [hashtable] $ExpectedIdentity)
+    $pairs = [ordered]@{
+        v      = '1'
+        esv    = [string]$ExpectedIdentity['schema_version']
+        ecv    = [string]$ExpectedIdentity['constants_version']
+        escope = [string]$ExpectedIdentity['scope_id']
+        eph    = [string]$ExpectedIdentity['payload_hash']
+        asv    = [string]$Load.Identity['schema_version']
+        acv    = [string]$Load.Identity['constants_version']
+        ascope = [string]$Load.Identity['scope_id']
+        aph    = [string]$Load.Identity['payload_hash']
+        kn     = [string]$Load.KnSupportSet
+        digest = [string]$Load.IdentityDigest
+    }
+    return (New-PrefetchGrammarString -Pairs $pairs -FnvKey 'fnv')
+}
+
+function New-PrefetchActivationGrant {
+    # 6-3: issued ONLY on a run whose activation was actually approved. In this phase no such
+    # run exists - the controller that would consume it is not shipped - so this path is built
+    # and never taken. It is here because the issuer must be a single point when it does become
+    # reachable, not because anything reaches it today.
+    param([string] $Mode, [string] $AttemptId, $Identity)
+    $pairs = [ordered]@{
+        v       = '1'
+        mode    = $Mode
+        attempt = $AttemptId
+        sv      = [string]$Identity['schema_version']
+        cv      = [string]$Identity['constants_version']
+        scope   = [string]$Identity['scope_id']
+        ph      = [string]$Identity['payload_hash']
+    }
+    return (New-PrefetchGrammarString -Pairs $pairs -FnvKey 'fnv')
+}
+
+function ConvertTo-PrefetchCanonicalJson {
+    # 2-3 canonical form: ASCII only (non-ASCII escaped), no spaces, INSERTION ORDER kept, and
+    # exactly one trailing LF added by the caller. Written out rather than delegated to
+    # ConvertTo-Json because that cmdlet neither guarantees key order nor escapes to ASCII, and
+    # both of those are part of the byte contract the offline reader re-derives.
+    param($Value)
+    if ($null -eq $Value) { return 'null' }
+    if ($Value -is [bool]) { if ($Value) { return 'true' } else { return 'false' } }
+    if ($Value -is [string]) {
+        $sb = New-Object System.Text.StringBuilder
+        [void]$sb.Append('"')
+        foreach ($ch in $Value.ToCharArray()) {
+            $c = [int]$ch
+            if ($ch -eq '"') { [void]$sb.Append('\"') }
+            elseif ($ch -eq '\') { [void]$sb.Append('\\') }
+            elseif ($c -eq 8) { [void]$sb.Append('\b') }
+            elseif ($c -eq 9) { [void]$sb.Append('\t') }
+            elseif ($c -eq 10) { [void]$sb.Append('\n') }
+            elseif ($c -eq 12) { [void]$sb.Append('\f') }
+            elseif ($c -eq 13) { [void]$sb.Append('\r') }
+            elseif ($c -lt 32 -or $c -gt 126) { [void]$sb.Append('\u' + ('{0:x4}' -f $c)) }
+            else { [void]$sb.Append($ch) }
+        }
+        [void]$sb.Append('"')
+        return $sb.ToString()
+    }
+    if ($Value -is [System.Collections.Specialized.OrderedDictionary] -or $Value -is [hashtable]) {
+        $parts = @()
+        foreach ($k in $Value.Keys) {
+            $parts += ((ConvertTo-PrefetchCanonicalJson -Value ([string]$k)) + ':' +
+                       (ConvertTo-PrefetchCanonicalJson -Value $Value[$k]))
+        }
+        return ('{' + ($parts -join ',') + '}')
+    }
+    if ($Value -is [System.Array] -or $Value -is [System.Collections.IList]) {
+        $parts = @()
+        foreach ($v in $Value) { $parts += (ConvertTo-PrefetchCanonicalJson -Value $v) }
+        return ('[' + ($parts -join ',') + ']')
+    }
+    if ($Value -is [int] -or $Value -is [long] -or $Value -is [uint32] -or $Value -is [uint64]) {
+        return ([string][long]$Value)
+    }
+    return (ConvertTo-PrefetchCanonicalJson -Value ([string]$Value))
+}
+
+function New-PrefetchReceiptObject {
+    # 2-3: the discriminated two-schema receipt. The discriminant is 'result' and nothing else
+    # - an earlier draft carried a separate matched flag and then contradicted itself about
+    # its value, so the field is gone.
+    # The accepted branch is finalized only after the engine's boot id arrives; until then the
+    # session id is unknown and writing a placeholder would be a false statement.
+    param($Load, [string] $AttemptId, [AllowNull()][string] $SessionId,
+          [string] $Requested, [string] $Effective, [bool] $GrantIssued,
+          [AllowNull()][string] $Refusal, [string] $Utc)
+    if ($Load.Result -ceq 'accepted') {
+        # S6 (gate a5p r1): the builder used to accept a null session id and write it into the
+        # accepted receipt, which is the one field 2-5 J-1a joins on. A receipt that names no
+        # session cannot be joined to the metrics header it is supposed to describe, and the
+        # comment above already says why: the accepted branch is finalized only AFTER the boot
+        # id arrives. Reaching here without it is an ordering defect in the caller, so it stops
+        # the run the same way an off-enum reason does - it is not a value to be echoed.
+        if ($SessionId -cnotmatch $script:PREFETCH_SESSION_ID_PATTERN) {
+            Stop-Launcher 'fail_gate_bundle' ('internal: accepted receipt session id is not the engine boot id form: ' +
+                $(if ($null -eq $SessionId) { '<null>' } else { $SessionId }))
+        }
+        $kn = @()
+        if ($Load.KnSupportSet) {
+            foreach ($pair in ([string]$Load.KnSupportSet).Split(',')) {
+                $kv = $pair.Split(':')
+                $kn += , @([int]$kv[0], [int]$kv[1])
+            }
+        }
+        return [ordered]@{
+            schema = $script:PREFETCH_RECEIPT_SCHEMA
+            result = 'accepted'
+            launch_attempt_id = $AttemptId
+            session_id = $SessionId
+            identity = [ordered]@{
+                schema_version    = [long]$Load.Identity['schema_version']
+                constants_version = [string]$Load.Identity['constants_version']
+                scope_id          = [string]$Load.Identity['scope_id']
+                payload_hash      = [string]$Load.Identity['payload_hash']
+            }
+            identity_digest = $Load.IdentityDigest
+            expected_authority = [ordered]@{ source = 'launcher_script_constant' }
+            bundle_raw = $Load.BundleRaw
+            kn_support_set = $kn
+            activation = [ordered]@{
+                requested = $Requested; effective = $Effective
+                grant_issued = $GrantIssued; refusal = $Refusal
+            }
+            utc = $Utc
+        }
+    }
+    $obs = $Load.Observed
+    return [ordered]@{
+        schema = $script:PREFETCH_RECEIPT_SCHEMA
+        result = 'rejected'
+        launch_attempt_id = $AttemptId
+        reason = $Load.Reason
+        detail = $Load.Detail
+        observed = [ordered]@{
+            manifest_present = $obs['manifest'].present
+            payload_present  = $obs['payload'].present
+            manifest_sha256  = $obs['manifest'].sha256
+            manifest_bytes   = $obs['manifest'].bytes
+            payload_sha256   = $obs['payload'].sha256
+            payload_bytes    = $obs['payload'].bytes
+            identity         = $(if ($null -eq $Load.Identity) { $null } else {
+                                    [ordered]@{
+                                        schema_version    = $Load.Identity['schema_version']
+                                        constants_version = $Load.Identity['constants_version']
+                                        scope_id          = $Load.Identity['scope_id']
+                                        payload_hash      = $Load.Identity['payload_hash']
+                                    } })
+            mismatch_fields  = @($Load.MismatchFields)
+            additional_defects = @($Load.AdditionalDefects)
+        }
+        activation = [ordered]@{
+            requested = $Requested; effective = 'off'
+            grant_issued = $false; refusal = $Refusal
+        }
+        utc = $Utc
+    }
+}
+
+function Write-PrefetchReceipt {
+    # 2-3: created with CREATE_NEW. An existing file at that name means two runs believe they
+    # own the same metrics prefix, which is an internal defect - overwriting it would erase
+    # the evidence of that defect.
+    #
+    # S6 (gate a5p r1): every failure path STOPS the run. The old form returned
+    # { ok = $false; reason = ... } and left it to the caller, which is a soft failure for a
+    # contract 2-3 states in the imperative ("already present -> stop as an internal defect").
+    # With no product caller yet, a returned flag is a hole waiting for the first one to ignore
+    # it, and the failure it hides - two runs claiming one metrics prefix - is precisely the
+    # condition that makes every downstream join ambiguous. A write that could not be completed
+    # is the same class: the receipt is the join key for 2-5 J-1a, and a run that carries on
+    # without one has silently left the evidence contract. Success still answers with the
+    # written byte count so a caller can record it.
+    param([string] $Path, $Receipt)
+    $text = (ConvertTo-PrefetchCanonicalJson -Value $Receipt) + "`n"
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($text)
+    $h = [MoeLauncher.Native]::CreateFileNoSaW($Path, [uint32]$script:GENERIC_WRITE,
+             [uint32]0, [IntPtr]::Zero, [uint32]$script:CREATE_NEW, [uint32]0, [IntPtr]::Zero)
+    if ($h -eq $script:INVALID_HANDLE -or $h -eq [IntPtr]::Zero) {
+        $err = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        Stop-Launcher 'fail_gate_bundle' ('internal: receipt CREATE_NEW failed (GetLastError=' + $err +
+                                          ') at ' + $Path)
+    }
+    $failure = $null
+    try {
+        $sfh = New-Object Microsoft.Win32.SafeHandles.SafeFileHandle($h, $false)
+        $fs = New-Object System.IO.FileStream($sfh, [System.IO.FileAccess]::Write)
+        try { $fs.Write($bytes, 0, $bytes.Length); $fs.Flush() } finally { $fs.Dispose() }
+    } catch {
+        $failure = ('internal: receipt write failed: ' + $_.Exception.Message)
+    } finally {
+        [void][MoeLauncher.Native]::CloseHandle($h)
+    }
+    # Outside the finally on purpose: the handle is closed first, so the stop does not leak it.
+    if ($null -ne $failure) { Stop-Launcher 'fail_gate_bundle' $failure }
+    return @{ ok = $true; bytes = $bytes.Length }
+}
+
+function Get-PrefetchReceiptPath {
+    # 2-3: the receipt name is derived from the SAME metrics value the rest of the run carries,
+    # through one formula, so a receipt and the metrics it describes can never name two runs.
+    param([string] $MetricsPath)
+    return ([string]$MetricsPath + $script:PREFETCH_RECEIPT_SUFFIX)
+}
+
 function Get-PrefetchCatalogAxes {
     param($Profile)
     $out = @{ evidence = ''; activation = ''; hold = $false; k = $null; n = $null
@@ -5729,7 +7419,7 @@ function Get-PrefetchInitN {
 #   0b. a derived row whose plan text and GGUF header disagree about t -> derived_t_mismatch
 #   1. activation=catalog-fixed              -> adapt refused / identity gate / probe / ON
 #   2. activation=off, no opt-in             -> not_opted_in_evidence_<evidence>
-#   3. activation=off, init opt-in           -> hold / t range / engine floor / probe / init_v1
+#   3. activation=off, init opt-in           -> hold / t range / probe / init_v1
 #   4. adapt opt-in                          -> refused (P4 5)
 #
 # -EffectiveQd is only read by the init arm (the catalog arm's K/N come from the tuple and the
@@ -5747,6 +7437,49 @@ function Resolve-EffectivePrefetch {
     $axes = Get-PrefetchCatalogAxes -Profile $Profile
     $req = [string]$Request
     if ($req.Length -eq 0) { $req = $script:PREFETCH_REQUEST_DEFAULT }
+
+    # 5CA 6-2 M-4 safety clause: on a run whose mode is not the product mode, the prefetch
+    # opt-in never resolves to the adaptive arm - CLI or stored preset alike - it is demoted to
+    # the catalog request and the demotion is surfaced as an activation refusal.
+    #
+    # TWO SURFACES, deliberately kept apart:
+    #   - the v0.4 wire echo carries an off_reason from the CLOSED 12-literal enum above, and
+    #     that enum is NOT extended here. For a reproduction or benchmark run the adaptive arm
+    #     is already refused by name, and the spec keeps that literal permanently as the
+    #     launcher-side expression of this very refusal.
+    #   - the 5CA receipt carries activation.refusal, a SEPARATE field with its own literal
+    #     set, and that is what the script variable below feeds.
+    # What M-4 adds in this phase is therefore not a new arm decision - the adaptive arm is
+    # refused on every path already - but the two things the wire enum cannot say: that the
+    # REQUEST was demoted, and that the reason was the run's mode. The mode blind spot is the
+    # point: the two flags this launcher has cannot see observe, replay, paired-live,
+    # regression or official-g, and those are exactly the runs a stored opt-in would otherwise
+    # ride into unnoticed.
+    # Demote, do not refuse: killing the run would stop an entire regression wrapper over one
+    # stored preset, which is the launcher's existing "off with a reason, never a launch
+    # refusal" discipline. And the demotion does NOT skip the bundle load - load is an axis
+    # independent of mode, which is exactly what launcher selftest L-11 pins down.
+    # The mode is read, never decided, here: Resolve-RunMode is the only place that decides it.
+    # S3 (gate a5p r1, REACHABLE): the demotion used to move the REQUEST echo only. $OptIn - the
+    # arm the branches below actually read - kept the value 'adapt', so a mode != product run still
+    # took the adapt arm and answered with an adapt refusal literal. The spec says the opt-in "never
+    # resolves to the adaptive arm" on such a run, so the request echo and the arm have to move
+    # together; leaving them apart made the wording and the behaviour disagree.
+    # The closed 12-literal off_reason enum is NOT extended - the demoted run simply behaves as the
+    # catalog request it was demoted to, and the 5CA receipt's activation.refusal carries the why.
+    if ($null -ne $script:RunModeResolved -and
+        $script:RunModeResolved -cne $script:PREFETCH_MODE_PRODUCT -and
+        ($req -ceq 'adapt' -or $OptIn -ceq 'adapt')) {
+        $demotedFrom = @{ request = $req; arm = $OptIn }
+        $req = 'catalog'
+        $OptIn = $script:PREFETCH_ARM_NONE
+        $script:PrefetchActivationRefusal = 'activation_verification_mode'
+        Write-Diag -Kind 'PREFETCH_ADAPT_DEMOTED' -Data @{
+            mode = $script:RunModeResolved
+            requested = $demotedFrom.request; requested_arm = $demotedFrom.arm
+            effective_request = $req; effective_arm = $OptIn
+            refusal = $script:PrefetchActivationRefusal }
+    }
 
     # The echo fields every branch carries, so a consumer never has to ask a second function what
     # the row said (P4 3 mandatory echo).
@@ -5847,11 +7580,6 @@ function Resolve-EffectivePrefetch {
         if ($t -lt $script:PREFETCH_INIT_T_MIN -or $t -gt $script:PREFETCH_INIT_T_MAX) {
             return (New-PfOff -Base $base -Reason 'init_t_out_of_range')
         }
-        if ($t -lt [long]$script:ENGINE_ENV_K_FLOOR) {
-            # Not a capability verdict - a refusal to print a candidate ON that the engine's current
-            # env parser would reject outright.
-            return (New-PfOff -Base $base -Reason 'engine_env_k_floor_8_pre_p4a')
-        }
         # PI 4-2 step 5: a failed probe is the degraded path and an override may not revive it.
         if (-not $ProbeOk) {
             $o = New-PfOff -Base $base -Reason 'probe_failed'
@@ -5944,9 +7672,857 @@ function Get-EffectiveQd {
     return [int]$Qd
 }
 
+# =============================================================================================
+# 5CTL 3-7 : campaign approval record - the frozen serialisation, the two digests, and the reader.
+# Placed immediately before its only consumer (Build-EffectiveConfig).
+# =============================================================================================
+
+# 5CTL 2-2 / 3-7: THE single serialisation+digest primitive. Every collect digest in this launcher
+# goes through it - the approved scope, the campaign contract, and (5CTL 2-3) the manifest's own
+# manifest_sha256. The formula is frozen:
+#   [ordered] object -> ConvertTo-Json -Depth 6 -Compress -> UTF-8 WITHOUT BOM -> SHA-256 lowercase
+# One implementation is the point: the offline builder has to reproduce these bytes exactly
+# (5CTL 4-5 w), so the launcher must not be able to hash the same object two different ways.
+# The DEPTH is part of the formula, not a tuning knob - it comes from COLLECT_JSON_DEPTH.
+function Get-CollectCanonicalBytes {
+    param($Ordered)
+    $json = ($Ordered | ConvertTo-Json -Depth $script:COLLECT_JSON_DEPTH -Compress)
+    return (New-Object System.Text.UTF8Encoding($false)).GetBytes($json)
+}
+
+function Get-CollectCanonicalSha256 {
+    param($Ordered)
+    $bytes = Get-CollectCanonicalBytes -Ordered $Ordered
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try { $h = $sha.ComputeHash($bytes) } finally { $sha.Dispose() }
+    return (([System.BitConverter]::ToString($h) -replace '-', '').ToLowerInvariant())
+}
+
+# 5CTL 3-7 "approved scope formula". The seven fields in THIS order. model_path must be the exact
+# same string the manifest will record (the final resolved, normalised absolute path) - comparing a
+# differently-spelled path would silently fail the scope check.
+function Get-CollectApprovedScopeSha256 {
+    param([string] $ModelPath, [string] $ProfileId, [string] $ExpectSha256,
+          [string] $RepackManifestSha256, [int] $EffectiveQd, [int] $PrefetchK, [int] $PrefetchN)
+    $o = [ordered]@{
+        model_path             = [string]$ModelPath
+        profile_id             = [string]$ProfileId
+        expect_sha256          = [string]$ExpectSha256
+        repack_manifest_sha256 = [string]$RepackManifestSha256
+        effective_qd           = [int]$EffectiveQd
+        prefetch_k             = [int]$PrefetchK
+        prefetch_n             = [int]$PrefetchN }
+    return (Get-CollectCanonicalSha256 -Ordered $o)
+}
+
+# 5CTL 3-7 "campaign contract formula". Five fields, and note approved_scope_sha256 is the value
+# STORED in the record - the contract hash binds the record to its own declared scope, which is
+# what makes an edited minimum_sample_count detectable.
+function Get-CollectCampaignContractSha256 {
+    param([int] $SchemaVersion, [string] $CampaignId, [int] $CampaignRevision,
+          [long] $MinimumSampleCount, [string] $ApprovedScopeSha256)
+    $o = [ordered]@{
+        schema_version        = [int]$SchemaVersion
+        campaign_id           = [string]$CampaignId
+        campaign_revision     = [int]$CampaignRevision
+        minimum_sample_count  = [long]$MinimumSampleCount
+        approved_scope_sha256 = [string]$ApprovedScopeSha256 }
+    return (Get-CollectCanonicalSha256 -Ordered $o)
+}
+
+# 5CTL 3-7 b: read + schema + contract-hash. Returns @{ ok; reason; record }, where 'reason' is a
+# COLLECT_OFF_REASONS literal so the caller never invents a string.
+# The two failure reasons are split exactly as 5CTL 3-7 splits them:
+#   absent / unreadable            -> collect_campaign_missing
+#   decodable-but-wrong (encoding, parse, schema, types, contract hash) -> collect_campaign_invalid
+# The SCOPE comparison is deliberately NOT here: it needs the final effective QD and K/N, so it
+# belongs to the caller once the config is complete (5CTL 1-1-1 re-check discipline).
+function Read-CollectCampaignRecord {
+    param([string] $Path)
+    if ([string]::IsNullOrEmpty($Path)) { return @{ ok = $false; reason = 'collect_campaign_missing' } }
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return @{ ok = $false; reason = 'collect_campaign_missing' }
+    }
+    $b = Read-FileBytesStrict -Path $Path
+    if (-not $b.ok) { return @{ ok = $false; reason = 'collect_campaign_missing' } }
+    # From here the file EXISTS and was readable, so every remaining failure is "wrong content".
+    $t = ConvertFrom-Utf8Strict -Bytes $b.bytes
+    if (-not $t.ok) { return @{ ok = $false; reason = 'collect_campaign_invalid' } }
+    $j = ConvertFrom-JsonStrict -Text $t.text
+    if (-not $j.ok) { return @{ ok = $false; reason = 'collect_campaign_invalid' } }
+    $obj = $j.value
+
+    # 6 keys EXACT - excess and missing are both violations. Order is explicitly meaningless here
+    # (5CTL 3-7: "the key order of the input JSON has no meaning"), so this is a set comparison and
+    # the hash inputs below are rebuilt in the frozen order regardless of how the file was written.
+    # NO @() around this call. Get-JsonKeys returns ", @(names)" for the same reason Get-JsonValue
+    # does (see the note at that function): the unary comma survives an array subexpression, so
+    # "@(Get-JsonKeys ...)" yields a ONE-element array holding the names array - Count 1, and every
+    # key comparison below would silently fail. Bare assignment is the form the whole file uses.
+    $keys = Get-JsonKeys -Obj $obj
+    if (@($keys).Count -ne $script:COLLECT_CAMPAIGN_KEYS.Count) {
+        return @{ ok = $false; reason = 'collect_campaign_invalid' }
+    }
+    foreach ($k in $script:COLLECT_CAMPAIGN_KEYS) {
+        if ($keys -cnotcontains $k) { return @{ ok = $false; reason = 'collect_campaign_invalid' } }
+    }
+
+    $schemaVersion = Get-JsonValue -Obj $obj -Name 'schema_version'
+    $campaignId    = Get-JsonValue -Obj $obj -Name 'campaign_id'
+    $revision      = Get-JsonValue -Obj $obj -Name 'campaign_revision'
+    $minSamples    = Get-JsonValue -Obj $obj -Name 'minimum_sample_count'
+    $scopeSha      = Get-JsonValue -Obj $obj -Name 'approved_scope_sha256'
+    $contractSha   = Get-JsonValue -Obj $obj -Name 'campaign_contract_sha256'
+
+    # Types are checked as JSON types, not as coercions: Test-JsonNonNegativeInteger rejects
+    # booleans and anything non-integral, so a quoted "1" or a 1.0 double cannot pass as the
+    # integer the formula will serialise.
+    if (-not (Test-JsonNonNegativeInteger $schemaVersion)) { return @{ ok = $false; reason = 'collect_campaign_invalid' } }
+    if ([long]$schemaVersion -ne [long]$script:COLLECT_MANIFEST_SCHEMA_VERSION) {
+        return @{ ok = $false; reason = 'collect_campaign_invalid' }
+    }
+    if (-not (Test-JsonNonEmptyString $campaignId)) { return @{ ok = $false; reason = 'collect_campaign_invalid' } }
+    # "an integer >= 1" for both counters - zero is not a valid revision or sample floor.
+    if (-not (Test-JsonNonNegativeInteger $revision) -or [long]$revision -lt 1) {
+        return @{ ok = $false; reason = 'collect_campaign_invalid' }
+    }
+    if (-not (Test-JsonNonNegativeInteger $minSamples) -or [long]$minSamples -lt 1) {
+        return @{ ok = $false; reason = 'collect_campaign_invalid' }
+    }
+    # LOWERCASE 64 hex, case-sensitively. Test-Sha256Hex is deliberately not reused here: it accepts
+    # either case (it serves callers that compare case-insensitively), while 5CTL 3-7 specifies the
+    # stored form as lowercase - and these two values are hash INPUTS, so an uppercase spelling
+    # would change the contract preimage bytes.
+    foreach ($h in @($scopeSha, $contractSha)) {
+        if (-not ($h -is [string]) -or -not ([string]$h -cmatch '^[0-9a-f]{64}$')) {
+            return @{ ok = $false; reason = 'collect_campaign_invalid' }
+        }
+    }
+
+    # Contract hash: recompute from the record's own five fields and compare.
+    $recomputed = Get-CollectCampaignContractSha256 -SchemaVersion ([int]$schemaVersion) `
+                      -CampaignId ([string]$campaignId) -CampaignRevision ([int]$revision) `
+                      -MinimumSampleCount ([long]$minSamples) -ApprovedScopeSha256 ([string]$scopeSha)
+    if ($recomputed -cne [string]$contractSha) {
+        return @{ ok = $false; reason = 'collect_campaign_invalid' }
+    }
+
+    return @{ ok = $true; reason = 'none'; record = [ordered]@{
+        schema_version           = [int]$schemaVersion
+        campaign_id              = [string]$campaignId
+        campaign_revision        = [int]$revision
+        minimum_sample_count     = [long]$minSamples
+        approved_scope_sha256    = [string]$scopeSha
+        campaign_contract_sha256 = [string]$contractSha } }
+}
+
+# 5CTL 3: one constructor for the collect decision, so a reason string can never be invented at a
+# return site. Same loud-internal-failure discipline as Get-PrefetchOffEcho.
+function New-CollectDecision {
+    param([string] $State, [string] $Reason, [bool] $Requested, $Campaign = $null,
+          [string] $ScopeSha256 = '', [string] $CanonicalPath = '', [string] $MetricsPath = '',
+          [string] $ProfileId = '', [string] $SelectionVerdict = '')
+    if ($script:COLLECT_OFF_REASONS -cnotcontains $Reason) {
+        Stop-Launcher 'fail_gate_catalog' ('internal: collect reason outside the closed enum: ' + $Reason)
+    }
+    return @{ state = $State; reason = $Reason; requested = $Requested; campaign = $Campaign
+              scope_sha256 = $ScopeSha256; canonical_path = $CanonicalPath; metrics_path = $MetricsPath
+              profile_id = $ProfileId; selection_verdict = $SelectionVerdict
+              # 5CTL 1-1-1: carried so the echo can show the value EXACTLY as written even on an off
+              # run, where showing it is the only thing the launcher may do with it. Carried in the
+              # decision rather than read from script scope at the echo site, so there is one answer.
+              campaign_raw = [string]$script:CollectCampaignRaw }
+}
+
+# ---------------------------------------------------------------------------------------------
+# 5CTL 3 : the collect refusal chain, evaluated in the ONE order that COLLECT_OFF_REASONS declares
+# (3-5: "the order of the list IS the priority"). Walking the table top-down is what makes
+# "-Repro -Smoke together reports collect_forbidden_smoke" fall out of the data instead of being a
+# second copy of the rule.
+#
+# Every outcome here is "collect off + reason", never a launch refusal (5CTL 3) - the one exception
+# being a loud internal error for a WIRING defect, which is unreachable from user input.
+# The last three literals (manifest_preflight_failed / manifest_commit_failed / prefix_unverified)
+# are NOT decided here: they belong to the publish and the leading-segment steps that run later.
+# ---------------------------------------------------------------------------------------------
+function Resolve-CollectDecision {
+    param($Profile, [string] $ModelPath, [string] $Identity, [int] $EffectiveQd,
+          [int] $PrefetchK, [int] $PrefetchN, [string] $ExpectSha256,
+          [string] $RepackManifestSha256, [string] $MetricsPath)
+
+    $profileId = [string](Get-JsonValue -Obj $Profile -Name 'profile_id')
+    # "Asked for" covers a request that step 0 already refused on shape, because that refusal still
+    # has to be echoed. A run that never asked stays silent (reason 'none', nothing to report).
+    $asked = ([bool]$script:CollectRequested -or ([string]$script:CollectEarlyRefusal -cne 'none'))
+    if (-not $asked) {
+        return (New-CollectDecision -State 'off' -Reason 'none' -Requested $false `
+                    -ProfileId $profileId -SelectionVerdict $Identity)
+    }
+    $refuse = {
+        param([string] $R)
+        New-CollectDecision -State 'off' -Reason $R -Requested $true `
+            -ProfileId $profileId -SelectionVerdict $Identity -MetricsPath $MetricsPath
+    }
+
+    # (2)(3) 5CTL 3-1. The two verification modes the launcher can observe. -Repro and -Smoke are
+    # read directly rather than through the combined $reproOrBench marker precisely because the
+    # priority rule needs them apart; no new switch and no new marker is introduced.
+    if ([bool]$Smoke) { return (& $refuse 'collect_forbidden_smoke') }
+    if ([bool]$Repro) { return (& $refuse 'collect_forbidden_repro') }
+
+    # (4) 5CTL 3-2. The official validated profile. The verdict is NOT recomputed here - it is read
+    # off Get-SurfaceAxes, the function that already owns "is this a published, measured
+    # configuration", which issues 'validated' only for the pinned branch with
+    # gates.performance_validated true. 5CTL 3-2 forbids inventing a second judgement, and matching
+    # a hard-coded profile id would be exactly that (and would drift the moment the catalog grows).
+    # ---------------------------------------------------------------------------------------
+    # 5CTL 3-2 says the refusal holds REGARDLESS OF MODE, so this call deliberately passes NO
+    # -RepackMode. That parameter drives a DISPLAY override (LUX-1 B1/B2, :3233): on the virtual
+    # path it rewrites serving_validation to 'unvalidated (virtual plan path)' to describe what the
+    # screen may honestly claim - it re-runs no gate and recomputes no verdict, as its own comment
+    # states. Consuming that overridden string as a verdict made 'qwen122 official + -RepackMode
+    # virtual' skip this refusal and reach collect ON (Codex build r1, blocking): the profile is
+    # still pinned and still performance_validated, so identity passed too. Mode-free is therefore
+    # not a simplification here - it is the contract. Regression lock: 5CTL 3-2 asserts the virtual
+    # combination refuses on the same literal.
+    $axes = Get-SurfaceAxes -Kind $Identity -Profile $Profile -CopyVerified $true
+    if ([string]$axes.serving_validation -ceq $script:AXIS_SERVING_VALIDATED) {
+        return (& $refuse 'collect_forbidden_qwen122_official')
+    }
+
+    # (5) 5CTL 3-3. Scope binding needs exact identity, or the manifest's scope fields describe a
+    # file the catalog never measured.
+    if ($Identity -cne $script:PREFETCH_IDENTITY_EXACT) {
+        return (& $refuse 'collect_identity_not_exact')
+    }
+
+    # (6) a shape refusal already settled at step 0 (5CTL 1-1-1).
+    if ([string]$script:CollectEarlyRefusal -cne 'none') {
+        return (& $refuse ([string]$script:CollectEarlyRefusal))
+    }
+
+    # Wiring guard. Both digests are scope inputs the caller must supply; production always does.
+    # An empty value here means a rebuild path was added without passing them, and silently hashing
+    # "" would turn a wiring defect into a scope mismatch that looks like an operator error.
+    if ([string]::IsNullOrEmpty($ExpectSha256) -or [string]::IsNullOrEmpty($RepackManifestSha256)) {
+        Stop-Launcher 'fail_gate_catalog' 'internal: collect is on but the scope digests were not supplied to Build-EffectiveConfig'
+    }
+
+    # (7) 5CTL 3-7 b - schema and contract hash.
+    $rec = Read-CollectCampaignRecord -Path $script:CollectCampaignPath
+    if (-not $rec.ok) { return (& $refuse ([string]$rec.reason)) }
+
+    # (8) 5CTL 3-7 a - scope agreement, recomputed against THIS config. Because Build-EffectiveConfig
+    # re-runs on every rebuild, a custom edit that moves the QD lands here again and the previous
+    # answer is discarded, which is the 5CTL 1-1-1 re-check contract.
+    $scopeSha = Get-CollectApprovedScopeSha256 -ModelPath $ModelPath -ProfileId $profileId `
+                    -ExpectSha256 $ExpectSha256 -RepackManifestSha256 $RepackManifestSha256 `
+                    -EffectiveQd $EffectiveQd -PrefetchK $PrefetchK -PrefetchN $PrefetchN
+    if ($scopeSha -cne [string]$rec.record.approved_scope_sha256) {
+        return (& $refuse 'collect_campaign_scope_mismatch')
+    }
+
+    # (9) 5CTL 2-1 / 3-4 - the canonical manifest path has to be formable NOW, before a child is
+    # started. The metrics path was already forced absolute and normalised above, so what remains
+    # reachable is a directory that does not exist (a profile defaults.env may name any path, and
+    # only the launcher-generated default has its directory created).
+    if ([string]::IsNullOrEmpty($MetricsPath) -or -not [System.IO.Path]::IsPathRooted($MetricsPath)) {
+        return (& $refuse 'collect_manifest_path_unusable')
+    }
+    # APPEND, never an extension swap (5CTL 2-1: append is the only injective rule).
+    $canonical = [string]$MetricsPath + $script:COLLECT_MANIFEST_SUFFIX
+    $dir = $null
+    try { $dir = [System.IO.Path]::GetDirectoryName($canonical) } catch { $dir = $null }
+    if ([string]::IsNullOrEmpty($dir) -or -not (Test-Path -LiteralPath $dir -PathType Container)) {
+        return (& $refuse 'collect_manifest_path_unusable')
+    }
+
+    return (New-CollectDecision -State 'on' -Reason 'none' -Requested $true -Campaign $rec.record `
+                -ScopeSha256 $scopeSha -CanonicalPath $canonical -MetricsPath $MetricsPath `
+                -ProfileId $profileId -SelectionVerdict $Identity)
+}
+
+# =============================================================================================
+# 5CTL 2-2 / 2-3 : the collection manifest - object, digest, writer.
+# =============================================================================================
+
+# 5CTL 2-3: recompute manifest_sha256. The object is REBUILT from COLLECT_MANIFEST_KEYS rather than
+# from whatever order the caller happens to hold, so the digest is a function of the frozen key
+# sequence alone - which is what lets an offline reader verify a manifest it did not write.
+# manifest_sha256 itself is excluded (a hash cannot cover itself).
+function Get-CollectManifestSha256 {
+    param($Manifest)
+    $o = [ordered]@{}
+    foreach ($k in $script:COLLECT_MANIFEST_KEYS) {
+        if ($k -ceq 'manifest_sha256') { continue }
+        $o[$k] = $Manifest[$k]
+    }
+    return (Get-CollectCanonicalSha256 -Ordered $o)
+}
+
+# 5CTL 2-3: build the manifest. The key SET and ORDER are the contract, and they do not vary with
+# state: a 'pending' manifest carries all 35 keys with the six deferred ones as JSON null. Those six
+# are deliberately UNTYPED parameters - casting $null through [int] would write 0 and turn "not yet
+# known" into "measured zero".
+function New-CollectManifestObject {
+    param([string] $State, [string] $ReservationId, [string] $LaunchStartedUtc,
+          [string] $LauncherVersion, $ChildPid, [string] $EngineBundleSha256,
+          [string] $MetricsPath, [string] $ModelPath, [string] $ProfileId, [string] $SourceTag,
+          [string] $SelectionVerdict, $SourceShardsSha256, [bool] $SourceShardsMatch,
+          # 5CTL 2-3 errata (lead disposition 26-08-26): quantization is UNTYPED and nullable. The
+          # launcher has no source for it - see the note at the field below - and a [string] cast
+          # would turn "no source" into an empty string, which reads as a measured blank.
+          $Quantization, [string] $ExpectSha256, [string] $RepackManifestSha256,
+          [int] $EffectiveQd, [int] $PrefetchK, [int] $PrefetchN, $Campaign,
+          [bool] $Repro, [bool] $Smoke, [bool] $CollectRequested,
+          $PrefixRequestCount, $PrefixRequests, $ReadyQpc, $PrefixDoneQpc, $RecoveryRestarted)
+    if ($script:COLLECT_MANIFEST_STATES -cnotcontains $State) {
+        Stop-Launcher 'fail_gate_catalog' ('internal: collect manifest state outside the enum: ' + $State)
+    }
+    # An absent shard pin is an EMPTY array, never a one-element array holding $null.
+    $shards = @()
+    if ($null -ne $SourceShardsSha256) { $shards = @($SourceShardsSha256) }
+    $o = [ordered]@{
+        schema_version           = [int]$script:COLLECT_MANIFEST_SCHEMA_VERSION
+        spec_version             = [string]$script:COLLECT_MANIFEST_SPEC_VERSION
+        state                    = [string]$State
+        reservation_id           = [string]$ReservationId
+        launch_started_utc       = [string]$LaunchStartedUtc
+        launcher_version         = [string]$LauncherVersion
+        child_pid                = $ChildPid
+        engine_bundle_sha256     = [string]$EngineBundleSha256
+        metrics_path             = [string]$MetricsPath
+        model_path               = [string]$ModelPath
+        profile_id               = [string]$ProfileId
+        source_tag               = [string]$SourceTag
+        selection_verdict        = [string]$SelectionVerdict
+        source_shards_sha256     = $shards
+        source_shards_match      = [bool]$SourceShardsMatch
+        # 5CTL 2-3 errata (lead disposition 26-08-26 - Codex cross-check item 2): NULLABLE, and a
+        # null here is an honest absence rather than lost information. The launcher has no source
+        # for a quantization label: the GGUF header parser reads general.architecture, split.* and
+        # <arch>.* only (general.file_type is not parsed), and no catalog profile carries the field.
+        # Detailed per-type information lives in the repack manifest's own 'quant_traits' map, which
+        # a consumer can join on repack_manifest_sha256. Extending the header parser was refused as
+        # a scope expansion into 5CTL 6's untouched-surface list.
+        quantization             = $Quantization
+        expect_sha256            = [string]$ExpectSha256
+        repack_manifest_sha256   = [string]$RepackManifestSha256
+        effective_qd             = [int]$EffectiveQd
+        prefetch_k               = [int]$PrefetchK
+        prefetch_n               = [int]$PrefetchN
+        campaign_id              = $(if ($null -ne $Campaign) { [string]$Campaign.campaign_id } else { $null })
+        campaign_revision        = $(if ($null -ne $Campaign) { [int]$Campaign.campaign_revision } else { $null })
+        minimum_sample_count     = $(if ($null -ne $Campaign) { [long]$Campaign.minimum_sample_count } else { $null })
+        approved_scope_sha256    = $(if ($null -ne $Campaign) { [string]$Campaign.approved_scope_sha256 } else { $null })
+        campaign_contract_sha256 = $(if ($null -ne $Campaign) { [string]$Campaign.campaign_contract_sha256 } else { $null })
+        repro                    = [bool]$Repro
+        smoke                    = [bool]$Smoke
+        collect_requested        = [bool]$CollectRequested
+        prefix_request_count     = $PrefixRequestCount
+        prefix_requests          = $PrefixRequests
+        ready_qpc                = $ReadyQpc
+        prefix_done_qpc          = $PrefixDoneQpc
+        recovery_restarted       = $RecoveryRestarted }
+    # Added LAST, over the 34-key object, which is exactly "every field except this one".
+    $o['manifest_sha256'] = Get-CollectManifestSha256 -Manifest $o
+    return $o
+}
+
+# 5CTL 2-2: write and publish. Two properties separate this writer from every other one in the
+# launcher, and both are deliberate:
+#   - STRICTEST TIER: the temp file is read BACK and re-parsed before it is published (the preset
+#     writer's precedent). A manifest is the authority on sample eligibility and the offline
+#     builder's gate input, so it may not be published on the strength of a write that returned.
+#   - NOT DEGRADED: every other writer here is best-effort and non-terminal. A failure of THIS one
+#     turns collection off with a reason (5CTL 3-4); it never publishes a half-written authority.
+# $Replace picks the publish helper: pending reserves with create-exclusive, final replaces its own
+# reservation.
+function Write-CollectManifest {
+    param($Manifest, [string] $CanonicalPath, [bool] $Replace)
+    $tmp = [string]$CanonicalPath + '.tmp'
+    try {
+        $json = ($Manifest | ConvertTo-Json -Depth $script:COLLECT_JSON_DEPTH)
+        [System.IO.File]::WriteAllText($tmp, $json, (New-Object System.Text.UTF8Encoding($false)))
+        $back = Read-JsonFileStrict -Path $tmp
+        if (-not $back.ok) { throw ('read-back parse failed: ' + [string]$back.reason) }
+        # NOTE no @() around Get-JsonKeys - it returns ", @(names)" and wrapping it yields Count 1.
+        $keys = Get-JsonKeys -Obj $back.value
+        if (@($keys).Count -ne $script:COLLECT_MANIFEST_KEYS.Count) {
+            throw ('read-back key count ' + @($keys).Count + ', expected ' + $script:COLLECT_MANIFEST_KEYS.Count)
+        }
+        foreach ($k in $script:COLLECT_MANIFEST_KEYS) {
+            if ($keys -cnotcontains $k) { throw ('read-back missing key: ' + $k) }
+        }
+        if ([string](Get-JsonValue -Obj $back.value -Name 'manifest_sha256') -cne [string]$Manifest['manifest_sha256']) {
+            throw 'read-back manifest_sha256 mismatch'
+        }
+        if ($Replace) { Move-FileAtomic -TempPath $tmp -FinalPath $CanonicalPath }
+        else { Move-FileAtomicNoReplace -TempPath $tmp -FinalPath $CanonicalPath }
+        return @{ ok = $true; reason = 'none' }
+    } catch {
+        # The temp file must not survive a failed publish - it would collide with the next attempt.
+        try {
+            if (Test-Path -LiteralPath $tmp -PathType Leaf) {
+                Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+            }
+        } catch { }
+        return @{ ok = $false; reason = [string]$_.Exception.Message }
+    }
+}
+
+# 5CTL 3-4 / 1-4: turn collection off AFTER the EFFECTIVE record has already been written.
+# Two failures can only be known that late - the pending publish (5CTL 3-4 row 2) and, later, the
+# final publish and the leading-segment check. The EFFECTIVE record is therefore already on disk
+# saying collect_state=on, so this record SUPERSEDES it: a reader that sees COLLECT_REFUSED_LATE
+# must prefer it over the earlier EFFECTIVE line for the same run.
+# (Lead disposition 26-08-26, Q1: the spec's 3-4 puts this echo on the pre-start status screen, but
+# in the real control flow that screen and the EFFECTIVE record both precede the publish. Echoing at
+# the point of failure through the SAME enum and the SAME formatter is the minimal deviation that
+# keeps 2-2-1's "publish once, immediately before spawn" placement intact. Codex cross-check item 1.)
+function Disable-CollectOnConfig {
+    param($Config, [string] $Reason, [string] $Detail = '')
+    # 5CT-REPAIR 1 (B_env, the OFF-reversion clause): the collect trio travels TOGETHER. Leaving OUT or BUF_MB
+    # behind would hand the replacement child a sidecar prefix with no collect flag - the engine
+    # would then honour that prefix on any non-off MODE and write into a run that was declared
+    # non-collecting. Removing all three is what makes "collect off" a statement about the whole
+    # environment rather than about one key.
+    $Config.env.Remove($script:ENV_PHASEB_COLLECT) | Out-Null
+    $Config.env.Remove($script:ENV_PHASEB_OUT) | Out-Null
+    $Config.env.Remove($script:ENV_PHASEB_BUF_MB) | Out-Null
+    $Config.collect.state = 'off'
+    $Config.collect.reason = $Reason
+    $line = '[collect] ' + (Get-CollectOffEcho -Reason $Reason)
+    if ($Detail) { $line = $line + ' - ' + $Detail }
+    Write-Line $line
+    Write-Diag -Kind 'COLLECT_REFUSED_LATE' -Data @{ reason = $Reason; detail = [string]$Detail
+                                                     manifest_path = [string]$Config.collect.canonical_path
+                                                     supersedes = 'EFFECTIVE.collect_state' }
+}
+
+# 5CT-REPAIR 1 (B_env, "ledger preflight"): the ledger sidecar name must be free before this run
+# reserves anything. Called from the main flow after the FINAL effective config and BEFORE the
+# pending manifest is published, which is also before the child is spawned - the ordering is the
+# contract, because a pending manifest published over a name the engine will refuse to create is an
+# authority describing a run that cannot happen.
+#
+# "Any filesystem ENTRY", not "a file": the engine opens the ledger with CREATE_NEW, and a directory
+# or a reparse point sitting on the name defeats that just as surely as a file does. Test-Path with
+# no -PathType answers for files and directories; the directory enumeration behind it also catches
+# an entry Test-Path resolves away (a link whose target is gone). The name never contains a DOS
+# wildcard - '*' and '?' are illegal in Windows filenames - so the pattern match cannot widen.
+#
+# A failure here is NOT terminal (5CTL 3): the caller turns collection off with the existing
+# collect_manifest_preflight_failed literal and the run keeps serving. Any fault in the probe itself
+# is reported as a failure too, fail-close: an unanswerable preflight is not a passed preflight.
+function Test-CollectLedgerAbsent {
+    param([string] $LedgerPath)
+    if ([string]::IsNullOrEmpty($LedgerPath)) {
+        return @{ ok = $false; detail = 'internal: the ledger preflight was given an empty path' }
+    }
+    try {
+        if (Test-Path -LiteralPath $LedgerPath) {
+            return @{ ok = $false; detail = ('a filesystem entry already exists at ' + $LedgerPath) }
+        }
+        $dir = [System.IO.Path]::GetDirectoryName($LedgerPath)
+        $name = [System.IO.Path]::GetFileName($LedgerPath)
+        if ((-not [string]::IsNullOrEmpty($dir)) -and (-not [string]::IsNullOrEmpty($name)) -and
+            [System.IO.Directory]::Exists($dir)) {
+            foreach ($e in [System.IO.Directory]::EnumerateFileSystemEntries($dir, $name)) {
+                return @{ ok = $false; detail = ('a filesystem entry already exists at ' + [string]$e) }
+            }
+        }
+    } catch {
+        return @{ ok = $false
+                  detail = ('the ledger preflight could not be completed: ' + [string]$_.Exception.Message) }
+    }
+    return @{ ok = $true; detail = '' }
+}
+
+# 5CTL 2-2-1: publish the PENDING manifest. Called exactly ONCE per run, from the main flow, after
+# the final effective config is fixed and before the child is spawned.
+# Why it is not inside Build-EffectiveConfig: that function runs on every rebuild, and a reservation
+# must not be dropped on an intermediate metrics path. Why it is before the spawn rather than after:
+# the metrics path - the sole source of the canonical name - is already final here, so reserving now
+# removes the need for the "kill the child we just started and relaunch" path that a post-spawn
+# reservation would require. A new failure surface avoided rather than handled.
+function Publish-CollectPendingManifest {
+    param($Config, [string] $ModelPath, [string] $SourceTag, $Selection,
+          [string] $ExpectSha256, [string] $RepackManifestSha256)
+    $col = $Config.collect
+    # One reservation id per run, generated immediately before the pending write. pending and final
+    # carry the same value, and that is what lets the final publish prove it is replacing its OWN
+    # reservation rather than someone else's (5CTL 2-2-1).
+    $reservation = [guid]::NewGuid().ToString('D')
+    $m = New-CollectManifestObject -State $script:COLLECT_STATE_PENDING -ReservationId $reservation `
+             -LaunchStartedUtc ((Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')) `
+             -LauncherVersion $script:LAUNCHER_VERSION -ChildPid $null `
+             -EngineBundleSha256 (Get-KvBundleSha) -MetricsPath ([string]$col.metrics_path) `
+             -ModelPath $ModelPath -ProfileId ([string]$col.profile_id) -SourceTag $SourceTag `
+             -SelectionVerdict ([string]$col.selection_verdict) -SourceShardsSha256 $Selection.shas `
+             -SourceShardsMatch ([string]$Selection.kind -ceq $script:PREFETCH_IDENTITY_EXACT) `
+             -Quantization $null `
+             -ExpectSha256 $ExpectSha256 -RepackManifestSha256 $RepackManifestSha256 `
+             -EffectiveQd ([int]$Config.qd) -PrefetchK ([int]$Config.prefetch.k) `
+             -PrefetchN ([int]$Config.prefetch.n) -Campaign $col.campaign `
+             -Repro ([bool]$Repro) -Smoke ([bool]$Smoke) -CollectRequested ([bool]$col.requested) `
+             -PrefixRequestCount $null -PrefixRequests $null -ReadyQpc $null -PrefixDoneQpc $null `
+             -RecoveryRestarted $null
+    $w = Write-CollectManifest -Manifest $m -CanonicalPath ([string]$col.canonical_path) -Replace $false
+    if (-not $w.ok) {
+        return @{ ok = $false; reason = [string]$w.reason; reservation_id = $reservation }
+    }
+    return @{ ok = $true; reason = 'none'; reservation_id = $reservation; manifest = $m }
+}
+
+# 5CTL 2-5: append one leading-segment record. Called from the launcher's own post-ready requests
+# and from nowhere else. 'ok' is kept OUT of the manifest projection below (the contract is 5 keys)
+# but drives the verification gate: a POST that was not confirmed with HTTP 200 disqualifies the run.
+# The two timestamps come from [Stopwatch]::GetTimestamp(), which was measured on this machine to be
+# the SAME QueryPerformanceCounter the engine stamps its requests with (5CTL 2-5 basis 2) - that is
+# what lets an offline reader place this launcher's requests on the engine's own timeline.
+function Add-CollectPrefixRecord {
+    param([string] $Kind, [long] $DispatchQpc, [long] $ResponseQpc, $HttpStatus, [bool] $Ok)
+    if ($script:COLLECT_PREFIX_KINDS -cnotcontains $Kind) {
+        Stop-Launcher 'fail_gate_catalog' ('internal: prefix kind outside the enum: ' + $Kind)
+    }
+    $script:CollectPrefixRecords += ,@{ ordinal = [int]@($script:CollectPrefixRecords).Count
+                                        kind = [string]$Kind
+                                        dispatch_qpc = [long]$DispatchQpc
+                                        response_qpc = [long]$ResponseQpc
+                                        http_status = $HttpStatus
+                                        ok = [bool]$Ok }
+}
+
+# 5CTL 2-3: project the ledger onto the five contract keys, in order. 'ok' is internal.
+function Get-CollectPrefixProjection {
+    $outp = @()
+    foreach ($r in @($script:CollectPrefixRecords)) {
+        $outp += ,[ordered]@{ ordinal = [int]$r.ordinal; kind = [string]$r.kind
+                              dispatch_qpc = [long]$r.dispatch_qpc; response_qpc = [long]$r.response_qpc
+                              http_status = $r.http_status }
+    }
+    return ,$outp
+}
+
+# 5CTL 2-5 (M5): only HTTP 200 confirmed requests count as a verified leading segment. The hole this
+# closes: Invoke-LauncherWarmup treats a POST failure as degraded and non-terminal, so a request that
+# died BEFORE server admission still leaves "the launcher sent one POST" true while the engine's
+# pre-cut request was actually somebody else's. Counting alone would compare 1 == 1 and adopt a
+# foreign request as a warmup. So an unconfirmed POST disqualifies the whole run instead.
+function Test-CollectPrefixVerified {
+    foreach ($r in @($script:CollectPrefixRecords)) {
+        if (-not $r.ok) { return $false }
+    }
+    return $true
+}
+
+# 5CTL 2-2-1: promote the reservation to 'final'. Runs after ready and after the launcher's own
+# leading segment is complete, immediately before handover - and only ever replaces THIS run's own
+# reservation.
+function Complete-CollectFinalManifest {
+    param($Config, $Child, [string] $ReservationId, [long] $ReadyQpc, [long] $PrefixDoneQpc,
+          [string] $ModelPath, [string] $SourceTag, $Selection, [string] $ExpectSha256,
+          [string] $RepackManifestSha256)
+    $col = $Config.collect
+    $canon = [string]$col.canonical_path
+    # Pre-replacement check (5CTL 2-2-1): the file at the canonical name must still be OUR pending.
+    # Anything else - a foreign reservation, an already-final manifest, an unreadable file - means
+    # this run no longer owns the name, and overwriting it would destroy another run's authority.
+    $cur = Read-JsonFileStrict -Path $canon
+    if (-not $cur.ok) {
+        return @{ ok = $false; reason = 'collect_manifest_commit_failed'; detail = ('pending unreadable: ' + [string]$cur.reason) }
+    }
+    if ([string](Get-JsonValue -Obj $cur.value -Name 'state') -cne $script:COLLECT_STATE_PENDING) {
+        return @{ ok = $false; reason = 'collect_manifest_commit_failed'; detail = 'canonical manifest is not in the pending state' }
+    }
+    if ([string](Get-JsonValue -Obj $cur.value -Name 'reservation_id') -cne $ReservationId) {
+        return @{ ok = $false; reason = 'collect_manifest_commit_failed'; detail = 'canonical manifest carries a different reservation_id' }
+    }
+    $m = New-CollectManifestObject -State $script:COLLECT_STATE_FINAL -ReservationId $ReservationId `
+             -LaunchStartedUtc ([string](Get-JsonValue -Obj $cur.value -Name 'launch_started_utc')) `
+             -LauncherVersion $script:LAUNCHER_VERSION -ChildPid ([int]$Child.pid) `
+             -EngineBundleSha256 (Get-KvBundleSha) -MetricsPath ([string]$col.metrics_path) `
+             -ModelPath $ModelPath -ProfileId ([string]$col.profile_id) -SourceTag $SourceTag `
+             -SelectionVerdict ([string]$col.selection_verdict) -SourceShardsSha256 $Selection.shas `
+             -SourceShardsMatch ([string]$Selection.kind -ceq $script:PREFETCH_IDENTITY_EXACT) `
+             -Quantization $null `
+             -ExpectSha256 $ExpectSha256 -RepackManifestSha256 $RepackManifestSha256 `
+             -EffectiveQd ([int]$Config.qd) -PrefetchK ([int]$Config.prefetch.k) `
+             -PrefetchN ([int]$Config.prefetch.n) -Campaign $col.campaign `
+             -Repro ([bool]$Repro) -Smoke ([bool]$Smoke) -CollectRequested ([bool]$col.requested) `
+             -PrefixRequestCount ([int]@($script:CollectPrefixRecords).Count) `
+             -PrefixRequests (Get-CollectPrefixProjection) `
+             -ReadyQpc ([long]$ReadyQpc) -PrefixDoneQpc ([long]$PrefixDoneQpc) `
+             -RecoveryRestarted ([bool]$script:CollectRecoveryRestarted)
+    $w = Write-CollectManifest -Manifest $m -CanonicalPath $canon -Replace $true
+    if (-not $w.ok) {
+        return @{ ok = $false; reason = 'collect_manifest_commit_failed'; detail = [string]$w.reason }
+    }
+    return @{ ok = $true; reason = 'none'; manifest = $m }
+}
+
+# 5CT-REPAIR 2 (B_rdv): publish the rendezvous handover.
+#
+# WHY IT EXISTS: the traffic driver opens on /health, but a healthy server says nothing about WHICH
+# run it is. G run attempt #2 failed exactly there - the driver fired before the final manifest was
+# published, so its first requests landed inside the launcher's own leading segment and the run lost
+# exclusive_prefix. The handover is the driver's proof that THIS run, this reservation, this
+# manifest is the one it may drive.
+#
+# WHEN: immediately after Complete-CollectFinalManifest returns ok - i.e. after the final manifest's
+# atomic replace AND its read-back - and before handover (browser/serving loop). On a run that took
+# a warmstart recovery, the caller only reaches here for the FINAL child, so the canonical manifest
+# named below is that child's; a pre-recovery manifest is never published (trap (c)5-2).
+#
+# manifest_raw_sha256 is computed by reading the PUBLISHED file's raw bytes back off disk, not from
+# the in-memory object: the driver hashes the same bytes it reads, so the two sides only agree if
+# this side hashes what actually landed.
+#
+# manifest_sha256 is COPIED from the manifest, not recomputed: that digest is defined as SHA-256 over
+# PS5.1 canonical bytes (5CTL 2-3) and this function's job is handover, not re-derivation. The
+# driver therefore checks it as a FIELD EQUALITY, and its own comment says so - claiming a
+# recomputation neither side performs would be the more dangerous lie.
+#
+# FAILURE: returns ok=false and the caller folds it into the EXISTING collect_manifest_commit_failed
+# disposition (trap (c)5-4). No new status, no new refusal enum - a handover that cannot be published
+# is a run whose collecting child must not be handed over, which is precisely what that literal
+# already means.
+function Publish-CollectRendezvous {
+    param($Config, [string] $ReservationId, $Manifest)
+    $rdv = [string]$script:CollectRendezvousPath
+    if ([string]::IsNullOrEmpty($rdv)) { return @{ ok = $true; reason = 'none'; published = $false } }
+    $canon = [string]$Config.collect.canonical_path
+    try {
+        $raw = [System.IO.File]::ReadAllBytes($canon)
+        $sha = $null
+        $h = [System.Security.Cryptography.SHA256]::Create()
+        try { $sha = (([System.BitConverter]::ToString($h.ComputeHash($raw))) -replace '-', '').ToLowerInvariant() }
+        finally { $h.Dispose() }
+        $o = [ordered]@{
+            schema              = [string]$script:COLLECT_RDV_SCHEMA
+            run_nonce           = [string]$script:CollectRunNonce
+            reservation_id      = [string]$ReservationId
+            manifest_path       = [string]$canon
+            manifest_sha256     = [string]$Manifest['manifest_sha256']
+            manifest_raw_sha256 = [string]$sha }
+        if ((@($o.Keys) -join ',') -cne ($script:COLLECT_RDV_KEYS -join ',')) {
+            throw ('rendezvous key order drift: ' + (@($o.Keys) -join ','))
+        }
+        # Compact JSON, BOM-less UTF-8, NO trailing newline - all three are the driver's parse
+        # contract, and -Compress alone does not guarantee the last two.
+        $json = ($o | ConvertTo-Json -Depth $script:COLLECT_JSON_DEPTH -Compress)
+        $bytes = (New-Object System.Text.UTF8Encoding($false)).GetBytes($json)
+        $tmp = $rdv + '.tmp'
+        [System.IO.File]::WriteAllBytes($tmp, $bytes)
+        try {
+            Move-FileAtomicNoReplace -TempPath $tmp -FinalPath $rdv
+        } catch {
+            try {
+                if (Test-Path -LiteralPath $tmp -PathType Leaf) {
+                    Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+                }
+            } catch { }
+            throw
+        }
+        Write-Diag -Kind 'COLLECT_RENDEZVOUS' -Data @{ path = $rdv; run_nonce = $o['run_nonce']
+                                                       reservation_id = $o['reservation_id']
+                                                       manifest_raw_sha256 = $sha
+                                                       byte_len = $bytes.Length }
+        return @{ ok = $true; reason = 'none'; published = $true; bytes = $bytes.Length }
+    } catch {
+        return @{ ok = $false; reason = 'collect_manifest_commit_failed'
+                  detail = ('rendezvous publish failed: ' + [string]$_.Exception.Message) }
+    }
+}
+
+# 5CTL 2-2-1: best-effort removal of a pending this run created and will not promote. Only ever
+# OUR OWN reservation - a pending carrying someone else's id belongs to a live run and is never
+# touched. A failure here is harmless: the builder adopts state="final" only (5CTL 4-1 condition 1).
+function Remove-CollectOwnPending {
+    param([string] $CanonicalPath, [string] $ReservationId)
+    if ([string]::IsNullOrEmpty($CanonicalPath) -or [string]::IsNullOrEmpty($ReservationId)) { return }
+    try {
+        if (-not (Test-Path -LiteralPath $CanonicalPath -PathType Leaf)) { return }
+        $cur = Read-JsonFileStrict -Path $CanonicalPath
+        if (-not $cur.ok) { return }
+        if ([string](Get-JsonValue -Obj $cur.value -Name 'state') -cne $script:COLLECT_STATE_PENDING) { return }
+        if ([string](Get-JsonValue -Obj $cur.value -Name 'reservation_id') -cne $ReservationId) { return }
+        Remove-Item -LiteralPath $CanonicalPath -Force -ErrorAction SilentlyContinue
+    } catch { }
+}
+
+# 5CTL 3-4 rows 3-4: a run whose collection authority could not be completed must NOT be handed to
+# the user as a collecting server. The child is stopped and replaced by one started WITHOUT the
+# collect key, on a FRESH metrics path - fresh because the engine opens metrics with CREATE_NEW, so
+# re-using the name would fail the replacement outright.
+# Modelled directly on Invoke-WarmstartRecoveryRestart, including New-KvRecoveryPath, which derives
+# a sibling name and PROVES it absent rather than trusting a timestamp to be unique.
+$script:CollectRestartCount = 0
+function Restart-CollectOffChild {
+    param($Config, [string] $ServerExe, [string] $Root, [string] $StdOutPath, [string] $StdErrPath)
+    $script:CollectRestartCount = [int]$script:CollectRestartCount + 1
+    $n = [int]$script:CollectRestartCount
+    Write-Line '[collect] restarting the server without collection so the run can continue.'
+    Stop-OwnedChildForRecovery -Child $script:OwnedChild -PortNumber ([int]$script:LastServerPort)
+    $script:ChildWasReady = $false
+    $newOut = New-KvRecoveryPath -Path $StdOutPath -Incarnation $n
+    $newErr = New-KvRecoveryPath -Path $StdErrPath -Incarnation $n
+    $env2 = @{}
+    foreach ($k in $Config.env.Keys) { $env2[[string]$k] = [string]$Config.env[$k] }
+    # Belt and braces: the caller already turned collection off on the config, but this replacement
+    # child is defined by NOT carrying the key, so the removal is stated here too.
+    # 5CT-REPAIR 1 (B_env, the OFF-reversion clause): all THREE keys, for the reason given at
+    # Disable-CollectOnConfig.
+    # This path also runs on the recovery branch, where the config was rebuilt by that function
+    # rather than by this one, so the two sites close the same hole from both ends.
+    $env2.Remove($script:ENV_PHASEB_COLLECT) | Out-Null
+    $env2.Remove($script:ENV_PHASEB_OUT) | Out-Null
+    $env2.Remove($script:ENV_PHASEB_BUF_MB) | Out-Null
+    if ($env2.ContainsKey($script:ENV_METRICS)) {
+        $env2[$script:ENV_METRICS] = New-KvRecoveryPath -Path ([string]$env2[$script:ENV_METRICS]) -Incarnation $n
+        Write-Diag -Kind 'METRICS_ENV' -Data @{ injected = $true; path = $env2[$script:ENV_METRICS]
+                                                collect_off_restart = $n }
+    }
+    $cfg2 = @{}
+    foreach ($k in $Config.Keys) { $cfg2[[string]$k] = $Config[$k] }
+    $cfg2['env'] = $env2
+    $sr = Start-OwnedChild -Exe $ServerExe -Args0 $Config.argv -EnvVars $env2 -WorkDir $Root `
+              -StdOutPath $newOut -StdErrPath $newErr -NewProcessGroup $true -Role 'server'
+    if (-not $sr.ok) { Stop-Launcher 'fail_server_start' ('collect-off restart server start failed: ' + $sr.reason) }
+    $child = $sr.child
+    Write-Line ('[start] server pid {0} (collection off); waiting for health on http://{1}:{2}/health' -f $child.pid, $cfg2.host, $cfg2.port)
+    Wait-ForServerReady -Child $child -Config $cfg2 -ErrLog $newErr
+    $script:ChildWasReady = $true
+    Write-Diag -Kind 'COLLECT_OFF_RESTART' -Data @{ incarnation = $n; pid = $child.pid
+                                                    metrics = [string]$env2[$script:ENV_METRICS] }
+    return @{ child = $child; config = $cfg2; err_log = $newErr }
+}
+
+# 5CTL 2-5 (recovery derivation): a warmstart recovery replaces the server child and its metrics
+# path, so the reservation taken before it describes a child that no longer exists. Three things
+# follow, and this function is all three: the OLD pending is never promoted (it is removed as our
+# own), the NEW metrics path becomes the canonical origin, and the pending->final procedure starts
+# again from scratch with a new reservation id. The final will carry recovery_restarted = true.
+function Update-CollectAfterRecovery {
+    param($Config, [string] $OldCanonicalPath, [string] $OldReservationId, [string] $ModelPath,
+          [string] $SourceTag, $Selection, [string] $ExpectSha256, [string] $RepackManifestSha256)
+    $script:CollectRecoveryRestarted = $true
+    Remove-CollectOwnPending -CanonicalPath $OldCanonicalPath -ReservationId $OldReservationId
+    $newMetrics = [string]$Config.env[$script:ENV_METRICS]
+    if ([string]::IsNullOrEmpty($newMetrics) -or -not [System.IO.Path]::IsPathRooted($newMetrics)) {
+        return @{ ok = $false; enum_reason = 'collect_manifest_path_unusable'
+                  detail = 'the recovery metrics path is unusable' }
+    }
+    $canon = $newMetrics + $script:COLLECT_MANIFEST_SUFFIX
+    $dir = $null
+    try { $dir = [System.IO.Path]::GetDirectoryName($canon) } catch { $dir = $null }
+    if ([string]::IsNullOrEmpty($dir) -or -not (Test-Path -LiteralPath $dir -PathType Container)) {
+        return @{ ok = $false; enum_reason = 'collect_manifest_path_unusable'
+                  detail = 'the recovery manifest directory does not exist' }
+    }
+    $Config.collect.metrics_path = $newMetrics
+    $Config.collect.canonical_path = $canon
+    $p = Publish-CollectPendingManifest -Config $Config -ModelPath $ModelPath -SourceTag $SourceTag `
+             -Selection $Selection -ExpectSha256 $ExpectSha256 -RepackManifestSha256 $RepackManifestSha256
+    if (-not $p.ok) {
+        return @{ ok = $false; enum_reason = 'collect_manifest_preflight_failed'; detail = [string]$p.reason }
+    }
+    return @{ ok = $true; enum_reason = 'none'; detail = ''; reservation_id = [string]$p.reservation_id }
+}
+
+# =============================================================================================
+# 5CT-TUPLE 1-5 : THE single promotion rule, and its only owner.
+#
+# The rule: on a run that supplied -PhaseBCollectTuple, collection failing to land ON is
+# fail_custom_args. Not "collect off + reason, keep serving" - that contract (5CTL 3) is the
+# contract of a USER-FACING run, and it is untouched here. A tuple run is an unattended campaign
+# run, and serving for an hour without collecting is exactly the failure SPEC_5CT_COLLECT_TUPLE 0-1
+# was written to stop. It applies to interactive runs too (-NonInteractive is not consulted):
+# "warn and ignore the tuple" would re-introduce the silent misread from the other direction.
+#
+# Why ONE function rather than one gate: a single gate after the initial decision leaves every LATE
+# path that turns collection off and keeps serving (five of them) still silently failing. This
+# function is called at all six points, and it is the ONLY place that decides to promote and the
+# ONLY place the message is built - so the two closed enums cannot be spelled two ways.
+#
+# It judges three failures, not one, because two of them are settled BEFORE the collect decision
+# exists and would otherwise have no way to be expressed here (5CT-TUPLE 2-2):
+#   - the underlying prefetch decision was not an ON init decision (provenance_not_init),
+#   - K exceeded the profile's identify.n_expert (k_exceeds_n_expert),
+#   - collection did not land on.
+# The first two arrive as a closed label from the caller that already had the inputs. That label is
+# NOT a new member of PREFETCH_OFF_REASONS or COLLECT_OFF_REASONS - both stay at 12 - it is this
+# function's own third message axis, and it exists because the other two axes cannot carry those
+# causes: a prefetch decision that is ON has off_reason=null, and no collect literal means "K is
+# larger than the model has experts".
+#
+# All three axes are echoed together on purpose. When prefetch turns off first,
+# Resolve-PrefetchForQd removes k/n from the decision, so [int]$pf.k reads 0, the scope digest is
+# computed on (0,0) and the collect reason becomes collect_campaign_scope_mismatch - which would
+# bury the real cause. Printing prefetch_off_reason, collect_reason and eligibility_failure side by
+# side makes that misdiagnosis impossible.
+#
+# What it promises is a PENDING status, not a final one: Complete-Teardown promotes fail_teardown
+# over whatever is pending when a taskkill fallback was used, a grace expired, a child outlived the
+# stop or a listener survived. This function does not touch that priority. What IS unconditional is
+# the other half - no Restart-CollectOffChild, and no handover to the user (no rendezvous publish,
+# no browser, no serving loop), because "keep serving without collecting" is the banned outcome.
+#
+# On a run with no tuple it returns before reading either argument. That no-op is what lets the six
+# call sites be unconditional, and it is asserted directly by the selftest rather than assumed.
+# =============================================================================================
+function Assert-CollectTupleLanded {
+    param($Prefetch, $Collect, [string] $EligibilityFailure = 'none',
+          [string] $Site = '', [bool] $PostSpawn = $false)
+    # (1) the no-op. Every ordinary run stops here, having read nothing.
+    if (-not $script:CollectTupleRequested) { return }
+
+    # (2) the third axis is a closed three-value classification, internal to this function. A value
+    # outside it is an internal wiring error, and it is loud rather than silently echoed - the same
+    # discipline Get-PrefetchOffEcho and New-CollectDecision apply to their own enums.
+    $elig = [string]$EligibilityFailure
+    if ($elig.Length -eq 0) { $elig = 'none' }
+    if (@('none', 'provenance_not_init', 'k_exceeds_n_expert') -cnotcontains $elig) {
+        Stop-Launcher 'fail_gate_catalog' ('internal: collect tuple eligibility outside the closed set: ' + $elig)
+    }
+
+    # (3) the judgement. Landed = no eligibility failure AND collection is on.
+    $state = 'none'
+    if ($null -ne $Collect -and $null -ne $Collect.state) { $state = [string]$Collect.state }
+    if ($elig -ceq 'none' -and $state -ceq 'on') { return }
+
+    # (4) the message, built exactly once in this launcher.
+    $pfReason = '(none)'
+    if ($null -ne $Prefetch -and $null -ne $Prefetch.off_reason -and
+        ([string]$Prefetch.off_reason).Length -gt 0) {
+        $pfReason = [string]$Prefetch.off_reason
+    }
+    $colReason = '(none)'
+    if ($null -ne $Collect -and $null -ne $Collect.reason -and
+        ([string]$Collect.reason).Length -gt 0) {
+        $colReason = [string]$Collect.reason
+    }
+    Write-Diag -Kind 'COLLECT_TUPLE_NOT_LANDED' -Data @{ site = $Site; post_spawn = $PostSpawn
+                                                         tuple = [string]$script:CollectTupleRaw
+                                                         k = [int]$script:CollectTupleK
+                                                         n = [int]$script:CollectTupleN
+                                                         collect_state = $state
+                                                         prefetch_off_reason = $pfReason
+                                                         collect_reason = $colReason
+                                                         eligibility_failure = $elig }
+    Stop-Launcher 'fail_custom_args' ('-PhaseBCollectTuple ' + [string]$script:CollectTupleRaw +
+        ' was requested but collection did not resolve on: prefetch_off_reason=' + $pfReason +
+        ';collect_reason=' + $colReason + ';eligibility_failure=' + $elig)
+}
+
 function Build-EffectiveConfig {
     param($Catalog, $Profile, [string] $Root, [string] $OutputDir, [string] $ModelPath,
-          $Overrides, $PrefetchDecision, [int] $Qd)
+          $Overrides, $PrefetchDecision, [int] $Qd,
+          # 5CTL 3-7: scope inputs. Optional so the existing callers and the selftest's own
+          # Build-EffectiveConfig probes keep working unchanged; they are only READ when collection
+          # was actually requested, and Resolve-CollectDecision fails loudly if they are missing then.
+          [string] $ExpectSha256 = '', [string] $RepackManifestSha256 = '')
     $d = Get-JsonValue -Obj $Profile -Name 'defaults'
     $argv = @()
     foreach ($a in (Get-JsonArray -Obj $d -Name 'argv')) { $argv += [string]$a }
@@ -6082,7 +8658,60 @@ function Build-EffectiveConfig {
 
     # LS 1-2 (R6): effective_qd is final only here, so the QD row of the table is decided here -
     # every rebuild (a custom edit, a stored preset, a CLI override) re-decides it.
-    $pf = Resolve-PrefetchForQd -Decision $PrefetchDecision -EffectiveQd $qdEff
+    # 5CT-TUPLE 2-2: the collect-only K/N substitution goes immediately BEFORE that row, and its
+    # shape is deliberately narrow. It does not change the init formula, the catalog arm or the
+    # selector - touching a normal user path would route around the manifest / approval / identity
+    # chain 5CTL built. It only takes a decision the ordinary rules ALREADY turned on, replaces the
+    # pair, and hands it to the same Resolve-PrefetchForQd every run uses. So the demotion rule, the
+    # echo and the qd_demoted diagnostic below are the existing ones, and N < QD is not re-checked
+    # here: there is one N-versus-QD rule in this launcher and this is not a second copy of it.
+    # The two eligibility failures do NOT stop the run here. They record a closed label and leave
+    # the ORIGINAL decision in place; the promotion happens at the single gate below
+    # (Assert-CollectTupleLanded), because a second Stop-Launcher at this point would put the
+    # promotion rule in two places. Leaving the original decision in place is also what makes the
+    # diagnosis honest: an unsubstituted run resolves to the init pair, collection then refuses it
+    # with collect_campaign_scope_mismatch, and only the eligibility label recovers the real cause.
+    $collectTupleElig = 'none'
+    $pfIn = $PrefetchDecision
+    if ($script:CollectTupleRequested) {
+        # Condition 3 (5CT-TUPLE 1-4): an ON decision from the init arm, and nothing else. A tuple
+        # may not revive catalog-fixed, adapt, a failed probe, a Phase-4 hold, an unpinned identity
+        # or a QD too small for the depth - that is the honesty this surface stands on.
+        if (-not ($null -ne $PrefetchDecision -and $PrefetchDecision.on -eq $true -and
+                  ([string]$PrefetchDecision.provenance) -ceq $script:PREFETCH_PROVENANCE_INIT)) {
+            $collectTupleElig = 'provenance_not_init'
+        } else {
+            # The config-stage half of the range gate. The bound is identify.n_expert - the TOTAL
+            # expert count - and not n_expert_used: the init arm reads n_expert_used because that is
+            # what its formula is about, and binding this gate to the same field would make K=7
+            # permanently unreachable on a row whose n_expert_used is 6, which is the very window
+            # this surface exists to run.
+            $tupleNExpert = Get-JsonValue -Obj (Get-JsonValue -Obj $Profile -Name 'identify') -Name 'n_expert'
+            if ((-not (Test-JsonNonNegativeInteger $tupleNExpert)) -or
+                ([long]$script:CollectTupleK -gt [long]$tupleNExpert)) {
+                $collectTupleElig = 'k_exceeds_n_expert'
+            } else {
+                # A COPY. This function re-runs on every rebuild (preset bind, custom edit,
+                # pre-spawn) and each rebuild has to derive from the untouched original, so the
+                # caller's decision object is never mutated.
+                $tupleDecision = @{}
+                foreach ($tupleKey in $PrefetchDecision.Keys) { $tupleDecision[$tupleKey] = $PrefetchDecision[$tupleKey] }
+                $tupleDecision['k'] = [long]$script:CollectTupleK
+                $tupleDecision['n'] = [long]$script:CollectTupleN
+                # The reserved label, spent rather than a new one minted (see PREFETCH_PROVENANCE_ENV).
+                $tupleDecision['provenance'] = $script:PREFETCH_PROVENANCE_ENV
+                # Explicitly nulled: New-PfBase puts prefetch_init_v1 on EVERY branch, and a
+                # substituted pair is not an init_v1 product. Left alone, the status screen and the
+                # EFFECTIVE record would echo a version this pair never had.
+                $tupleDecision['init_version'] = $null
+                # candidate_activation stays 'opt-in-fixed'. Raising it to 'catalog-fixed' would
+                # forge an evidence grade and lowering it to 'off' would contradict on=$true.
+                $tupleDecision['warning'] = 'collection-only explicit tuple; no performance or recommendation claim is made for this pair'
+                $pfIn = $tupleDecision
+            }
+        }
+    }
+    $pf = Resolve-PrefetchForQd -Decision $pfIn -EffectiveQd $qdEff
 
     # LS 1-2: outside the single 'on' row the raw K/N keys must be ABSENT, not set to zero.
     $env0.Remove($script:ENV_PREFETCH_K) | Out-Null
@@ -6097,6 +8726,90 @@ function Build-EffectiveConfig {
     if ($pf.qd_demoted) {
         Write-Diag -Kind 'PREFETCH_QD_DEMOTED' -Data @{ effective_qd = $qdEff; catalog_n = $pf.catalog_n
                                                         catalog_k = $pf.catalog_k; echo = $pf.echo }
+    }
+
+    # 5CTL 1-2 / 3 : the collection decision. It sits HERE, and the position is the contract:
+    #   - the approved scope covers the FINAL effective QD and the K/N pair, and both were only
+    #     settled in the lines immediately above;
+    #   - this is still ahead of Update-WarmstartEligibility, the last statement that reads the env
+    #     map, so an injected key cannot be missed by it;
+    #   - and because this whole function re-runs on EVERY rebuild (preset bind, custom edit,
+    #     pre-spawn), the campaign record is re-checked every time and the previous scope answer is
+    #     discarded - which is exactly the 5CTL 1-1-1 re-check contract, obtained by placement
+    #     rather than by a second copy of the rule.
+    # K/N are taken from the resolved pair even when prefetch is off, so the scope digest is a
+    # function of the config the approval was written against, not of whether the row turned on.
+    $collect = Resolve-CollectDecision -Profile $Profile -ModelPath $ModelPath `
+                   -Identity ([string]$PrefetchDecision.identity) -EffectiveQd $qdEff `
+                   -PrefetchK ([int]$pf.k) -PrefetchN ([int]$pf.n) `
+                   -ExpectSha256 $ExpectSha256 -RepackManifestSha256 $RepackManifestSha256 `
+                   -MetricsPath ([string]$env0[$script:ENV_METRICS])
+    # 5CT-TUPLE 1-5-2 P0: the initial promotion point. It sits HERE - after the metrics path, the
+    # QD, $pf and the approved-scope verdict are all final, and BEFORE the collect env keys are
+    # written on the line below - so it judges the finished decision and no child can have been
+    # spawned. Note what it does NOT do: it does not recompute the approved scope. That digest has
+    # one implementation (Get-CollectApprovedScopeSha256) reached through Resolve-CollectDecision,
+    # which already recomputed it on the SUBSTITUTED K/N above; a second copy of that formula here
+    # is exactly the drift this atom refuses to create. The scope check therefore enforces the
+    # tuple for free, and the gate only has to read the verdict.
+    Assert-CollectTupleLanded -Prefetch $pf -Collect $collect -EligibilityFailure $collectTupleElig `
+        -Site 'config' -PostSpawn $false
+    # 5CA 1-6 L-A / L-B: the bundle load runs HERE and its verification object is injected into
+    # the config.env half of the explicit environment block - the ONLY transport this spec has
+    # (1-6-1 VW-1). Position is the contract for the same reason the collect keys are here: the
+    # metrics path is final, and no child has been spawned yet, so the whole load is finished
+    # before the server can exist (I-2's TOCTOU window is closed by ordering, not by locking).
+    #   - the load is an axis INDEPENDENT of mode and of the activation verdict: it runs even on
+    #     a run that was demoted to the catalog arm, which is what selftest L-11 pins down;
+    #   - the view is issued on EVERY accepted load, which is why the identity digest is
+    #     observable in a run where adaptation is off;
+    #   - the grant is NOT issued here. In this phase there is no approved activation, so its
+    #     issuing path is reachable code that nothing reaches. Making that condition explicit is
+    #     the point: a grant appearing in this phase would be a defect, not a feature.
+    $env0.Remove($script:PREFETCH_ENV_BUNDLE_VIEW) | Out-Null
+    $env0.Remove($script:PREFETCH_ENV_ACTIVATION_GRANT) | Out-Null
+    # I-2: read the bundle ONCE per session, never re-read. Guard and read both live in
+    # Get-PrefetchLoadOnce so there is ONE of them; see that function for why.
+    [void](Get-PrefetchLoadOnce)
+    if ($script:PrefetchLoad.Result -ceq 'accepted') {
+        $env0[$script:PREFETCH_ENV_BUNDLE_VIEW] =
+            (New-PrefetchBundleView -Load $script:PrefetchLoad `
+                 -ExpectedIdentity $script:PREFETCH_BUNDLE_IDENTITY)
+        Write-Diag -Kind 'PREFETCH_BUNDLE_ACCEPTED' -Data @{
+            identity_digest = $script:PrefetchLoad.IdentityDigest
+            kn = $script:PrefetchLoad.KnSupportSet }
+    } else {
+        Write-Diag -Kind 'PREFETCH_BUNDLE_REJECTED' -Data @{
+            reason = $script:PrefetchLoad.Reason; detail = $script:PrefetchLoad.Detail
+            additional = ($script:PrefetchLoad.AdditionalDefects -join ',') }
+    }
+
+    # 5CTL 1-2: absence IS off. The value 'off' is never injected - same shape the K/N keys use
+    # above, and the engine's own default is off (ggml-moe-phaseb.cpp:506 accepts only exact 'on').
+    $env0.Remove($script:ENV_PHASEB_COLLECT) | Out-Null
+    if ([string]$collect.state -ceq 'on') {
+        $env0[$script:ENV_PHASEB_COLLECT] = 'on'
+        # 5CT-REPAIR 1 (B_env, the collect-only lock). $env0 above STARTS as a copy of the profile's
+        # defaults.env, so "the collect child does not carry the mode" is not something this function
+        # may assume - it is something it has to DO. Both keys are therefore removed explicitly, and
+        # the removal is unconditional rather than guarded by ContainsKey: Remove on an absent key is
+        # a no-op, and a guard would only add a branch that can rot.
+        # Why the mode must go: the engine resolves mode and collect independently (:494-506), so a
+        # profile that ever ships MOE_DIRECT_PHASEB=trace|equiv|observe would put a second claimant on
+        # the shared sidecar buffer whose size this run computed for the ledger ALONE (margin 0), and
+        # the ledger would start dropping records. The test hint goes for a plainer reason: a
+        # collection run is a measurement run, and fault injection is not measurable input.
+        # Today no shipped profile carries either key - the selftest locks that, and registering one
+        # later is a 5CTL re-review, not a silent change.
+        $env0.Remove($script:ENV_PHASEB_MODE) | Out-Null
+        $env0.Remove($script:ENV_PHASEB_TEST_HINT) | Out-Null
+        # 5CT-REPAIR 1 (B_env / B_cap): the sidecar prefix and the derived buffer cap. The prefix is
+        # derived from the SAME metrics value the decision carried, through the single formula, so
+        # the manifest's metrics_path and the ledger the engine writes can never describe two
+        # different runs. buf_mb was checked at CLI resolution time (Resolve-CollectRequest), long
+        # before this point - failing it here would be after the status screen has already spoken.
+        $env0[$script:ENV_PHASEB_OUT]    = Get-CollectOutPrefix -MetricsPath ([string]$collect.metrics_path)
+        $env0[$script:ENV_PHASEB_BUF_MB] = [string]$script:CollectBufMb
     }
 
     # LS 13-1: config-dependent eligibility is re-decided on EVERY returned effective config, and it
@@ -6118,7 +8831,11 @@ function Build-EffectiveConfig {
     return @{ argv = $argv; env = $env0; port = [int]$port; budget_mb = $budget; qd = $qdEff;
               warmup = $warm; prefetch = $pf; host = $host0; warmstart = $wsOverride
               autosave = $asOverride; warmup_forced_reason = $warmForcedReason
-              budget_source = $bt.source; budget_unmeasured = [bool]$bt.unmeasured }
+              budget_source = $bt.source; budget_unmeasured = [bool]$bt.unmeasured
+              # 5CTL 1-4 / 2-2-1: the collect decision travels IN the config, the same way the
+              # prefetch decision does. That is what lets the status screen, the EFFECTIVE record
+              # and the pending publish all read ONE answer instead of re-deriving three.
+              collect = $collect }
 }
 
 # LS 13-2: performance-neutral override keys do not make a configuration "custom". They change no
@@ -7836,7 +10553,8 @@ function Stop-OwnedChildForRecovery {
 }
 
 function Invoke-WarmstartRecoveryRestart {
-    param($Config, [string] $ServerExe, [string] $Root, [string] $StdOutPath, [string] $StdErrPath)
+    param($Config, [string] $ServerExe, [string] $Root, [string] $StdOutPath, [string] $StdErrPath,
+          [string] $OldReservationId = '')
     $script:WarmstartCtx.recovery_count = $script:WarmstartCtx.recovery_count + 1
     $n = [int]$script:WarmstartCtx.recovery_count
     Write-Line '[kv] the slot erase failed as well; restarting the server so the slot is known clean.'
@@ -7854,10 +10572,50 @@ function Invoke-WarmstartRecoveryRestart {
         $env2[$script:ENV_METRICS] = New-KvRecoveryPath -Path ([string]$env2[$script:ENV_METRICS]) -Incarnation $n
         Write-Diag -Kind 'METRICS_ENV' -Data @{ injected = $true; path = $env2[$script:ENV_METRICS]
                                                 recovery_incarnation = $n }
+        # 5CT-REPAIR 1 (B_env, the recovery re-derivation clause): the sidecar prefix is a function of the metrics
+        # path, and the line above just moved that path. It is re-derived HERE, through the same
+        # single formula, because the next statement is the spawn - Update-CollectAfterRecovery runs
+        # AFTER it and only repairs the manifest, so a prefix fixed there would arrive at a child
+        # that has already been started on the previous incarnation's prefix and is already writing
+        # its ledger next to a metrics file nobody will read.
+        # The collect key's presence IS the "is this a collecting child" test: this function is also
+        # reached on runs that never collected, and those must not gain a sidecar prefix here.
+        if ($env2.ContainsKey($script:ENV_PHASEB_COLLECT)) {
+            $env2[$script:ENV_PHASEB_OUT] = Get-CollectOutPrefix -MetricsPath ([string]$env2[$script:ENV_METRICS])
+            Write-Diag -Kind 'COLLECT_RECOVERY_OUT' -Data @{ incarnation = $n
+                                                             out = [string]$env2[$script:ENV_PHASEB_OUT]
+                                                             buf_mb = [string]$env2[$script:ENV_PHASEB_BUF_MB] }
+        }
     }
     $cfg2 = @{}
     foreach ($k in $Config.Keys) { $cfg2[[string]$k] = $Config[$k] }
     $cfg2['env'] = $env2
+
+    # 5CT-REPAIR r3 (G-1): the same "child spawn 전 부재" fence the main flow runs before its
+    # FIRST spawn (:12150) has to run again here, before this SECOND spawn, because the OUT
+    # re-derivation above just pointed the sidecar prefix at a name nobody has checked yet.
+    if ($cfg2.env.ContainsKey($script:ENV_PHASEB_COLLECT)) {
+        $ledgerPath2 = Get-CollectLedgerPath -OutPrefix ([string]$cfg2.env[$script:ENV_PHASEB_OUT])
+        $ledgerPre2 = Test-CollectLedgerAbsent -LedgerPath $ledgerPath2
+        if (-not $ledgerPre2.ok) {
+            Disable-CollectOnConfig -Config $cfg2 -Reason 'collect_manifest_preflight_failed' `
+                -Detail ([string]$ledgerPre2.detail + ' (recovery incarnation ' + $n + ')')
+            # 5CT-REPAIR r4: this branch turns collect.state off, which makes the caller's
+            # "state -eq 'on'" gate around Update-CollectAfterRecovery false - so that function's
+            # OWN Remove-CollectOwnPending call never runs, and the FIRST child's pending manifest
+            # would otherwise be orphaned. Best-effort, same as every other call to this cleanup.
+            Remove-CollectOwnPending -CanonicalPath ([string]$Config.collect.canonical_path) `
+                -ReservationId $OldReservationId
+            # 5CT-TUPLE 1-5-2 L1: a tuple run may not continue past this point. The call is AFTER
+            # the cleanup above and BEFORE the second spawn below, which is the whole reason the
+            # gate is not simply placed at the top of Disable-CollectOnConfig: doing that would
+            # skip the Remove-CollectOwnPending line above and orphan the first child's pending
+            # manifest. There is no live child here - the first was already stopped by
+            # Stop-OwnedChildForRecovery - and the second is never started.
+            Assert-CollectTupleLanded -Prefetch $cfg2.prefetch -Collect $cfg2.collect `
+                -EligibilityFailure 'none' -Site 'recovery_ledger_conflict' -PostSpawn $false
+        }
+    }
 
     $sr = Start-OwnedChild -Exe $ServerExe -Args0 $Config.argv -EnvVars $env2 -WorkDir $Root `
               -StdOutPath $newOut -StdErrPath $newErr -NewProcessGroup $true -Role 'server'
@@ -7907,10 +10665,15 @@ function Confirm-User {
 }
 
 function Show-Status {
-    param($Profile, $Config, $ProbeResult, $Custom, $RamVerdict, $Sweep, [string] $QdSource, $SurfaceAxes = $null)
+    param($Profile, $Config, $ProbeResult, $Custom, $RamVerdict, $Sweep, [string] $QdSource, $SurfaceAxes = $null,
+          [string] $RepackMode = '')
     $gates = Get-JsonValue -Obj $Profile -Name 'gates'
     $fmt = Test-JsonBooleanTrue (Get-JsonValue -Obj $gates -Name 'format_validated')
     $perf = Test-JsonBooleanTrue (Get-JsonValue -Obj $gates -Name 'performance_validated')
+    # LUX-1 B1: a DISPLAY axis. The mode never re-runs, re-reads or re-decides a gate here (B3) -
+    # it only changes which sentence a row is allowed to say. Default '' keeps every pre-LUX caller
+    # byte-identical.
+    $isVirtual = ($RepackMode -ceq $script:REPACK_MODE_VIRTUAL)
 
     Write-Line ''
     Write-Line '================ MoE-Direct - launch configuration ================'
@@ -7919,6 +10682,9 @@ function Show-Status {
     # LS 1-3: three separate axes. Custom only downgrades the performance axis.
     $fmtTxt = 'FAIL'
     if ($fmt) { $fmtTxt = 'PASS (repack verify)' }
+    # LUX-1 B2: on the virtual path the catalog's format_validated says nothing about THIS run - the
+    # gate that actually ran is the 8-item virtual plan gate, and it passed or the run is over.
+    if ($isVirtual) { $fmtTxt = $script:FORMAT_GATE_VIRTUAL_TEXT }
     Write-Line ('  format gate      : {0}' -f $fmtTxt)
     # BUDGET_AUTOTUNE_SPEC v0.2 section 2: an autotuned budget that is not the catalog's measured
     # one puts the run off the measured operating point, so it demotes this axis for the same reason
@@ -7929,6 +10695,13 @@ function Show-Status {
     # below it could be a true statement about this run.
     if ($script:PinMismatchLatch) {
         Write-Line '  performance gate : [unmeasured] (the catalog source pin does not match this file)'
+    } elseif ($isVirtual) {
+        # LUX-1 B2: below the pin mismatch and above every configuration demotion. The mismatch says
+        # "this is not the measured FILE" - the stronger statement, so it keeps first place. This one
+        # says "this is not the measured PATH", and everything below it describes a configuration
+        # applied to the catalog's PACKED artifact, so none of those rows could be true of this run.
+        # Placing it here is also what makes a -Repro/-Smoke run unable to reach PASS.
+        Write-Line ('  performance gate : {0}' -f $script:PERF_GATE_VIRTUAL_TEXT)
     } elseif ($Custom) {
         Write-Line '  performance gate : [unmeasured] (custom configuration)'
     } elseif ($Config.budget_unmeasured) {
@@ -7955,6 +10728,12 @@ function Show-Status {
     if ($null -ne $SurfaceAxes) {
         Write-Line ''
         Write-Line ('  copy integrity     : {0}' -f $SurfaceAxes.copy_integrity)
+        # LUX-1 B2: the virtual note sits directly under the axis it qualifies and before the other
+        # two, so a reader never has to cross an unrelated axis to learn why copy integrity is N/A.
+        # Absent on the packed path (the key is not even present), so packed output is unchanged.
+        if ($SurfaceAxes.note_virtual) {
+            foreach ($nv in @($SurfaceAxes.note_virtual)) { Write-Line ('                       {0}' -f $nv) }
+        }
         Write-Line ('  inventory authority: {0}' -f $SurfaceAxes.inventory_authority)
         Write-Line ('  serving validation : {0}' -f $SurfaceAxes.serving_validation)
         if ($SurfaceAxes.note) { Write-Line ('                       {0}' -f $SurfaceAxes.note) }
@@ -8015,6 +10794,50 @@ function Show-Status {
     if ($pfd.on) {
         Write-Line '                     candidate only - the engine seal decides the final activation.'
     }
+    # 5CT-TUPLE 2-4: the tuple echo. Unlike the prefetch and collect blocks around it these four
+    # fields are NOT printed on every run - they appear only when a tuple was supplied, so a run
+    # without one prints exactly the field set, and exactly the bytes, it printed before this atom.
+    # requested_k / requested_n / prefetch_provenance above already show the SUBSTITUTED values;
+    # these four answer the separate question of which surface produced them.
+    if ($script:CollectTupleRequested -eq $true) {
+        Write-Line ('                     collect_tuple_requested={0}' -f 'True')
+        Write-Line ('                     collect_tuple_k={0}' -f [int]$script:CollectTupleK)
+        Write-Line ('                     collect_tuple_n={0}' -f [int]$script:CollectTupleN)
+        Write-Line ('                     collect_tuple_surface={0}' -f 'phaseb_collect')
+    }
+    # 5CTL 1-4: the mandatory COLLECT echo, on the same discipline as the prefetch block above -
+    # the resolved state and the reason are printed on EVERY run under the spec's own field names,
+    # nulls included, so the pair can be consumed as a contract rather than inferred from silence.
+    # A run that never asked still prints a state; its reason is simply 'none'.
+    $col = $Config.collect
+    if ($null -ne $col) {
+        # ON is reported as a CANDIDATE only (5CTL 1-4): the engine's own phaseb_collect key, not
+        # this launcher, is what says collection actually happened. OFF goes through the single
+        # formatter so a reason cannot be spelled a second way; 'none' is not a refusal, so it
+        # renders as a plain 'off' rather than off(reason=none).
+        $colEcho = $script:COLLECT_ECHO_ON
+        if ([string]$col.state -cne 'on') {
+            $colEcho = 'off'
+            if ([string]$col.reason -cne 'none') {
+                $colEcho = Get-CollectOffEcho -Reason ([string]$col.reason)
+            }
+        }
+        Write-Line ('  phaseb_collect   : {0}' -f $colEcho)
+        Write-Line ('                     collect_requested={0} collect_reason={1}' -f
+                    (Format-PfField $col.requested), (Format-PfField $col.reason))
+        # 5CTL 1-1-1: on an off run this is the raw value as written - it was never resolved,
+        # opened, parsed or hashed, and printing it is the only use it has.
+        Write-Line ('                     campaign_path={0}' -f (Format-PfField $col.campaign_raw))
+        if ([string]$col.state -ceq 'on') {
+            # 5CTL 1-4 (M6): which approval scope this run collects under has to be visible on the
+            # screen, not only in the manifest.
+            Write-Line ('                     campaign_id={0} campaign_revision={1} minimum_sample_count={2}' -f
+                        (Format-PfField $col.campaign.campaign_id),
+                        (Format-PfField $col.campaign.campaign_revision),
+                        (Format-PfField $col.campaign.minimum_sample_count))
+            Write-Line '                     candidate only - the engine seal decides whether collection happened.'
+        }
+    }
     if ($RamVerdict -and $RamVerdict.verdict -eq 'unmeasured') {
         Write-Line ('  ram verdict      : [unmeasured] ({0})' -f $RamVerdict.reason)
     }
@@ -8048,6 +10871,10 @@ function Show-Status {
     }
     Write-Line ''
     Write-Line '  reference measurements (catalog-rendered; conditions required):'
+    # LUX-1 B2: the rows below are catalog measurements of the PACKED path. They are labelled rather
+    # than hidden - deleting an honest number is worse than stating which path produced it - and
+    # Format-ReferenceMeasurements itself is untouched.
+    if ($isVirtual) { Write-Line ('  {0}' -f $script:REFERENCE_PACKED_ONLY_NOTE) }
     foreach ($row in (Format-ReferenceMeasurements -Profile $Profile)) { Write-Line $row }
     Write-Line ''
     Write-Line '  I/O ceiling is not an expected tok/s. Fixed per-token cost is machine specific and'
@@ -8163,6 +10990,24 @@ $script:RECENT_MODELS_SHOW   = 8    # recent entries offered in the menu
 $script:SCAN_MODELS_SHOW     = 12   # scanned entries offered in the menu
 $script:SCAN_MAX_DEPTH       = 3    # path components below the root, file included
 $script:MODELS_DIR_NAME      = 'moe-models'
+
+# LUX-1 A1: the two toggle rows are the only rows that are re-rendered while the menu is up, so
+# their text is declared ONCE, as a format string with the live value in {0}. The prefix the toggle
+# callback matches on is DERIVED from that format rather than written beside it - a second literal
+# spelling of the same words is a copy no text search can tie back to the original.
+$script:MENU_ROW_ARCH_TEMPLATE_FMT = 'arch template: {0} (toggle)'
+$script:MENU_ROW_REPACK_MODE_FMT   = 'repack mode: {0} (toggle)'
+# 5CA A6' UI path (HANDOFF_DEV 2-0): the prefetch REQUEST joins the same row group. Until this
+# atom the only ways to move it were -Prefetch and a stored preset - the custom editor states in
+# its own comment that it does not offer it - and a feature reachable only from a command line is
+# a developer-only state, not a product feature.
+$script:MENU_ROW_PREFETCH_FMT      = 'prefetch: {0} (toggle)'
+$script:MENU_ROW_ARCH_TEMPLATE_PREFIX =
+    $script:MENU_ROW_ARCH_TEMPLATE_FMT.Substring(0, $script:MENU_ROW_ARCH_TEMPLATE_FMT.IndexOf('{'))
+$script:MENU_ROW_REPACK_MODE_PREFIX =
+    $script:MENU_ROW_REPACK_MODE_FMT.Substring(0, $script:MENU_ROW_REPACK_MODE_FMT.IndexOf('{'))
+$script:MENU_ROW_PREFETCH_PREFIX =
+    $script:MENU_ROW_PREFETCH_FMT.Substring(0, $script:MENU_ROW_PREFETCH_FMT.IndexOf('{'))
 
 function Get-RecentModelsPath {
     return (Join-Path (Get-LauncherStateDir) 'recent_models.json')
@@ -8496,10 +11341,25 @@ function Test-MenuModeAvailable {
 # "Enter = start" footer read as a contradiction once the focus moved (real screen: "> stop" under
 # a footer promising start). Display only - the Enter behaviour itself is unchanged. The
 # non-interactive text prompt keeps its own "(Enter = start)" wording, which is accurate there.
+#
+# LUX-1 A1 (a): -ToggleIndices / -OnToggle keep a toggle round trip INSIDE the widget. Before, the
+# caller re-invoked the whole menu after each toggle, and a new invocation writes a new title, new
+# blank lines and a new anchor - so every press printed the block again, below the previous one,
+# with the cursor back on row 0. Handling it here keeps "one block = one widget call" a structural
+# property rather than a convention, and it keeps the input-queue arming (LS 11-7 a) and the
+# TreatControlCAsInput window at one per menu session instead of one per press.
+# LUX-1 A4-b seam: RawUI is read through Get-MenuRawUI and nowhere else. $Host is Constant,AllScope
+# on PS 5.1 (measured), so an in-process harness cannot substitute it; a one-line function it can.
+# The default implementation returns the very object the old code read, so nothing observable moves.
+function Get-MenuRawUI {
+    return $Host.UI.RawUI
+}
+
 function Show-SelectionMenu {
     param([string] $Title, [string[]] $Items, [int] $InitialIndex = 0, [string] $Hint = '',
-          [string[]] $FocusHints = @(), [switch] $AcceptTyping)
-    $ru = $Host.UI.RawUI
+          [string[]] $FocusHints = @(), [switch] $AcceptTyping,
+          [int[]] $ToggleIndices = @(), [scriptblock] $OnToggle = $null)
+    $ru = Get-MenuRawUI
     $items0 = @($Items)
     if ($items0.Count -eq 0) { throw 'selection menu called with no items' }
     $idx = $InitialIndex
@@ -8559,7 +11419,33 @@ function Show-SelectionMenu {
             $vk = [int]$k.VirtualKeyCode
             if ($vk -eq 38) { $idx--; if ($idx -lt 0) { $idx = $items0.Count - 1 }; continue }          # Up
             if ($vk -eq 40) { $idx++; if ($idx -ge $items0.Count) { $idx = 0 }; continue }              # Down
-            if ($vk -eq 13) { return @{ index = $idx; typed = $typed } }                                # Enter
+            if ($vk -eq 13) {                                                                          # Enter
+                # LUX-1 A1-1/A1-2: with no -ToggleIndices this is one -contains against an empty
+                # array and the return below is reached exactly as before.
+                if ((@($ToggleIndices) -contains $idx) -and ($null -ne $OnToggle)) {
+                    # A1-1: named parameters only. Positional binding collapses a [string[]] into a
+                    # single joined element on PS 5.1 (measured), which would silently hand the
+                    # callback a one-row menu.
+                    # A1-4 frozen order: (a) call the handler, (b) check the cursor, re-anchoring if
+                    # it moved, (c) adopt the returned rows, (d) redraw. $lineCount is NOT touched:
+                    # a toggle rewrites one existing row, it never adds or removes one.
+                    $new = & $OnToggle -Index $idx -Rows $items0
+                    $cur = $ru.CursorPosition
+                    # A handler that printed something (the Save-ArchTemplatePref failure warning is
+                    # the reachable case) left the cursor below the block. Repainting at the old
+                    # anchor would erase that warning, so the menu moves down instead and the
+                    # warning stays on screen. Premise: the block is not pinned to the bottom of the
+                    # buffer - a saturated buffer clamps Y and this comparison cannot see the move.
+                    if (($cur.X -ne 0) -or ($cur.Y -ne ($anchor.Y + $lineCount))) {
+                        for ($i = 0; $i -lt $lineCount; $i++) { Write-Line '' }
+                        $pos = $ru.CursorPosition
+                        $anchor = New-Object System.Management.Automation.Host.Coordinates 0, ([Math]::Max(0, [int]$pos.Y - $lineCount))
+                    }
+                    $items0 = @($new)
+                    continue
+                }
+                return @{ index = $idx; typed = $typed }
+            }
             if (-not $AcceptTyping) { continue }
             if ($vk -eq 8) { if ($typed.Length -gt 0) { $typed = $typed.Substring(0, $typed.Length - 1) }; continue }
             $ch = [char]$k.Character
@@ -8625,68 +11511,114 @@ function Select-ModelPathInteractive {
         # toggle stores nothing, so there is no damaged file it could launder away. -NonInteractive
         # never gets this far (Test-MenuModeAvailable returns false), which is item 2's other half.
         $rmToggle = (-not $script:RepackModeCanonicalCli)
-        # The candidate list (and its header reads) is built ONCE; only the toggle row is re-rendered.
-        while ($true) {
-            $labels = @()
-            foreach ($c in $items0) { $labels += (Format-ModelCandidate -Candidate $c) }
-            $labels += 'enter path manually'
-            $toggleIndex = -1
-            if ($toggle) {
-                $toggleIndex = $labels.Count
-                $labels += ('arch template: {0} (toggle)' -f $script:ArchTemplateResolved)
-            }
-            # UI-V 1 (Amendment 1, item 1): one row, in the same position group as the arch-template
-            # one, rendered from the live value so a press is visible on the very next draw. The
-            # default text is 'packed' because RV 3's default is unchanged by this atom.
-            $rmToggleIndex = -1
-            if ($rmToggle) {
-                $rmToggleIndex = $labels.Count
-                $labels += ('repack mode: {0} (toggle)' -f $script:RepackModeResolved)
-            }
-            $title = 'Select the model GGUF   (Up/Down + Enter)'
-            if ($cand.truncated) {
-                $title = $title + ('   [scan list truncated to the {0} most recent files]' -f $script:SCAN_MODELS_SHOW)
-            }
-            # UX 1-3: each label came from a single header read and cannot see the shard count, the
-            # per-shard bytes or the source pin, so the screen says so rather than letting a
-            # provisional answer read as the final one.
-            $title = $title + "`n  " + $script:LABEL_PROVISIONAL_NOTE
-            $r = Show-SelectionMenu -Title $title -Items $labels -InitialIndex 0 `
-                     -Hint ('  {0} recent, {1} found under <drive>:\{2}' -f $cand.recent_count, $cand.scan_count, $script:MODELS_DIR_NAME)
-            # Codex build r1 M3: recorded only NOW, because only now has the toggle actually been on
-            # screen. Setting it while building the item list meant a render/host fault - which falls
-            # back to the text prompt without ever drawing anything - still counted as "the user was
-            # offered this control", and that silently deleted the -Model fallback question.
-            if ($toggle) { $script:ArchTemplateToggleOffered = $true }
-            # UI-V 1 (Amendment 1, item 7): the same Codex build r1 M3 discipline for the repack-mode
-            # row. Recorded only NOW, because a render/host fault falls back to the text prompt
-            # without ever drawing anything - and counting that as "offered" would silently delete
-            # the pre-identification question, which is the one entry point such a run has left.
-            if ($rmToggle) { $script:RepackModeToggleOffered = $true }
-            $i = [int]$r.index
-            if ($toggle -and $i -eq $toggleIndex) {
-                # UX 1-1-5: recorded immediately AND latched for this run, then the menu is redrawn
+        # 5CA A6' UI path: the prefetch row on the same terms - unless -Prefetch already fixed the
+        # request for this run. Nothing is written outside the run by pressing it (the value only
+        # reaches the preset file if the run later saves settings), so there is no discard-lock
+        # equivalent here either.
+        $pfToggle = (([string]$Prefetch).Trim().Length -eq 0)
+        # The candidate list (and its header reads) is built ONCE - and so is the MENU. LUX-1 A1
+        # moved the toggle round trip inside the widget: a press now repaints the toggle row where
+        # it already stands, instead of returning here to draw a second block below the first with
+        # the cursor reset to row 0.
+        $labels = @()
+        foreach ($c in $items0) { $labels += (Format-ModelCandidate -Candidate $c) }
+        $labels += 'enter path manually'
+        $toggleIndices = @()
+        if ($toggle) {
+            $toggleIndices += $labels.Count
+            $labels += ($script:MENU_ROW_ARCH_TEMPLATE_FMT -f $script:ArchTemplateResolved)
+        }
+        # UI-V 1 (Amendment 1, item 1): one row, in the same position group as the arch-template
+        # one, rendered from the live value so a press is visible on the very next draw. The
+        # default text is 'packed' because RV 3's default is unchanged by this atom.
+        if ($rmToggle) {
+            $toggleIndices += $labels.Count
+            $labels += ($script:MENU_ROW_REPACK_MODE_FMT -f $script:RepackModeResolved)
+        }
+        if ($pfToggle) {
+            $toggleIndices += $labels.Count
+            $labels += ($script:MENU_ROW_PREFETCH_FMT -f (Get-PrefetchRequestDisplay))
+        }
+        $title = 'Select the model GGUF   (Up/Down + Enter)'
+        if ($cand.truncated) {
+            $title = $title + ('   [scan list truncated to the {0} most recent files]' -f $script:SCAN_MODELS_SHOW)
+        }
+        # UX 1-3: each label came from a single header read and cannot see the shard count, the
+        # per-shard bytes or the source pin, so the screen says so rather than letting a
+        # provisional answer read as the final one.
+        $title = $title + "`n  " + $script:LABEL_PROVISIONAL_NOTE
+        # LUX-1 A1-3: this body runs in a child scope of THE WIDGET, not of this function - an
+        # unbound scriptblock invoked with & reads the locals of whoever called it, and that is
+        # Show-SelectionMenu (measured, PS 5.1). So it reads nothing but its own param() and
+        # $script: state, and it identifies the pressed row by PREFIX rather than by an index
+        # captured out here. A1-6 frozen order per branch: write the value, then latch "offered",
+        # then reformat the row. A1-3b: exactly one object leaves the pipeline - a [string[]] as
+        # long as $Rows - and the widget trusts that rather than re-validating it.
+        $onToggle = {
+            param([int] $Index, [string[]] $Rows)
+            # .Clone(), not @($Rows): a cast of an array to the type it already has hands back the
+            # SAME object (measured), so editing it would rewrite the widget's live row array behind
+            # its back and the "adopt the returned rows" step would be doing nothing.
+            $tgRows = [string[]] (@($Rows).Clone())
+            $tgRow  = [string]$tgRows[$Index]
+            if ($tgRow.StartsWith($script:MENU_ROW_ARCH_TEMPLATE_PREFIX)) {
+                # UX 1-1-5: recorded immediately AND latched for this run, then the row is redrawn
                 # so the new state is visible before a model is picked. This is the only control that
                 # reaches the user before the first template repack - the custom editor is three
                 # stages too late (selection, derive-plan, repack confirmation).
-                $next = 'off'
-                if ($script:ArchTemplateResolved -cne 'on') { $next = 'on' }
-                Set-ArchTemplateInteractive -Value $next
-                continue
+                $tgNext = 'off'
+                if ($script:ArchTemplateResolved -cne 'on') { $tgNext = 'on' }
+                [void](Set-ArchTemplateInteractive -Value $tgNext)
+                $script:ArchTemplateToggleOffered = $true
+                $tgRows[$Index] = ($script:MENU_ROW_ARCH_TEMPLATE_FMT -f $script:ArchTemplateResolved)
             }
-            if ($rmToggle -and $i -eq $rmToggleIndex) {
+            elseif ($tgRow.StartsWith($script:MENU_ROW_REPACK_MODE_PREFIX)) {
                 # Amendment 1 item 3: latched for this run and redrawn immediately, so the mode is on
                 # screen before a model is picked. Set-RepackModeInteractive is also where RV 2-4's
                 # refusal re-runs, so a -QD supplied on the command line stops the run here instead
-                # of being dropped without a word further down.
-                $rmNext = $script:REPACK_MODE_PACKED
-                if (-not (Test-VirtualRepack)) { $rmNext = $script:REPACK_MODE_VIRTUAL }
-                Set-RepackModeInteractive -Value $rmNext
-                continue
+                # of being dropped without a word further down. That refusal is a LauncherExit: it
+                # travels the widget's finally (LS 11-7 b) and is re-thrown by the catch below.
+                $tgNext = $script:REPACK_MODE_PACKED
+                if (-not (Test-VirtualRepack)) { $tgNext = $script:REPACK_MODE_VIRTUAL }
+                [void](Set-RepackModeInteractive -Value $tgNext)
+                $script:RepackModeToggleOffered = $true
+                $tgRows[$Index] = ($script:MENU_ROW_REPACK_MODE_FMT -f $script:RepackModeResolved)
             }
-            if ($i -lt 0 -or $i -ge $items0.Count) { return $null }   # "enter path manually"
-            return [string]$items0[$i].path
+            elseif ($tgRow.StartsWith($script:MENU_ROW_PREFETCH_PREFIX)) {
+                # A6' UI path. A1-6 frozen order, same as the two rows above: write the value,
+                # latch "offered", then reformat the row. Three values, so a press CYCLES rather
+                # than flips, and the cycle order is the enum's. Nothing refuses a request here -
+                # adapt is a legal request that the activation axis answers with a refusal, and
+                # the screen that offered it already said so.
+                [void](Set-PrefetchRequestInteractive -Value (Get-PrefetchRequestNext -Current (Get-PrefetchRequestDisplay)))
+                $script:PrefetchRequestToggleOffered = $true
+                $tgRows[$Index] = ($script:MENU_ROW_PREFETCH_FMT -f (Get-PrefetchRequestDisplay))
+            }
+            return , $tgRows
         }
+        $r = Show-SelectionMenu -Title $title -Items $labels -InitialIndex 0 `
+                 -Hint ('  {0} recent, {1} found under <drive>:\{2}' -f $cand.recent_count, $cand.scan_count, $script:MODELS_DIR_NAME) `
+                 -ToggleIndices $toggleIndices -OnToggle $onToggle
+        # Codex build r1 M3: recorded only NOW, because only now has the toggle actually been on
+        # screen. Setting it while building the item list meant a render/host fault - which falls
+        # back to the text prompt without ever drawing anything - still counted as "the user was
+        # offered this control", and that silently deleted the -Model fallback question.
+        # A1-6: idempotent with the latch the callback writes, and it is THIS write that covers the
+        # run where the row was drawn and never pressed.
+        if ($toggle) { $script:ArchTemplateToggleOffered = $true }
+        # UI-V 1 (Amendment 1, item 7): the same Codex build r1 M3 discipline for the repack-mode
+        # row. Recorded only NOW, because a render/host fault falls back to the text prompt
+        # without ever drawing anything - and counting that as "offered" would silently delete
+        # the pre-identification question, which is the one entry point such a run has left.
+        if ($rmToggle) { $script:RepackModeToggleOffered = $true }
+        # A6' UI path: the same Codex build r1 M3 discipline for the prefetch row, and for the same
+        # reason - a render fault that never drew anything must not delete the one-shot question.
+        if ($pfToggle) { $script:PrefetchRequestToggleOffered = $true }
+        # A toggle row never comes back as a selection (the widget consumed it), so the only indexes
+        # that reach here are a candidate and "enter path manually".
+        $i = [int]$r.index
+        if ($i -lt 0 -or $i -ge $items0.Count) { return $null }   # "enter path manually"
+        return [string]$items0[$i].path
     } catch {
         # LS 11-7 b: same rule as the choice menu - a LauncherExit (cancellation) is re-thrown.
         if ($null -ne $_.Exception -and $_.Exception.GetType().FullName -eq 'MoeLauncher.LauncherExit') { throw }
@@ -8814,10 +11746,17 @@ function ConvertTo-EnvironmentBlockText {
 # the mandatory safety net (bind failure kills the child and refuses to launch).
 function Start-OwnedChild {
     param([string] $Exe, [string[]] $Args0, [hashtable] $EnvVars, [string] $WorkDir,
-          [string] $StdOutPath, [string] $StdErrPath, [bool] $NewProcessGroup, [string] $Role)
+          [string] $StdOutPath, [string] $StdErrPath, [bool] $NewProcessGroup, [string] $Role, [string] $SmokeModelPath = '')
 
     if (-not (Test-Path -LiteralPath $Exe -PathType Leaf)) {
         return @{ ok = $false; reason = ('executable missing: ' + $Exe) }
+    }
+    $smokePairs=$null;$smokeProducerBinding=$null
+    if ($Smoke -and $Role -ceq 'server') {
+        $smokePairs=New-ExplicitEnvironmentPairs -EnvVars $EnvVars
+        $smokeProducerBinding=Test-SmokeDirectInvocation -Argv $Args0 -EnvironmentPairs $smokePairs -ResolvedModelPath $SmokeModelPath
+        Write-Diag -Kind 'SMOKE_PRODUCER_BINDING' -Data $smokeProducerBinding
+        if (-not $smokeProducerBinding.ok) { return @{ok=$false;reason=('smoke producer binding failed: '+$smokeProducerBinding.reason)} }
     }
     $hOut = New-InheritableFile -Path $StdOutPath
     $hErr = New-InheritableFile -Path $StdErrPath
@@ -8848,7 +11787,7 @@ function Start-OwnedChild {
     $touch = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
     $snap = @{}
     if ($explicit) {
-        $pairs = New-ExplicitEnvironmentPairs -EnvVars $EnvVars
+        if ($null -ne $smokePairs) { $pairs=$smokePairs } else { $pairs = New-ExplicitEnvironmentPairs -EnvVars $EnvVars }
         $flags = [uint32]($flags -bor $script:CREATE_UNICODE_ENVIRONMENT)
         # StringToHGlobalUni appends its own terminator after the string, so the block already ends
         # in the required double NUL and the extra unit past it is never read.
@@ -8927,6 +11866,7 @@ function Start-OwnedChild {
         return @{ ok = $false; reason = 'job object bind failed (KILL_ON_JOB_CLOSE unset or assign failed); child killed to avoid an orphan' }
     }
     $script:OwnedChild.job = $job
+    if ($null -ne $smokeProducerBinding) { $script:OwnedChild['smoke_binding']=$smokeProducerBinding }
     Write-Diag -Kind 'CHILD_START' -Data @{ role = $Role; pid = $script:OwnedChild.pid; exe = $Exe;
                                             new_process_group = $NewProcessGroup; err_log = $StdErrPath }
     return @{ ok = $true; child = $script:OwnedChild }
@@ -9010,28 +11950,38 @@ function Test-EnginePolicyAnchor {
     return ($n -eq 1)
 }
 
-# R2-6: engine seal SUCCESS evidence. See the ENGINE_SEAL_MARKER comment for why this one is a
-# marker-inside-a-complete-line match instead of an exact whole-line literal.
-# Gate = the marker appears in a complete line EXACTLY ONCE and its slots=X/Y field is parsable.
-# The two slot numbers are recorded, never compared: X == Y is not an invariant (real passing run
-# emitted 648/128 - see the ENGINE_SEAL_SLOTS_REGEX comment for the captured counter-evidence).
+# Read only newline-complete producer records; no substring evidence is accepted.
 function Get-EngineSealAttestation {
     param($Child)
     $lines = Read-ChildStderrComplete -Child $Child
-    $hits = @()
-    foreach ($ln in $lines) { if ($ln.Contains($script:ENGINE_SEAL_MARKER)) { $hits += $ln } }
-    if ($hits.Count -eq 0) { return @{ ok = $false; count = 0; reason = 'no seal success line' } }
-    if ($hits.Count -ne 1) { return @{ ok = $false; count = $hits.Count; reason = ('seal success line seen ' + $hits.Count + ' times (expected exactly 1)') } }
-    $m = [regex]::Match($hits[0], $script:ENGINE_SEAL_SLOTS_REGEX)
-    if (-not $m.Success) { return @{ ok = $false; count = 1; reason = 'seal success line carries no parsable slots=X/Y'; line = $hits[0] } }
-    $res = @{ ok = $true; count = 1; slots_have = [long]$m.Groups[1].Value; slots_need = [long]$m.Groups[2].Value; line = $hits[0] }
-    $c = [regex]::Match($hits[0], $script:ENGINE_SEAL_COUNTS_REGEX)
-    if ($c.Success) {
-        $res['all'] = [long]$c.Groups[1].Value
-        $res['host'] = [long]$c.Groups[2].Value
-        $res['nonhost'] = [long]$c.Groups[3].Value
+    $records = @()
+    foreach ($ln in $lines) {
+        $kind = $null
+        $pattern = $null
+        if ($ln.StartsWith($script:ENGINE_SEAL_RAW_PREFIX)) { $kind = 'raw'; $pattern = $script:ENGINE_SEAL_RAW_REGEX }
+        elseif ($ln -cmatch $script:ENGINE_SEAL_INFO_PREFIX_REGEX) { $kind = 'info'; $pattern = $script:ENGINE_SEAL_INFO_REGEX }
+        if ($null -eq $kind) { continue }
+        $m = [regex]::Match($ln, $pattern)
+        if (-not $m.Success) { return @{ ok = $false; count = 0; reason = 'malformed complete seal success line'; line = $ln } }
+        $record = @{ kind = $kind; line = $ln }
+        try {
+            foreach ($field in @('all', 'host', 'nonhost', 'have', 'need', 'layers')) { $record[$field] = [long]$m.Groups[$field].Value }
+        } catch { return @{ ok = $false; count = 0; reason = 'seal numeric field is outside Int64'; line = $ln } }
+        $records += $record
     }
-    return $res
+    if ($records.Count -eq 0) { return @{ ok = $false; count = 0; reason = 'no seal success line' } }
+    foreach ($kind in @('raw', 'info')) {
+        $sameKind = @($records | Where-Object { $_.kind -ceq $kind })
+        if ($sameKind.Count -gt 1) { return @{ ok = $false; count = $records.Count; reason = ('seal success line seen ' + $records.Count + ' times (duplicate ' + $kind + ' attestation)') } }
+    }
+    if ($records.Count -eq 2) {
+        foreach ($field in @('all', 'host', 'nonhost', 'have', 'need', 'layers')) {
+            if ($records[0][$field] -ne $records[1][$field]) { return @{ ok = $false; count = 2; reason = ('seal representations disagree on ' + $field) } }
+        }
+    }
+    $one = $records[0]
+    return @{ ok = $true; count = 1; line_count = $records.Count; slots_have = $one.have; slots_need = $one.need
+              all = $one.all; host = $one.host; nonhost = $one.nonhost; moe_layers = $one.layers; line = $one.line }
 }
 
 # Diagnostic only (NOT the cancel gate - see Find-BoundCancelRelease). Total number of complete
@@ -9569,6 +12519,149 @@ function Invoke-HttpJson {
     }
 }
 
+# Smoke-only proof for the audited direct closed producer; no absence inference for router/log overrides.
+function Test-SmokeDirectInvocation {
+    param([string[]]$Argv,$EnvironmentPairs,[string]$ResolvedModelPath)
+    $modelValues=@()
+    for($i=0;$i -lt $Argv.Count;$i++) {
+        $a=[string]$Argv[$i]
+        if($a -ceq '-m' -or $a -ceq '--model') {
+            if($i+1 -ge $Argv.Count -or [string]::IsNullOrWhiteSpace($Argv[$i+1])) { return @{ok=$false;reason='empty model argument'} }
+            $i++;$modelValues += [string]$Argv[$i];continue
+        }
+        if($a -match '^(?:--model(?:=|-url)|-mu$|-hf|--hf-|--spec-draft-hf|--models-|--preset|--log-|--verbosity$|-lv$)') { return @{ok=$false;reason=('model/router/log override: '+$a)} }
+    }
+    if($modelValues.Count -ne 1 -or [string]::IsNullOrWhiteSpace($ResolvedModelPath)) { return @{ok=$false;reason='one resolved model argument required'} }
+    try { $model=[IO.Path]::GetFullPath($modelValues[0]);$resolved=[IO.Path]::GetFullPath($ResolvedModelPath) } catch { return @{ok=$false;reason='model path invalid'} }
+    if(-not [string]::Equals($model,$resolved,[StringComparison]::OrdinalIgnoreCase)) { return @{ok=$false;reason='model argument differs from resolved input'} }
+    $seen=New-Object 'Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    foreach($p in @($EnvironmentPairs)) {
+        $name=[string]$p.name
+        if([string]::IsNullOrWhiteSpace($name) -or -not $seen.Add($name)) { return @{ok=$false;reason='ambiguous explicit environment'} }
+        if($name -ieq 'LLAMA_SERVER_ROUTER_PORT' -or $name -ieq 'LLAMA_SERVER_CHILD_MODE' -or $name.StartsWith('LLAMA_ARG_',[StringComparison]::OrdinalIgnoreCase)) { return @{ok=$false;reason=('router/parser environment present: '+$name)} }
+    }
+    $environmentText=ConvertTo-EnvironmentBlockText -Pairs $EnvironmentPairs
+    $digest=[Security.Cryptography.SHA256]::Create()
+    try {$environmentHash=([BitConverter]::ToString($digest.ComputeHash([Text.Encoding]::Unicode.GetBytes($environmentText)))).Replace('-','').ToLowerInvariant()}finally{$digest.Dispose()}
+    return @{ok=$true;model=$model;argv=@($Argv);environment_sha256=$environmentHash;environment_keys=@($EnvironmentPairs|ForEach-Object{$_.name});producer='closed direct model-server; final timings/error logging calibrated per request'}
+}
+
+function Read-SmokeCapture {
+    param($Child)
+    try {
+        $fs=[IO.File]::Open($Child.err_log,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite)
+        try {
+            if($fs.Length -gt [int]::MaxValue) { throw 'capture exceeds bounded reader' }
+            $bytes=New-Object byte[] ([int]$fs.Length);$offset=0
+            while($offset -lt $bytes.Length) { $n=$fs.Read($bytes,$offset,$bytes.Length-$offset);if($n -le 0){throw 'capture truncated during read'};$offset+=$n }
+            $encoding=New-Object Text.UTF8Encoding($false,$true);$raw=$encoding.GetString($bytes)
+        } finally {$fs.Dispose()}
+        $lines=@();$partial=''
+        if($raw.Length -gt 0) {
+            $last=$raw.LastIndexOf("`n")
+            if($last -lt 0) {$partial=$raw} else {
+                $partial=$raw.Substring($last+1);$parts=$raw.Substring(0,$last+1) -split "`n"
+                for($i=0;$i -lt $parts.Count-1;$i++) {$lines += $parts[$i].TrimEnd("`r")}
+            }
+        }
+        $sha=[Security.Cryptography.SHA256]::Create()
+        try {$hash=([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()}
+        return @{ok=$true;raw=$raw;lines=$lines;partial=$partial;bytes=$bytes.Length;sha256=$hash}
+    } catch {return @{ok=$false;reason=('capture read failed: '+$_.Exception.Message);lines=@()}}
+}
+
+function Test-SmokeCaptureAdvance {
+    param($Previous,$Snapshot)
+    if($null -eq $Previous -or -not $Previous.ok -or $null -eq $Snapshot -or -not $Snapshot.ok) {return @{ok=$false;reason='unreadable capture history'}}
+    if($Previous.partial.Length -gt 0 -or $Snapshot.partial.Length -gt 0) {return @{ok=$false;reason='partial capture record'}}
+    if($Snapshot.bytes -lt $Previous.bytes -or -not $Snapshot.raw.StartsWith($Previous.raw,[StringComparison]::Ordinal)) {return @{ok=$false;reason='capture history changed or truncated'}}
+    return @{ok=$true}
+}
+
+function Get-SmokeCaptureEvents {
+    param($Snapshot)
+    if($null -eq $Snapshot -or -not $Snapshot.ok -or $Snapshot.partial.Length -gt 0) {return @{ok=$false;reason='unreadable or partial capture';events=@()}}
+    $prefix='^(?:[0-9]+(?:\.[0-9]+){3} [IWE] )?'
+    $events=@()
+    for($i=0;$i -lt $Snapshot.lines.Count;$i++) {
+        $line=[string]$Snapshot.lines[$i];$event=$null
+        $m=[regex]::Match($line,$prefix+'slot\s+launch_slot_:\s+id\s+([0-9]+)\s+\| task ([0-9]+) \| processing task, is_child = ([01])$')
+        if($m.Success){$event=@{kind='launch';slot=$m.Groups[1].Value;task=$m.Groups[2].Value;child=$m.Groups[3].Value}}
+        if($null -eq $event){$m=[regex]::Match($line,$prefix+'slot\s+release:\s+id\s+([0-9]+)\s+\| task ([0-9]+) \| stop processing: n_tokens = [0-9]+, truncated = [01]$');if($m.Success){$event=@{kind='release';slot=$m.Groups[1].Value;task=$m.Groups[2].Value}}}
+        if($null -eq $event){$m=[regex]::Match($line,$prefix+'slot\s+print_timings?:\s+id\s+([0-9]+)\s+\| task ([0-9]+) \|\s*(prompt eval time|eval time|total time|graphs reused)\s*=\s*(.+)$');if($m.Success){$event=@{kind='final';slot=$m.Groups[1].Value;task=$m.Groups[2].Value;field=$m.Groups[3].Value;value=$m.Groups[4].Value}}}
+        if($null -eq $event){$m=[regex]::Match($line,$prefix+'srv\s+stop: cancel task, id_task = ([0-9]+)$');if($m.Success){$event=@{kind='warning';task=$m.Groups[1].Value}}}
+        if($null -eq $event){$m=[regex]::Match($line,$prefix+'srv\s+send_error: task id = ([0-9]+), error: .*$');if($m.Success){$event=@{kind='error';task=$m.Groups[1].Value}}}
+        if($null -eq $event){$m=[regex]::Match($line,$prefix+'slot\s+print_timings?:\s+id\s+([0-9]+)\s+\| task ([0-9]+) \| (?:prompt processing, .+|n_decoded = .+)$');if($m.Success){$event=@{kind='progress';slot=$m.Groups[1].Value;task=$m.Groups[2].Value}}}
+        if($null -eq $event -and $line -cmatch ($prefix+'(?:slot\s+(?:launch_slot_|release|print_timings?):|srv\s+(?:stop: cancel task|send_error: task id))')) {return @{ok=$false;reason=('malformed producer record at line '+$i);events=@()}}
+        if($null -ne $event){$event.index=$i;$event.line=$line;$events+=$event}
+    }
+    return @{ok=$true;events=$events}
+}
+
+function Test-SmokeReferenceCapture {
+    param($Baseline,$Snapshot,[string]$ExpectedTask='')
+    $advance=Test-SmokeCaptureAdvance $Baseline $Snapshot
+    if(-not $advance.ok){return @{ok=$false;pending=$false;reason=$advance.reason}}
+    $parsed=Get-SmokeCaptureEvents $Snapshot
+    if(-not $parsed.ok){return @{ok=$false;pending=$false;reason=$parsed.reason}}
+    $launches=@($parsed.events|Where-Object{$_.kind -ceq 'launch' -and $_.index -ge $Baseline.lines.Count -and (-not $ExpectedTask -or $_.task -ceq $ExpectedTask)})
+    if($launches.Count -ne 1){return @{ok=$false;pending=$false;reason='reference task launch absent or ambiguous'}}
+    $launch=$launches[0];$taskEvents=@($parsed.events|Where-Object{$_.task -ceq $launch.task})
+    if(@($taskEvents|Where-Object{$_.kind -ceq 'launch'}).Count -ne 1 -or $launch.child -cne '0'){return @{ok=$false;pending=$false;reason='reference launch identity ambiguous'}}
+    foreach($e in $taskEvents){if($e.ContainsKey('slot') -and $e.slot -cne $launch.slot){return @{ok=$false;pending=$false;reason='reference slot identity differs'}}}
+    if(@($taskEvents|Where-Object{$_.kind -ceq 'error'}).Count){return @{ok=$false;pending=$false;reason='reference task error'}}
+    $releases=@($taskEvents|Where-Object{$_.kind -ceq 'release'})
+    if($releases.Count -eq 0){return @{ok=$false;pending=$true;reason='reference release not captured'}}
+    if($releases.Count -ne 1 -or $releases[0].index -le $launch.index){return @{ok=$false;pending=$false;reason='reference release absent or duplicate'}}
+    $last=$launch.index
+    foreach($field in @('prompt eval time','eval time','total time')){
+        $hits=@($taskEvents|Where-Object{$_.kind -ceq 'final' -and $_.field -ceq $field})
+        if($hits.Count -ne 1 -or $hits[0].index -le $last -or $hits[0].index -ge $releases[0].index -or $hits[0].value -notmatch '^[0-9]+(?:\.[0-9]+)? ms /\s*[0-9]+ tokens(?: \(.+\))?$'){return @{ok=$false;pending=$false;reason=('reference final timing missing/ambiguous: '+$field)}}
+        $last=$hits[0].index
+    }
+    return @{ok=$true;pending=$false;task_id=$launch.task;slot_id=$launch.slot;launch_index=$launch.index;release_index=$releases[0].index;snapshot_sha256=$Snapshot.sha256}
+}
+
+function Test-SmokeCancelCapture {
+    param($Baseline,$Snapshot,[string]$ExpectedTask='')
+    $advance=Test-SmokeCaptureAdvance $Baseline $Snapshot
+    if(-not $advance.ok){return @{ok=$false;capture_ok=$false;found=$false;cancel_task_ids=@();reason=$advance.reason}}
+    $parsed=Get-SmokeCaptureEvents $Snapshot
+    if(-not $parsed.ok){return @{ok=$false;capture_ok=$false;found=$false;cancel_task_ids=@();reason=$parsed.reason}}
+    $launches=@($parsed.events|Where-Object{$_.kind -ceq 'launch' -and $_.index -ge $Baseline.lines.Count -and (-not $ExpectedTask -or $_.task -ceq $ExpectedTask)})
+    if($launches.Count -ne 1){return @{ok=$false;capture_ok=$true;found=$false;cancel_task_ids=@();reason='cancelled task launch absent or ambiguous'}}
+    $launch=$launches[0];$taskEvents=@($parsed.events|Where-Object{$_.task -ceq $launch.task})
+    $warnings=@($taskEvents|Where-Object{$_.kind -ceq 'warning' -and $_.index -ge $Baseline.lines.Count})
+    $releases=@($taskEvents|Where-Object{$_.kind -ceq 'release'})
+    $res=@{ok=$false;capture_ok=$true;found=$false;task_id=$launch.task;slot_id=$launch.slot;cancel_task_ids=@($warnings|ForEach-Object{$_.task});launch_index=$launch.index;snapshot_sha256=$Snapshot.sha256}
+    if(@($taskEvents|Where-Object{$_.kind -ceq 'launch'}).Count -ne 1 -or $launch.child -cne '0'){$res.reason='cancelled launch identity ambiguous';return $res}
+    foreach($e in $taskEvents){if($e.ContainsKey('slot') -and $e.slot -cne $launch.slot){$res.reason='cancelled slot identity differs';return $res}}
+    if($warnings.Count -ne 1){$res.reason='cancel warning absent or duplicate';return $res}
+    $res.cancel_index=$warnings[0].index
+    if($releases.Count -ne 1 -or $releases[0].index -le $warnings[0].index -or $warnings[0].index -le $launch.index){$res.reason='own release absent/duplicate or before warning';return $res}
+    $res.release_index=$releases[0].index;$res.found=$true
+    $history=@($taskEvents|Where-Object{$_.index -ge $launch.index -and $_.index -le $res.release_index})
+    $natural=@($history|Where-Object{$_.kind -ceq 'final'})
+    if($natural.Count){$res.reason='same-task natural completion timing veto';$res.natural_fields=@($natural|ForEach-Object{$_.field});return $res}
+    if(@($history|Where-Object{$_.kind -ceq 'error'}).Count){$res.reason='same-task error veto';return $res}
+    for($i=$launch.index;$i -le $res.release_index;$i++){if($Snapshot.lines[$i] -match '(?i)(?:decode|post_decode).*(?:fail|error)|(?:fail|error).*(?:decode|post_decode)|fatal'){$res.reason='global fatal/decode veto in task interval';return $res}}
+    $res.ok=$true;$res.reason='calibrated producer: unique launch, own warning/release, no natural/error history';return $res
+}
+# One body source used by the non-stream checklist and both natural/cancelled streams.
+function Get-SmokeRequestBody {
+    param([bool]$Stream)
+    if ($Stream) {
+        return '{"model":"local","messages":[{"role":"user","content":"Write the integers 1 through 80 in order, separated by single spaces. Output only the integers."}],"max_tokens":256,"stream":true}'
+    }
+    return '{"model":"local","messages":[{"role":"user","content":"ping"}],"max_tokens":64,"stream":false}'
+}
+
+function Test-SmokeNonStreamTermination {
+    param($FinishReason)
+    # This text request has max_tokens=64; natural stop and the token-limit stop are normal.
+    return ($FinishReason -is [string] -and (@('stop', 'length') -ccontains $FinishReason))
+}
+
 function Invoke-SmokeChecklist {
     param($Config, $Catalog, $Child, $GateInfo)
     $base = ('http://{0}:{1}' -f $Config.host, $Config.port)
@@ -9599,9 +12692,11 @@ function Invoke-SmokeChecklist {
     # R1-7: the stream is parsed as SSE JSON and real generated content is counted; a stream that
     # yields no token or never reaches [DONE] is a failure. The full run is also timed, because
     # check (4) needs to know how long an uncancelled stream naturally takes.
-    $body = '{"model":"local","messages":[{"role":"user","content":"ping"}],"max_tokens":8,"stream":false}'
+    $body = Get-SmokeRequestBody -Stream $false
     $r = Invoke-HttpJson -Uri ($base + '/v1/chat/completions') -Method 'POST' -Body $body
+    Write-Diag -Kind 'SMOKE_NONSTREAM_RESPONSE' -Data @{ response = $r; request_body = $body }
     $ok3a = $false
+    $finishReason = $null
     if ($r.ok -and $r.status -eq 200) {
         $j = ConvertFrom-JsonStrict -Text $r.body
         if ($j.ok) {
@@ -9609,16 +12704,33 @@ function Invoke-SmokeChecklist {
             if ((Test-JsonArray $ch) -and @($ch).Count -gt 0) {
                 $msg = Get-JsonValue -Obj (@($ch)[0]) -Name 'message'
                 $content = [string](Get-JsonValue -Obj $msg -Name 'content')
-                if ($content.Length -gt 0) { $ok3a = $true }
+                $finishReason = Get-JsonValue -Obj (@($ch)[0]) -Name 'finish_reason'
+                if ($content.Length -gt 0 -and (Test-SmokeNonStreamTermination $finishReason)) { $ok3a = $true }
             }
         }
     }
+    $referenceBaseline=Read-SmokeCapture -Child $Child
     $stream = Invoke-SmokeStream -Uri ($base + '/v1/chat/completions') -AbortAfterTokens 0
+    # [DONE] can precede capture of the same-task release. Wait only for producer records,
+    # within the existing 60000 ms request/read bound; original stream elapsed is unchanged.
+    $referenceDeadline=(Get-Date).AddMilliseconds(60000)
+    $referencePrevious=$referenceBaseline
+    do {
+        $referenceSnapshot=Read-SmokeCapture -Child $Child
+        $referenceAdvance=Test-SmokeCaptureAdvance $referencePrevious $referenceSnapshot
+        $referenceProof=Test-SmokeReferenceCapture $referenceBaseline $referenceSnapshot
+        if (-not $referenceAdvance.ok) { $referenceProof=@{ok=$false;pending=$false;reason=$referenceAdvance.reason} }
+        if ($referenceProof.ok -or -not $referenceProof.pending) { break }
+        $referencePrevious=$referenceSnapshot
+        Start-Sleep -Milliseconds 50
+    } while ((Get-Date) -lt $referenceDeadline)
+    Write-Diag -Kind 'SMOKE_REFERENCE' -Data @{ proof=$referenceProof; natural_ms=$stream.elapsed_ms; snapshot_sha256=$referenceSnapshot.sha256 }
+
     $ok3b = ($stream.ok -and $stream.tokens -gt 0 -and $stream.done)
-    if ($ok3a -and $ok3b) { Write-Line ('  [3] chat completion stream+non-stream PASS ({0} streamed tokens, [DONE] seen)' -f $stream.tokens) }
+    if ($ok3a -and $ok3b) { Write-Line ('  [3] chat completion stream+non-stream PASS ({0} streamed tokens, [DONE] seen; non-stream finish_reason={1})' -f $stream.tokens, $finishReason) }
     else {
         $fails += '3:chat'
-        Write-Line ('  [3] chat completion stream+non-stream FAIL (non-stream={0} stream_tokens={1} done={2})' -f $ok3a, $stream.tokens, $stream.done)
+        Write-Line ('  [3] chat completion stream+non-stream FAIL (non-stream={0} stream_tokens={1} done={2} non-stream finish_reason={3})' -f $ok3a, $stream.tokens, $stream.done, $finishReason)
     }
     $naturalMs = $stream.elapsed_ms
     } catch {
@@ -9642,7 +12754,12 @@ function Invoke-SmokeChecklist {
     #      until natural completion cannot satisfy this, and a late-flushed release belonging to the
     #      PREVIOUS request cannot either, because its task id does not match
     #   4. only then send a follow-up request and require it to be served
-    $lineBefore = Get-StderrLineCount -Child $Child
+    $cancelBaseline=Read-SmokeCapture -Child $Child
+    $cancelBaselineAdvance=Test-SmokeCaptureAdvance $referenceSnapshot $cancelBaseline
+    $captureFault=''
+    if (-not $cancelBaselineAdvance.ok) { $captureFault=$cancelBaselineAdvance.reason }
+    $lastObservedCapture=$cancelBaseline
+    $lineBefore = $cancelBaseline.lines.Count
     $relBefore = Get-SlotReleaseCount -Child $Child
     $cancel = Invoke-SmokeStream -Uri ($base + '/v1/chat/completions') -AbortAfterTokens 1
     $cancelAt = Get-Date
@@ -9660,8 +12777,14 @@ function Invoke-SmokeChecklist {
     $warnSeen = $false
     $warnTaskIds = @()
     $bound = @{ found = $false; reason = 'not polled' }
+    $pollObservations = @()
     while ((Get-Date) -lt $naturalEnd) {
-        $bound = Find-BoundCancelRelease -Child $Child -FromLineIndex $lineBefore
+        $observedCapture=Read-SmokeCapture -Child $Child
+        $observedAdvance=Test-SmokeCaptureAdvance $lastObservedCapture $observedCapture
+        if (-not $observedAdvance.ok -and -not $captureFault) { $captureFault=$observedAdvance.reason }
+        if ($observedAdvance.ok) { $lastObservedCapture=$observedCapture }
+        $bound = Test-SmokeCancelCapture $cancelBaseline $observedCapture
+        $pollObservations += @{ utc = (Get-Date).ToUniversalTime().ToString('o'); elapsed_ms = ((Get-Date) - $cancelAt).TotalMilliseconds; found = $bound.found; task_id = $bound.task_id; cancel_index = $bound.cancel_index; release_index = $bound.release_index }
         $ids = Get-NonEmptyList -Value $bound.cancel_task_ids
         if ($ids.Count -gt 0) { $warnSeen = $true; $warnTaskIds = $ids }
         if ($bound.found) {
@@ -9675,7 +12798,12 @@ function Invoke-SmokeChecklist {
     if (-not $warnSeen) {
         $warnDeadline = (Get-Date).AddMilliseconds($script:CANCEL_WARN_DIAG_MS)
         while ((Get-Date) -lt $warnDeadline) {
-            $probe = Find-BoundCancelRelease -Child $Child -FromLineIndex $lineBefore
+            $observedCapture=Read-SmokeCapture -Child $Child
+            $observedAdvance=Test-SmokeCaptureAdvance $lastObservedCapture $observedCapture
+            if (-not $observedAdvance.ok -and -not $captureFault) { $captureFault=$observedAdvance.reason }
+            if ($observedAdvance.ok) { $lastObservedCapture=$observedCapture }
+            $probe = Test-SmokeCancelCapture $cancelBaseline $observedCapture
+            $pollObservations += @{ utc = (Get-Date).ToUniversalTime().ToString('o'); elapsed_ms = ((Get-Date) - $cancelAt).TotalMilliseconds; found = $probe.found; task_id = $probe.task_id; cancel_index = $probe.cancel_index; release_index = $probe.release_index; diagnostic_only = $true }
             $probeIds = Get-NonEmptyList -Value $probe.cancel_task_ids
             if ($probeIds.Count -gt 0 -or $probe.found) {
                 $warnSeen = $true
@@ -9727,24 +12855,43 @@ function Invoke-SmokeChecklist {
     }
     $after = @{ ok = $false }
     if ($releasedPromptly) { $after = Invoke-HttpJson -Uri ($base + '/v1/chat/completions') -Method 'POST' -Body $body }
-    $ok4 = ($cancel.aborted -and $cancel.tokens -ge 1 -and $outstandingMs -gt 0 -and
+    # The old timing conjunction remains necessary. Re-read full history after follow-up;
+    # natural/error completion or missing producer/calibration can never satisfy cancellation.
+    $finalCapture=Read-SmokeCapture -Child $Child
+    $finalAdvance=Test-SmokeCaptureAdvance $lastObservedCapture $finalCapture
+    $cancelFinalProof=Test-SmokeCancelCapture $cancelBaseline $finalCapture -ExpectedTask ([string]$bound.task_id)
+    $referenceFinalProof=Test-SmokeReferenceCapture $referenceBaseline $finalCapture -ExpectedTask ([string]$referenceProof.task_id)
+    $ok4Timing = ($cancel.aborted -and $cancel.tokens -ge 1 -and $outstandingMs -gt 0 -and
             $releasedPromptly -and $after.ok -and $after.status -eq 200)
+    $ok4 = ($ok4Timing -and $Child.smoke_binding.ok -and $referenceProof.ok -and $referenceFinalProof.ok -and
+            -not $captureFault -and $finalAdvance.ok -and $cancelFinalProof.ok)
+    $producerReason=[string]$cancelFinalProof.reason
+    if (-not $Child.smoke_binding.ok) { $producerReason='direct producer invocation not bound' }
+    elseif (-not $referenceProof.ok) { $producerReason='reference calibration: '+$referenceProof.reason }
+    elseif (-not $referenceFinalProof.ok) { $producerReason='reference reread: '+$referenceFinalProof.reason }
+    elseif ($captureFault) { $producerReason=$captureFault }
+    elseif (-not $finalAdvance.ok) { $producerReason=$finalAdvance.reason }
+
     if ($ok4) {
         Write-Line ('  [4] cancel + slot reclaim            PASS (aborted after {0} token(s); task {1} cancel warning then its own release observed {2} ms later, well inside the {3} ms that were still outstanding; next request served)' -f
             $cancel.tokens, $bound.task_id, [int]$releaseAtMs, [int]$outstandingMs)
     } else {
         $fails += '4:cancel'
-        Write-Line ('  [4] cancel + slot reclaim            FAIL (aborted={0} tokens={1} bound_release={2} cancel_warning_seen={3} release_at_ms={4} prompt_budget_ms={5} outstanding_ms={6} next_ok={7} reason={8})' -f
-            $cancel.aborted, $cancel.tokens, $releaseSeen, $warnSeen, [int]$releaseAtMs, [int]$promptBudgetMs, [int]$outstandingMs, $after.ok, $bindReason)
+        Write-Line ('  [4] cancel + slot reclaim            FAIL (aborted={0} tokens={1} bound_release={2} cancel_warning_seen={3} release_at_ms={4} prompt_budget_ms={5} outstanding_ms={6} next_ok={7} reason={8} producer_proof={9})' -f
+            $cancel.aborted, $cancel.tokens, $releaseSeen, $warnSeen, [int]$releaseAtMs, [int]$promptBudgetMs, [int]$outstandingMs, $after.ok, $bindReason, $producerReason)
     }
     Write-Diag -Kind 'SMOKE_CANCEL' -Data @{ tokens = $cancel.tokens; aborted = $cancel.aborted
         bound_release = $releaseSeen; bound_task_id = [string]$bound.task_id
         cancel_warning_seen = $warnSeen; cancel_warning_task_ids = $warnTaskIds
         cancel_line_index = $bound.cancel_index; release_line_index = $bound.release_index
         bind_reason = $bindReason
+        producer_proof_reason=$producerReason; old_timing_conjunction=$ok4Timing; reference_proof=$referenceProof; reference_reread=$referenceFinalProof
+        cancel_proof=$cancelFinalProof; capture_fault=$captureFault; final_capture_sha256=$finalCapture.sha256; producer_binding=$Child.smoke_binding
         release_at_ms = $releaseAtMs; prompt_budget_ms = $promptBudgetMs
         outstanding_ms = $outstandingMs; natural_ms = $naturalMs; next_ok = $after.ok
-        release_lines_total_before = $relBefore; stderr_lines_before = $lineBefore }
+        release_lines_total_before = $relBefore; stderr_lines_before = $lineBefore
+        stream_started_utc = $cancel.started_utc; request_abort_utc = $cancel.abort_utc; request_abort_elapsed_ms = $cancel.abort_elapsed_ms
+        stream_returned_utc = $cancel.returned_utc; observation_origin_utc = $cancelAt.ToUniversalTime().ToString('o'); polls = $pollObservations }
 
 
     } catch {
@@ -9756,16 +12903,9 @@ function Invoke-SmokeChecklist {
         Write-Line ('  [' + $script:SmokeItemLabel + '] item aborted                 FAIL (internal fault: ' + $_.Exception.Message + ')')
         Write-Diag -Kind 'smoke_item_fault' -Data @{ item = $script:SmokeItemLabel; reason = $_.Exception.Message }
     }
-    # (5) verify PASS consumption evidence - gated, no longer deferred.
-    # NOTE Correction of an earlier 1st-source error: an earlier revision of this file claimed "there
-    # is no seal-success wire line". That was WRONG. moedirect-v2-b10057.patch:14681 emits
-    # LLAMA_LOG_INFO("%s: moe-direct: sealed all=... slots=X/Y ...") immediately after
-    # ggml_moe_direct_seal() succeeds, i.e. after the seal has consumed verify_report.json
-    # (read_verify_report_gate :3738, seal binding :7299) and fails closed on anything else.
-    # So the launcher gates item 5 on that line: present in a complete line exactly once with a
-    # parsable slots=X/Y field, together with the launcher's own gate having produced a
-    # manifest_sha256. The slot numbers are echoed, NOT compared - X == Y is not an invariant
-    # (a real passing run emitted slots=648/128; see ENGINE_SEAL_SLOTS_REGEX for the capture).
+    # (5) Closed release patch's post-seal attestation plus the launcher's manifest binding.
+    # Raw stderr is always on; complete legacy INFO may attest the same event only if all
+    # common fields agree. Duplicate records of either kind fail. Slots are echoed, not compared.
     $seal = Get-EngineSealAttestation -Child $Child
     $ok5 = ($seal.ok -and $null -ne $GateInfo -and $null -ne $GateInfo.manifest_sha256)
     if ($ok5) {
@@ -9776,7 +12916,7 @@ function Invoke-SmokeChecklist {
         Write-Line ('  [5] verify PASS consumption          FAIL ({0})' -f $seal.reason)
     }
     Write-Diag -Kind 'SMOKE_ITEM5' -Data @{ ok = $ok5; seal = $seal; manifest_sha256 = $GateInfo.manifest_sha256
-        note = 'gated on the engine post-seal INFO line (patch:14681); a stronger always-on identity echo carrying profile_id/expect_sha256/manifest_sha256 remains an engine-round item' }
+        note = 'gated on exact complete post-seal raw stderr (v0.3.1 patch:45147), with checked legacy INFO compatibility and launcher manifest binding' }
 
     # (6) loopback-only binding
     $lb = Test-LoopbackOnlyBinding -PortNumber $Config.port
@@ -9814,10 +12954,11 @@ function Invoke-SmokeChecklist {
 # tokens was actually received first - a connection exception before any token is a failure.
 function Invoke-SmokeStream {
     param([string] $Uri, [int] $AbortAfterTokens)
-    $body = '{"model":"local","messages":[{"role":"user","content":"ping"}],"max_tokens":64,"stream":true}'
+    $body = Get-SmokeRequestBody -Stream $true
     $req = $null
     $tokens = 0
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    $startedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
     try {
         $req = [System.Net.HttpWebRequest]::Create($Uri)
         $req.Method = 'POST'
@@ -9849,11 +12990,15 @@ function Invoke-SmokeStream {
             if ($content.Length -eq 0) { continue }
             $tokens++
             if ($AbortAfterTokens -gt 0 -and $tokens -ge $AbortAfterTokens) {
+                $abortAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+                $abortAtMs = $sw.Elapsed.TotalMilliseconds
                 $req.Abort()
                 try { $sr.Dispose() } catch { }
                 try { $resp.Close() } catch { }
                 $sw.Stop()
-                return @{ ok = $true; aborted = $true; tokens = $tokens; done = $false; elapsed_ms = $sw.Elapsed.TotalMilliseconds }
+                return @{ ok = $true; aborted = $true; tokens = $tokens; done = $false; elapsed_ms = $sw.Elapsed.TotalMilliseconds
+                          started_utc = $startedAtUtc; abort_utc = $abortAtUtc; abort_elapsed_ms = $abortAtMs
+                          returned_utc = (Get-Date).ToUniversalTime().ToString('o') }
             }
         }
         try { $sr.Dispose() } catch { }
@@ -9896,6 +13041,44 @@ $script:RepackModeToggleOffered = $false
 # it instead of reading - and logging - the same preset a second time.
 $script:VirtualPresetEarly = $null
 
+# 5CTL 1-1-1: the collect request is resolved ONCE at main step 0 and read everywhere else, exactly
+# like $script:RepackModeResolved above and for the same structural reason - it must never travel
+# $overrides. Initialised here so the dot-sourced -LibraryMode path always has a defined state.
+#   CollectRequested    'on' was asked for AND the campaign path shape is acceptable.
+#   CollectCampaignRaw  the -PhaseBCollectCampaign value exactly as written, for the echo. Kept
+#                       even when collection is off, because echoing it is the ONLY thing an off
+#                       run may do with it (no resolve, no open, no parse, no hash).
+#   CollectCampaignPath the normalised fully-qualified path, empty unless CollectRequested.
+#   CollectEarlyRefusal a COLLECT_OFF_REASONS literal decided at step 0, or 'none'. The rest of the
+#                       refusal chain cannot run this early: it needs the final effective config.
+#   CollectMaxRecordsBound / CollectBufMb / CollectChargeBytes
+#                       5CT-REPAIR 1 (B_cap): the resolved capacity, latched at the same step and
+#                       for the same structural reason. Build-EffectiveConfig re-runs on every
+#                       rebuild and must not re-parse a CLI string each time - the value cannot
+#                       change between rebuilds, and parsing once is what lets the refusal be
+#                       fail_custom_args at step 0 instead of a failure discovered mid-build.
+$script:CollectRequested    = $false
+$script:CollectCampaignRaw  = ''
+$script:CollectCampaignPath = ''
+$script:CollectEarlyRefusal = 'none'
+$script:CollectMaxRecordsBound = [uint64]0
+$script:CollectChargeBytes     = [uint64]0
+$script:CollectBufMb           = [uint64]0
+#   CollectRendezvousPath / CollectRunNonce
+#                       5CT-REPAIR 2 (B_rdv): the resolved pair, empty unless a collect-ON request
+#                       supplied both. Latched at the same step and for the same reason as the two
+#                       above - the publisher runs long after the CLI strings stop being in scope.
+$script:CollectRendezvousPath = ''
+$script:CollectRunNonce       = ''
+# 5CTL 2-5: the leading-segment ledger. Every request THIS launcher issues after ready appends one
+# record, unconditionally - recording is cheap and keeping it independent of the collect state means
+# the degraded warmup path has no collect-specific branch in it.
+# The launcher's own request count is 0 or 1 by contract (WARMFILE_DESIGN gate 1), but the count is
+# MEASURED here rather than derived from that rule: counting is stronger than re-deriving.
+$script:CollectPrefixRecords = @()
+# 5CTL 2-5: set when a warmstart recovery replaced the server child, so the final manifest can say so.
+$script:CollectRecoveryRestarted = $false
+
 function Test-VirtualRepack {
     return ([string]$script:RepackModeResolved -ceq $script:REPACK_MODE_VIRTUAL)
 }
@@ -9921,6 +13104,331 @@ function Resolve-RepackMode {
     # Set only after the value was accepted: an invalid one terminates above and a blank one is
     # 'absent' (it took the default return), so neither may claim the command line decided this run.
     $script:RepackModeCanonicalCli = $true
+}
+
+# ---------------------------------------------------------------------------
+# 5CTL 1-1-1: "absolute", for the campaign record, means FULLY QUALIFIED - and
+# [System.IO.Path]::IsPathRooted is NOT that test. Measured on this machine (PS 5.1.26100.8875):
+#   'C:record.json'   IsPathRooted = True, yet GetFullPath resolves it against the CURRENT
+#                     DIRECTORY of drive C: - not the directory the caller named.
+#   '\record.json'    IsPathRooted = True, yet GetFullPath resolves it to the CURRENT drive's root.
+#   'record.json'     IsPathRooted = False.
+#   '.\record.json'   IsPathRooted = False.
+# Accepting a rooted-but-not-qualified path would bind the manifest's scope to a file the operator
+# did not name, so the two accepted shapes are matched explicitly below.
+# [Path]::IsPathFullyQualified would answer this directly, but it is .NET Core 2.1+ and does not
+# exist on the .NET Framework that Windows PowerShell 5.1 runs on.
+# ---------------------------------------------------------------------------
+function Test-FullyQualifiedWindowsPath {
+    param([string] $Path)
+    $p = [string]$Path
+    if ($p.Length -eq 0) { return $false }
+    # Drive-absolute: a drive letter, a colon, and then a separator. 'C:record.json' fails here
+    # precisely because the separator is missing.
+    if ($p -match '^[A-Za-z]:[\\/]') { return $true }
+    # UNC: two leading separators, then BOTH a server and a share component. A single leading
+    # separator ('\record.json') cannot match, which is the second of the two rooted-but-relative
+    # shapes above.
+    if ($p -match '^[\\/][\\/][^\\/]+[\\/][^\\/]+') { return $true }
+    return $false
+}
+
+# ---------------------------------------------------------------------------
+# 5CT-REPAIR 1 (B_cap): the -PhaseBCollectMaxRecords resolution, in the collect-request stage and
+# nowhere else. Three properties are the contract:
+#   RAW: the value is parsed straight from the parameter string. It never enters Get-CliOverrides,
+#        $overrides, Test-OverrideValue, the preset or the custom editor - the R2-M2 closure, which
+#        this key inherits from the two collect keys beside it. Test-CustomProvenance flips a run to
+#        'custom' for ANY key outside PERF_NEUTRAL_OVERRIDE_KEYS, so a capacity setting travelling
+#        that map would demote the published performance numbers of every collection run.
+#   EARLY: it runs at main step 0, so a violation is fail_custom_args before a bundle is read, let
+#        alone before a child is spawned.
+#   UNCONDITIONAL REFUSAL: unlike -PhaseBCollect, a bad value here does NOT fall back to a default
+#        on an interactive run. The two are different questions. An opt-in has a safe default, so
+#        ignoring an unreadable one and launching without collection is the conservative answer; a
+#        capacity is a NUMBER the operator chose, and silently substituting a different one would
+#        publish a run measured against a bound nobody asked for.
+# Decimal-only: NumberStyles::None rejects a sign, a decimal point, thousands separators, hex and
+# embedded whitespace, so '+5', '-1', '1.5', '1,000', '0x10' and '1 2' all land on the same refusal.
+# The surrounding .Trim() is the house convention every other raw CLI string here follows (a shell
+# that pads an argument is not making a capacity claim), and it is applied BEFORE the strict parse.
+# ---------------------------------------------------------------------------
+function Resolve-CollectCapacity {
+    $raw = ([string]$PhaseBCollectMaxRecords).Trim()
+    $bound = $script:COLLECT_MAX_RECORDS_DEFAULT
+    if ($raw.Length -gt 0) {
+        $parsed = [uint64]0
+        $ok = [uint64]::TryParse($raw, [System.Globalization.NumberStyles]::None,
+                                 [System.Globalization.CultureInfo]::InvariantCulture, [ref]$parsed)
+        if (-not $ok) {
+            Stop-Launcher 'fail_custom_args' ("invalid -PhaseBCollectMaxRecords '" + $PhaseBCollectMaxRecords +
+                "': expected a decimal unsigned 64-bit record count")
+        }
+        $bound = $parsed
+    }
+    $cap = Get-CollectCapacity -MaxRecords $bound
+    if (-not $cap.ok) {
+        Stop-Launcher 'fail_custom_args' ("invalid -PhaseBCollectMaxRecords '" + $PhaseBCollectMaxRecords +
+            "': " + [string]$cap.reason)
+    }
+    $script:CollectMaxRecordsBound = [uint64]$cap.max_records
+    $script:CollectChargeBytes     = [uint64]$cap.charge_bytes
+    $script:CollectBufMb           = [uint64]$cap.buf_mb
+}
+
+# ---------------------------------------------------------------------------
+# 5CTL 1-1 / 1-1-1: the dedicated collect-request resolution stage.
+# It is a step of its own for one structural reason: these keys must not enter
+# Get-CliOverrides or $overrides (see the parameter comments), so Test-OverrideValue - which is the
+# validator for override-MAP values - is not their validator either.
+# Only SHAPE is settled here: the request enum, and whether the campaign path is fully qualified.
+# The record is not opened, parsed or hashed at this point. That happens once the effective config
+# is final (5CTL 3-7), because the approved scope covers the effective QD and the K/N pair, and
+# neither of those exists yet at main step 0.
+# ---------------------------------------------------------------------------
+function Resolve-RunMode {
+    # 5CA 6-2 M-1..M-5: THE authority for this run's mode.  [[C:prefetch.runmode-authority]]
+    # M-2: no code outside this function decides or overwrites 'mode'.
+    # M-3: the input set is CLOSED - $Repro, $Smoke, the resolved collect request, and the new
+    #      run-mode CLI parameter. $reproOrBench is NOT an input: it is a derived
+    #      warmstart/autotune marker, and putting the mode authority there would read four
+    #      unnamed modes as product forever.
+    # M-4 rank order, first match wins. The invariant this order buys is the whole point:
+    #      the product mode is reachable ONLY when the hard verification signal set is empty
+    #      (ranks 5 and 6), so a run with a verification signal on can never become product by
+    #      declaration.
+    # The parameters exist so the selftest can drive the resolver directly in library mode;
+    # every production path leaves them at their defaults, which read the CLI state.
+    param(
+        [AllowNull()][object] $ModeArg = $RunMode,
+        [AllowNull()][object] $ReproFlag = $Repro,
+        [AllowNull()][object] $SmokeFlag = $Smoke,
+        [AllowNull()][object] $CollectOn = $null
+    )
+    $declared = ''
+    if ($null -ne $ModeArg) { $declared = ([string]$ModeArg).Trim() }
+    $hasDecl = ($declared.Length -gt 0)
+    # rank 1: a declared value outside the closed enum is an argument grammar violation. Same
+    # discipline as every other raw-string key: this script parses it and reports
+    # fail_custom_args rather than letting a ValidateSet binder kill the run before a status
+    # line exists.
+    if ($hasDecl -and ($script:PREFETCH_RUN_MODES -cnotcontains $declared)) {
+        Stop-Launcher 'fail_custom_args' ("invalid run mode '" + $declared + "': expected one of " +
+                                          ($script:PREFETCH_RUN_MODES -join '|'))
+    }
+    $h = @()
+    if ([bool]$ReproFlag) { $h += 'repro' }
+    if ([bool]$SmokeFlag) { $h += 'bench' }
+    if ([bool]$CollectOn) { $h += 'regression' }
+    $hOn = ($h.Count -gt 0)
+    # rank 2: a hard verification signal plus an explicitly declared product mode is a CALLER
+    # BUG. Letting one side quietly win would leave that bug standing as a protection bypass,
+    # and there is nothing to demote here anyway - the contradiction is between two
+    # declarations, not inside a value.
+    if ($hOn -and $hasDecl -and $declared -ceq $script:PREFETCH_MODE_PRODUCT) {
+        Stop-Launcher 'fail_custom_args' $script:PREFETCH_RUNMODE_CONFLICT
+    }
+    # rank 3: an explicit declaration may NARROW the default mapping, but it cannot reach the
+    # product mode - rank 2 catches that first.
+    if ($hOn -and $hasDecl) { return $declared }
+    # rank 4: the default mapping. The order these were appended IS the fixed precedence
+    # (repro over bench over regression) when several signals are on at once.
+    if ($hOn) { return $h[0] }
+    # rank 5 / 6.
+    if ($hasDecl) { return $declared }
+    return $script:PREFETCH_MODE_PRODUCT
+}
+
+function Resolve-CollectRequest {
+    # One resolution per run: a dot-sourced host driving this twice must not inherit the previous
+    # run's answer (same discipline as Resolve-RepackMode above).
+    $script:CollectRequested    = $false
+    $script:CollectCampaignPath = ''
+    $script:CollectEarlyRefusal = 'none'
+    $script:CollectCampaignRaw  = ([string]$PhaseBCollectCampaign)
+    $script:CollectPrefixRecords = @()
+    $script:CollectRecoveryRestarted = $false
+    # 5CT-REPAIR 2 (B_rdv): cleared with the rest - a dot-sourced host driving two runs must not let
+    # the first run's handover coordinates leak into the second.
+    $script:CollectRendezvousPath = ''
+    $script:CollectRunNonce = ''
+    # 5CT-REPAIR 1 (B_cap): resolved unconditionally, and BEFORE the request enum below, so that
+    # every exit path out of this function leaves a defined capacity. The default is the engine's
+    # own 512 MiB expressed as a record count, so a collect-OFF run and a collect-ON run with no
+    # -PhaseBCollectMaxRecords both leave the engine exactly where it was.
+    Resolve-CollectCapacity
+    # 5CT-TUPLE 2-1: the explicit collect tuple is resolved HERE - unconditionally, and BEFORE the
+    # request enum below - for two reasons. (1) It owns the reset of its own four latches
+    # (CollectTupleRaw / K / N / Requested), so every exit path out of this function leaves them
+    # defined and a second run in a dot-sourced host cannot inherit the first run's pair; that is
+    # the same rule Resolve-CollectCapacity follows on the line above. (2) Every return below is an
+    # early return, so a tuple passed WITHOUT a collect request would be invisible after this point
+    # - and a tuple nothing consumes is precisely what must not pass silently (5CT-TUPLE 1-6 case
+    # 3, refused by Assert-CollectTupleRequest immediately after this call returns).
+    # On a run with no tuple this call resets four latches and returns: no file, no profile, no
+    # decision, and no change to anything below.
+    Resolve-CollectTuple
+
+    $raw = ([string]$PhaseBCollect).Trim()
+    # Absent = off (5CTL 1-1). The campaign value stays raw-echo only.
+    if ($raw.Length -eq 0) { return }
+    $v = $raw.ToLowerInvariant()
+    if ($script:COLLECT_REQUEST_VALUES -cnotcontains $v) {
+        # 5CTL 1-1-1 inherits the REJECTED-VALUE convention from the existing CLI discipline, which
+        # is deliberately not Resolve-RepackMode's: an argument-driven run terminates, an
+        # interactive one reports and falls back to the default OFF. A run mode has no safe
+        # default; an opt-in does, and refusing to start over an unreadable opt-in would be worse
+        # than starting without it.
+        if ($NonInteractive) {
+            Stop-Launcher 'fail_custom_args' ("invalid -PhaseBCollect '" + $PhaseBCollect + "': expected on or off")
+        }
+        Write-Line ('[collect] ignoring invalid -PhaseBCollect: expected on or off')
+        return
+    }
+    # Explicit 'off' is the default state, reached without touching the campaign value.
+    if ($v -cne 'on') { return }
+
+    # 5CTL 1-1: 'on' REQUIRES the campaign record, and 5CTL 1-1-1 requires the shape question to be
+    # settled BEFORE any file is touched. Absence, a non-qualified shape and a resolution failure
+    # all land on the same reason, and none of them stops the run: collection turns off and the
+    # launch continues (5CTL 3 - every refusal here is "collect off + reason", never a launch
+    # refusal).
+    if (-not (Test-FullyQualifiedWindowsPath -Path $script:CollectCampaignRaw)) {
+        $script:CollectEarlyRefusal = 'collect_campaign_missing'
+        return
+    }
+    try {
+        # Normalisation only - this creates nothing and opens nothing. It can still throw on a
+        # value carrying characters no path may hold, which is ordinary CLI input and therefore
+        # the third way into the same reason.
+        $script:CollectCampaignPath = [System.IO.Path]::GetFullPath($script:CollectCampaignRaw)
+    } catch {
+        $script:CollectCampaignPath = ''
+        $script:CollectEarlyRefusal = 'collect_campaign_missing'
+        return
+    }
+    $script:CollectRequested = $true
+    # 5CT-REPAIR 2 (B_rdv): the rendezvous pair is resolved HERE, after the request enum has already
+    # said 'on'. That placement IS the spec's "on a collect-OFF run both are ignored without any
+    # file access" clause: every earlier return above leaves the pair untouched - unnormalised,
+    # unopened and unjudged - so a value this run will never publish cannot refuse the run.
+    # Same shape as -PhaseBCollectCampaign above.
+    Resolve-CollectRendezvous
+}
+
+# ---------------------------------------------------------------------------
+# 5CT-REPAIR 2 (B_rdv): the pair's shape gate. Reached only from a collect-ON request.
+# Unlike the campaign path, a bad value here is NOT "collect off + reason" - it is
+# fail_custom_args, because the queue generates these two values mechanically. A malformed one
+# means the harness is wired wrong, and continuing would hand the driver a handover it cannot
+# authenticate while the run looks fine.
+# ---------------------------------------------------------------------------
+function Resolve-CollectRendezvous {
+    $rawPath = ([string]$PhaseBCollectRendezvous).Trim()
+    $rawNonce = ([string]$PhaseBCollectRunNonce).Trim()
+    if ($rawPath.Length -eq 0 -and $rawNonce.Length -eq 0) { return }   # feature off, both absent
+    if ($rawPath.Length -eq 0 -or $rawNonce.Length -eq 0) {
+        Stop-Launcher 'fail_custom_args' ('-PhaseBCollectRendezvous and -PhaseBCollectRunNonce are a ' +
+            'pair: both or neither (rendezvous=' + $(if ($rawPath) { 'set' } else { 'absent' }) +
+            ', nonce=' + $(if ($rawNonce) { 'set' } else { 'absent' }) + ')')
+    }
+    if (-not (Test-FullyQualifiedWindowsPath -Path $rawPath)) {
+        Stop-Launcher 'fail_custom_args' ("-PhaseBCollectRendezvous must be a fully-qualified path: " + $rawPath)
+    }
+    if ($rawNonce -cnotmatch $script:COLLECT_RDV_NONCE_RE) {
+        Stop-Launcher 'fail_custom_args' ("-PhaseBCollectRunNonce must be a lowercase GUID-D: " + $rawNonce)
+    }
+    try {
+        $script:CollectRendezvousPath = [System.IO.Path]::GetFullPath($rawPath)
+    } catch {
+        $script:CollectRendezvousPath = ''
+        Stop-Launcher 'fail_custom_args' ("-PhaseBCollectRendezvous is not a usable path: " + $rawPath)
+    }
+    $script:CollectRunNonce = $rawNonce
+}
+
+# ---------------------------------------------------------------------------
+# 5CT-TUPLE 1-2 / 1-3 (parse half): the collect-only explicit K/N pair's SHAPE gate.
+# Called unconditionally from the top of Resolve-CollectRequest - before the request enum, before
+# any early return - so that (a) the latches below are always defined and (b) a tuple supplied
+# WITHOUT '-PhaseBCollect on' is still visible to Assert-CollectTupleRequest afterwards.
+# This function touches no file and reads no profile: at main step 0 neither the profile nor the
+# final QD exists yet, so only the two parse-time bounds are settled here (1 <= K <= 16 from
+# PREFETCH_INIT_T_MAX, the pred wire's top-16 ABI, and N >= 1). K <= identify.n_expert and
+# N < effective_qd are config-stage questions and are answered there (5CT-TUPLE 1-3).
+#
+# The precedent this follows is COLLECT_RDV_NONCE_RE - a WHOLE-STRING regex match - and explicitly
+# NOT the .Trim() the collect/repack enums use. Trimming is right for an enum value; on a tuple it
+# would silently accept ' 7,4', and "a value that looks like it was understood" is the exact defect
+# class this surface exists to remove. Every whitespace form is fail_custom_args.
+# The regex does not bound the digit COUNT, so it is only the first of two gates: '99999999999999
+# 999999,4' passes the shape and is refused by the integer conversion below.
+# ---------------------------------------------------------------------------
+function Resolve-CollectTuple {
+    # One resolution per run, and the reset runs BEFORE every possible return: a dot-sourced host
+    # driving two runs must not inherit the first run's pair (the same discipline the top of
+    # Resolve-CollectRequest applies to the collect latches).
+    $script:CollectTupleRaw       = ([string]$PhaseBCollectTuple)
+    $script:CollectTupleRequested = $false
+    $script:CollectTupleK         = 0
+    $script:CollectTupleN         = 0
+
+    $raw = $script:CollectTupleRaw
+    # Length 0 - absent, '' or $null - is the ONE way this surface stays inactive. Nothing below
+    # runs on an ordinary run, which is what makes this call a no-op there.
+    if ($raw.Length -eq 0) { return }
+    # Whole-string match: leading zeros, signs, spaces anywhere, a third element and any non-digit
+    # are all refused here rather than normalised.
+    if ($raw -cnotmatch '^[1-9][0-9]*,[1-9][0-9]*$') {
+        Stop-Launcher 'fail_custom_args' ("-PhaseBCollectTuple must be exactly '<K>,<N>' with no " +
+            'spaces, signs or leading zeros (got: ' + $raw + ')')
+    }
+    $parts = $raw.Split(',')
+    $tk = 0
+    $tn = 0
+    if (-not [int]::TryParse($parts[0], [ref]$tk)) {
+        Stop-Launcher 'fail_custom_args' ('-PhaseBCollectTuple K is out of range: ' + $parts[0])
+    }
+    if (-not [int]::TryParse($parts[1], [ref]$tn)) {
+        Stop-Launcher 'fail_custom_args' ('-PhaseBCollectTuple N is out of range: ' + $parts[1])
+    }
+    # PREFETCH_INIT_T_MAX is the pred wire's top-16 ABI (PI 4-1); this surface does not widen it.
+    if ($tk -lt $script:PREFETCH_INIT_T_MIN -or $tk -gt $script:PREFETCH_INIT_T_MAX) {
+        Stop-Launcher 'fail_custom_args' ('-PhaseBCollectTuple K must be ' +
+            [string]$script:PREFETCH_INIT_T_MIN + '..' + [string]$script:PREFETCH_INIT_T_MAX +
+            ' (got: ' + [string]$tk + ')')
+    }
+    # N's upper bound is effective_qd, which does not exist yet; only N >= 1 is a parse-time fact.
+    if ($tn -lt 1) {
+        Stop-Launcher 'fail_custom_args' ('-PhaseBCollectTuple N must be >= 1 (got: ' + [string]$tn + ')')
+    }
+    $script:CollectTupleK         = $tk
+    $script:CollectTupleN         = $tn
+    $script:CollectTupleRequested = $true
+}
+
+# ---------------------------------------------------------------------------
+# 5CT-TUPLE 1-6 case 3: a tuple on a run that never asked to collect.
+# It is its OWN function called just after Resolve-CollectRequest rather than a check inside it,
+# because that function has five early returns and the check would have to be copied into all of
+# them (or the function restructured) - and one copy of a refusal rule is the whole point.
+#
+# The predicate has three terms, and the third is the one that is easy to get wrong:
+# CollectEarlyRefusal != 'none' means the collect request DID exist and died on the campaign path
+# (missing, non-fully-qualified, unnormalisable). Reporting those as "collect was not requested"
+# would overwrite the real reason with a wrong one, so this function passes them through untouched
+# and lets Assert-CollectTupleLanded refuse them later under their own campaign literal.
+# The interactive "ignoring invalid -PhaseBCollect" path lands here too: it leaves
+# CollectRequested=$false with EarlyRefusal='none', which is case 3 exactly (5CT-TUPLE 2-1).
+# ---------------------------------------------------------------------------
+function Assert-CollectTupleRequest {
+    if (-not $script:CollectTupleRequested) { return }
+    if ($script:CollectRequested -eq $true) { return }
+    if ($script:CollectEarlyRefusal -cne 'none') { return }
+    Stop-Launcher 'fail_custom_args' ('-PhaseBCollectTuple ' + $script:CollectTupleRaw +
+        ' was supplied without a collection request: this pair is a collection-only input and ' +
+        'nothing on a run that does not collect consumes it. Pass -PhaseBCollect on with its ' +
+        'campaign approval record, or drop -PhaseBCollectTuple.')
 }
 
 # RV 2-4: the CLI half of the pinned-shape refusal. Timing is the contract, not a preference: it
@@ -9982,6 +13490,82 @@ function Set-RepackModeInteractive {
     $script:RepackModeResolved = [string]$Value
     Write-Diag -Kind 'REPACK_MODE_INTERACTIVE' -Data @{ value = [string]$Value; source = [string]$Source }
     Assert-VirtualCliPins
+}
+
+# 5CA A6' UI path. The one writer for both interactive controls, so the menu toggle and the
+# pre-identification question cannot drift apart. It records a REQUEST and decides nothing:
+# Resolve-EffectivePrefetch is still the only place that turns a request into an arm, and 6-2
+# M-4 still demotes it on a non-product run. An off-enum value here would be an internal defect,
+# not a user error - both callers pick from PREFETCH_REQUEST_VALUES themselves.
+function Set-PrefetchRequestInteractive {
+    param([string] $Value, [string] $Source = 'menu_toggle')
+    if ($script:PREFETCH_REQUEST_VALUES -cnotcontains $Value) {
+        Stop-Launcher 'fail_gate_catalog' ('internal: prefetch request outside the closed enum: ' + $Value)
+    }
+    $script:PrefetchRequestInteractive = [string]$Value
+    Write-Diag -Kind 'PREFETCH_REQUEST_INTERACTIVE' -Data @{ value = [string]$Value; source = [string]$Source }
+}
+
+# The toggle order is the enum's own order, wrapping. Three values need a cycle rather than the
+# two-value flip the other rows use, and taking the order from PREFETCH_REQUEST_VALUES keeps the
+# row from becoming a second spelling of that list.
+function Get-PrefetchRequestNext {
+    param([string] $Current)
+    $i = [array]::IndexOf([string[]]$script:PREFETCH_REQUEST_VALUES, [string]$Current)
+    if ($i -lt 0) { return $script:PREFETCH_REQUEST_DEFAULT }
+    return [string]$script:PREFETCH_REQUEST_VALUES[(($i + 1) % $script:PREFETCH_REQUEST_VALUES.Count)]
+}
+
+# What the row and the question currently show: the interactive value if one was written, else
+# the command line's, else the product default. The STORED preset is deliberately not consulted -
+# it is read after identification, against bindings (profile_id, expect_digest) that do not exist
+# yet at this point in the run, and showing a value that a binding mismatch may discard would be
+# showing a value this run might never use.
+function Get-PrefetchRequestDisplay {
+    if ($null -ne $script:PrefetchRequestInteractive) { return [string]$script:PrefetchRequestInteractive }
+    $cli = ([string]$Prefetch).Trim().ToLowerInvariant()
+    if ($script:PREFETCH_REQUEST_VALUES -ccontains $cli) { return $cli }
+    return $script:PREFETCH_REQUEST_DEFAULT
+}
+
+# A6' UI path: the entry point for a run the model MENU never reached, on the terms the
+# repack-mode precedent fixed - non-interactive, a command line that already decided, a menu that
+# already offered it, or a -Model run that could have passed -Prefetch just as easily.
+#
+# Two things this screen must say that the repack-mode one does not (lead decision 2, K-2):
+#   - prefetch is a PRESET ALLOWLIST key, so unlike the repack mode this value can outlive the
+#     run. It is stored when the run saves settings (the custom screen), and inherited on the next
+#     start of the same model. A control whose effect can persist has to say so before it is used.
+#   - adapt cannot take effect in this phase. 4-3 AN-4 refuses it with
+#     adapt_controller_not_shipped_phase5 for as long as the controller body is not shipped, and
+#     the run still LOADS the bundle and answers "accepted, effective off". Offering a value that
+#     is always refused without saying so would be the screen telling a lie by omission.
+function Confirm-PrefetchRequestBeforeIdentify {
+    if ($NonInteractive) { return }
+    if (([string]$Prefetch).Trim().Length -gt 0) { return }
+    if ($script:PrefetchRequestToggleOffered) { return }
+    if ($Model) { return }
+    $cur = Get-PrefetchRequestDisplay
+    Write-Line ''
+    Write-Line '[prefetch] catalog (default) uses the published per-model policy; init arms the'
+    Write-Line '           fixed opt-in at start; adapt asks for the adaptive arm.'
+    $refusal = Get-PrefetchAdaptRefusal -ReproOrBench $false
+    Write-Line ('           adapt is REFUSED in this build (' + $refusal + ') - the bundle still')
+    Write-Line '           loads and the run serves with prefetch off.'
+    Write-Line '           This is a stored setting: saving settings on the status screen keeps it'
+    Write-Line '           for the next start of this model.'
+    $ans = Read-UserLine -Prompt ('           Prefetch? [' + $cur + ']/' + (($script:PREFETCH_REQUEST_VALUES) -join '/') + ' ')
+    # Same discipline as the repack-mode question: a blank line, an unreadable console and a typo
+    # all resolve to the value already on screen, and the echo below is what makes that visible.
+    $value = $cur
+    if ($null -ne $ans) {
+        $a = ([string]$ans).Trim().ToLowerInvariant()
+        if ($script:PREFETCH_REQUEST_VALUES -ccontains $a) { $value = $a }
+    }
+    Set-PrefetchRequestInteractive -Value $value -Source 'pre_identify_question'
+    $tail = '.'
+    if ($value -ceq 'adapt') { $tail = ' - refused this build, the run will serve with prefetch off.' }
+    Write-Line ('[prefetch] ' + $value + $tail)
 }
 
 # UI-V 1 (Amendment 1, item 7): the entry point for a run the MENU never reached. Zero candidates
@@ -10142,15 +13726,22 @@ function Confirm-EffectiveSizing {
 # drives this same function rather than a copy of its two halves.
 function Complete-PreSpawnConfig {
     param($Catalog, $Profile, [string] $Root, [string] $OutputDir, [string] $ModelPath,
-          $Overrides, $PrefetchDecision, [int] $Qd, $Sweep, [string] $QdSource, [bool] $Custom)
+          $Overrides, $PrefetchDecision, [int] $Qd, $Sweep, [string] $QdSource, [bool] $Custom,
+          # 5CTL 3-7: passed straight through to the scope digest. This is the LAST rebuild before
+          # the child is spawned, so the answer it produces is the one the manifest is published on.
+          [string] $ExpectSha256 = '', [string] $RepackManifestSha256 = '')
     $kvBefore = [string]$script:WarmstartCtx.status_text
     $config = Build-EffectiveConfig -Catalog $Catalog -Profile $Profile -Root $Root -OutputDir $OutputDir `
-                  -ModelPath $ModelPath -Overrides $Overrides -PrefetchDecision $PrefetchDecision -Qd $Qd
+                  -ModelPath $ModelPath -Overrides $Overrides -PrefetchDecision $PrefetchDecision -Qd $Qd `
+                  -ExpectSha256 $ExpectSha256 -RepackManifestSha256 $RepackManifestSha256
     if ([string]$script:WarmstartCtx.status_text -cne $kvBefore) {
         Write-Line ('  kv               : {0} (re-checked before start)' -f $script:WarmstartCtx.status_text)
     }
 
-    Write-Diag -Kind 'EFFECTIVE' -Data @{ argv = $config.argv; env = $config.env; port = $config.port
+    # 5CT-TUPLE 2-4: the record is built into a variable rather than passed inline so the four
+    # collect_tuple_* fields can be added CONDITIONALLY below. On a run with no tuple the resulting
+    # hashtable has exactly the keys - and therefore exactly the bytes - it had before this atom.
+    $effectiveRecord = @{ argv = $config.argv; env = $config.env; port = $config.port
                                           budget_mb = $config.budget_mb; qd = $config.qd
                                           qd_source = $QdSource
                                           sweep_qd = $Sweep.qd; sweep_reason = $Sweep.reason
@@ -10170,12 +13761,33 @@ function Complete-PreSpawnConfig {
                                           requested_n = $config.prefetch.n
                                           requested_qd = [int]$config.qd
                                           prefetch_provenance = $config.prefetch.provenance
-                                          prefetch_init_version = [string]$config.prefetch.init_version
+                                          # 5CT-TUPLE 2-4: NO [string] cast. PowerShell renders
+                                          # [string]$null as the empty string, so the cast turned a
+                                          # deliberate null into "" - and "the pair has no init
+                                          # version" would arrive as a present-but-blank field
+                                          # instead of JSON null. Same conditional-null shape the
+                                          # campaign fields below already use.
+                                          prefetch_init_version = $config.prefetch.init_version
                                           # P4 3 names this field 'warning', not 'prefetch_warning':
                                           # the mandatory echo is a field-name contract, so the
                                           # record has to be readable by the name the spec gives.
                                           warning = $config.prefetch.warning
                                           off_reason = $config.prefetch.off_reason
+                                          # 5CTL 1-4: the collect half of the mandatory echo. The
+                                          # screen above can scroll away; this record is the one a
+                                          # later reader consumes, so the same fields appear here
+                                          # under the same names. collect_campaign_path is the RAW
+                                          # value (5CTL 1-1-1) and the campaign identity fields are
+                                          # null unless collection actually resolved on.
+                                          collect_state = [string]$config.collect.state
+                                          collect_reason = [string]$config.collect.reason
+                                          collect_requested = [bool]$config.collect.requested
+                                          collect_campaign_path = [string]$config.collect.campaign_raw
+                                          collect_campaign_id = $(if ($null -ne $config.collect.campaign) { [string]$config.collect.campaign.campaign_id } else { $null })
+                                          collect_campaign_revision = $(if ($null -ne $config.collect.campaign) { [int]$config.collect.campaign.campaign_revision } else { $null })
+                                          collect_minimum_sample_count = $(if ($null -ne $config.collect.campaign) { [long]$config.collect.campaign.minimum_sample_count } else { $null })
+                                          collect_approved_scope_sha256 = [string]$config.collect.scope_sha256
+                                          collect_manifest_path = [string]$config.collect.canonical_path
                                           warmstart_mode = $script:WarmstartCtx.mode
                                           warmstart_override = $script:WarmstartCtx.override
                                           warmstart_state = (Get-WarmstartState)
@@ -10206,6 +13818,18 @@ function Complete-PreSpawnConfig {
                                           # mismatch, custom, auto budget, warm path). Dropping a term
                                           # here republishes an unmeasured number as measured.
                                           performance_gate = $(if ($script:PinMismatchLatch -or $Custom -or $config.budget_unmeasured -or (Test-WarmPathBaseline -Config $config)) { 'unmeasured' } else { (Test-JsonBooleanTrue (Get-JsonValue -Obj (Get-JsonValue -Obj $Profile -Name 'gates') -Name 'performance_validated')) }) }
+    # 5CT-TUPLE 2-4: added ONLY on a run that supplied a tuple, under the same names the status
+    # screen prints. The existing requested_k / requested_n / prefetch_provenance fields already
+    # carry the substituted values - the tuple is not routed around them into a private field,
+    # because the manifest-versus-header K/N check (5CTL 4-1 condition 6) is only meaningful if the
+    # screen, the record and the engine all name the same pair.
+    if ($script:CollectTupleRequested -eq $true) {
+        $effectiveRecord['collect_tuple_requested'] = $true
+        $effectiveRecord['collect_tuple_k']         = [int]$script:CollectTupleK
+        $effectiveRecord['collect_tuple_n']         = [int]$script:CollectTupleN
+        $effectiveRecord['collect_tuple_surface']   = 'phaseb_collect'
+    }
+    Write-Diag -Kind 'EFFECTIVE' -Data $effectiveRecord
     return $config
 }
 
@@ -10227,6 +13851,16 @@ function Invoke-LauncherMain {
     # decided before the model selection menu offers its toggle and long before the selection call
     # consumes it, and its only inputs (CLI, the global preference file) are all available now.
     Resolve-ArchTemplate
+    # 5CTL 1-1-1: the collect opt-in is launcher-owned CLI validation too, so it belongs in this
+    # step with -Action and the mode - while the raw strings still exist and before anything can
+    # read the request. Shape only; the campaign record itself is checked once the effective config
+    # is final (5CTL 3-7), which is also why this call cannot decide the final collect state.
+    Resolve-CollectRequest
+    # 5CT-TUPLE 1-6 case 3 / 2-1: refuse a tuple that no collection request will consume. It is
+    # here, immediately after the call above, because that is the first point at which both answers
+    # exist, and it is still inside the fail_custom_args stage and still long before any child. On
+    # every run without a tuple this is a no-op.
+    Assert-CollectTupleRequest
 
     # (1) bundle integrity comes first (LS 2 "launcher first action")
     Set-FailureStage 'fail_gate_bundle'
@@ -10253,6 +13887,11 @@ function Invoke-LauncherMain {
     # rows, and before Resolve-ProfileSelection - which is what keeps it ahead of RV 1-1 [2] (the
     # output directory), the artifact state table, the disk preflight and Get-CliOverrides.
     Confirm-RepackModeBeforeIdentify
+    # 5CA A6' UI path: the prefetch half of the same pre-identification slot, last of the three so
+    # the questions are asked in the order the menu lists their rows. It only records a request -
+    # the value is merged into the overrides after the preset is read, and Resolve-EffectivePrefetch
+    # still owns every decision made from it.
+    Confirm-PrefetchRequestBeforeIdentify
 
     # LS OA-1 (M1): the header fingerprint narrows the candidates, the source pin decides.
     # UX 1-1-3: admissibility is folded into that same argument. The arch is the shard-set consensus
@@ -10571,7 +14210,7 @@ function Invoke-LauncherMain {
     #   preset reset/read -> preset < CLI merge -> opt-in normalisation -> arm selection ->
     #   sweep (S90 / q_base with that arm) -> QD override -> K/N at the FINAL QD ->
     #   Resolve-PrefetchForQd invariant re-check (inside Build-EffectiveConfig, on every rebuild)
-    # Every refusal (semantic, derived t, identity, hold, engine floor, t range, adapt) lands on
+    # Every refusal (semantic, derived t, identity, hold, t range, adapt) lands on
     # arm 'none' BEFORE the sweep runs, so a refused request cannot move the QD of the run it was
     # refused for.
     # -----------------------------------------------------------------------------------------
@@ -10587,9 +14226,24 @@ function Invoke-LauncherMain {
     }
     $overrides = @{}
     foreach ($k in $preset.overrides.Keys) { $overrides[$k] = $preset.overrides[$k] }
+    # 5CA A6' UI path: between the two, which is the precedence the controls were offered on. The
+    # stored preset is what the interactive answer is FOR - a user who was shown "prefetch: init"
+    # and pressed it to catalog meant this run, not the value a previous run happened to save. The
+    # command line still wins, and never actually competes: both controls decline to run at all
+    # once -Prefetch is present, so this merge cannot silently overrule an argument.
+    # It rides in $overrides rather than a private variable so that it is the same value the
+    # status screen shows, the same one Save-UserPreset writes on the custom path - which is what
+    # makes the question's "this is a stored setting" line true - and the same one 6-2 M-4 demotes.
+    if ($null -ne $script:PrefetchRequestInteractive) {
+        $overrides['prefetch'] = [string]$script:PrefetchRequestInteractive
+    }
     foreach ($k in $cliOverrides.Keys) { $overrides[$k] = $cliOverrides[$k] }
 
     Set-FailureStage 'fail_gate_catalog'
+    # 5CA 6-2 M-2: the run mode is decided HERE, once, by the one function that owns it, and
+    # before anything reads it. Its inputs are closed (M-3) and the collect request is passed
+    # in already resolved so this call site does not re-derive it.
+    $script:RunModeResolved = Resolve-RunMode -CollectOn ([bool]$script:CollectRequested)
     $prefetchRequest = $script:PREFETCH_REQUEST_DEFAULT
     if ($overrides.ContainsKey('prefetch')) { $prefetchRequest = [string]$overrides['prefetch'] }
     $prefetchOptIn = ConvertTo-PrefetchOptIn -Request $prefetchRequest
@@ -10638,7 +14292,8 @@ function Invoke-LauncherMain {
 
     Set-FailureStage 'fail_custom_args'
     $config = Build-EffectiveConfig -Catalog $catalog -Profile $profile -Root $root -OutputDir $outputDir `
-                  -ModelPath $modelPath -Overrides $overrides -PrefetchDecision $prefetchDecision -Qd $qd
+                  -ModelPath $modelPath -Overrides $overrides -PrefetchDecision $prefetchDecision -Qd $qd `
+                  -ExpectSha256 $expectSha -RepackManifestSha256 $gateInfo.manifest_sha256
     $custom = Test-CustomProvenance -Overrides $overrides
     $qdSource = Get-QdSource -Overrides $overrides -Sweep $sweep
 
@@ -10651,11 +14306,16 @@ function Invoke-LauncherMain {
     # LS OA-1: the three surface axes are fixed for the whole loop - the verify gate above has
     # already decided copy integrity, and neither the inventory authority nor the serving validation
     # can be changed by a custom edit.
-    $axes = Get-SurfaceAxes -Kind ([string]$selection.kind) -Profile $profile -CopyVerified $true
+    # LUX-1 B1: the mode comes from the single writer ($script:RepackModeResolved, RV 1-1 [1]) and
+    # is passed as a display argument only - it never enters $overrides or Test-CustomProvenance.
+    # -CopyVerified stays $true: the value is not flipped, the virtual path overrides the display
+    # axis inside Get-SurfaceAxes, which is what keeps this a display change and not a verdict one.
+    $axes = Get-SurfaceAxes -Kind ([string]$selection.kind) -Profile $profile -CopyVerified $true `
+                -RepackMode $script:RepackModeResolved
     Write-Diag -Kind 'SURFACE_AXES' -Data $axes
     while ($true) {
         Show-Status -Profile $profile -Config $config -ProbeResult $probe -Custom $custom -RamVerdict $pre.ram `
-                    -Sweep $sweep -QdSource $qdSource -SurfaceAxes $axes
+                    -Sweep $sweep -QdSource $qdSource -SurfaceAxes $axes -RepackMode $script:RepackModeResolved
         $choice = Read-MenuChoice
         if ($choice -eq 'stop') { Stop-Launcher 'cancelled_user' 'user selected stop before start' }
         if ($choice -eq 'custom') {
@@ -10677,7 +14337,8 @@ function Invoke-LauncherMain {
                                     -DerivedHeaderExpertUsed $derivedHeaderT -ReproOrBench $reproOrBench `
                                     -Request $prefetchRequest
             $config = Build-EffectiveConfig -Catalog $catalog -Profile $profile -Root $root -OutputDir $outputDir `
-                          -ModelPath $modelPath -Overrides $overrides -PrefetchDecision $prefetchDecision -Qd $qd
+                          -ModelPath $modelPath -Overrides $overrides -PrefetchDecision $prefetchDecision -Qd $qd `
+                          -ExpectSha256 $expectSha -RepackManifestSha256 $gateInfo.manifest_sha256
             # LS 12-1: a custom edit can only move the QD priority between user-override and the
             # measured default - it never re-runs the sweep (one sweep per process, LS 12-4).
             $qdSource = Get-QdSource -Overrides $overrides -Sweep $sweep
@@ -10692,7 +14353,48 @@ function Invoke-LauncherMain {
 
     $config = Complete-PreSpawnConfig -Catalog $catalog -Profile $profile -Root $root -OutputDir $outputDir `
                   -ModelPath $modelPath -Overrides $overrides -PrefetchDecision $prefetchDecision -Qd $qd `
-                  -Sweep $sweep -QdSource $qdSource -Custom $custom
+                  -Sweep $sweep -QdSource $qdSource -Custom $custom `
+                  -ExpectSha256 $expectSha -RepackManifestSha256 $gateInfo.manifest_sha256
+
+    # (10b) 5CTL 2-2-1: reserve the collection manifest. This sits between the final config and the
+    # spawn on purpose - the canonical name derives from the metrics path, which is final now, and
+    # reserving before the child exists is what keeps a failure here from needing a restart.
+    $collectReservation = $null
+    # 5CT-REPAIR 1 (B_env, "ledger preflight"): FIRST the ledger name has to be free, and only then
+    # may a reservation be taken. Both orderings are load-bearing - the check is after the final
+    # config (the prefix derives from the final metrics path) and before the publish (a manifest is
+    # an authority, and one published over an unusable ledger name describes a run the engine will
+    # refuse to perform). The disposition is the ordinary one for this class: collection off with the
+    # existing collect_manifest_preflight_failed literal, a COLLECT_REFUSED_LATE record, and the
+    # launch continues. Nothing has been spawned yet, so there is no child to replace.
+    if ([string]$config.collect.state -ceq 'on') {
+        $ledgerPath = Get-CollectLedgerPath -OutPrefix ([string]$config.env[$script:ENV_PHASEB_OUT])
+        $ledgerPre = Test-CollectLedgerAbsent -LedgerPath $ledgerPath
+        if (-not $ledgerPre.ok) {
+            Disable-CollectOnConfig -Config $config -Reason 'collect_manifest_preflight_failed' `
+                -Detail ([string]$ledgerPre.detail)
+            # 5CT-TUPLE 1-5-2 L2: pre-spawn. Nothing has been started, so a tuple run ends here
+            # with no child ever created.
+            Assert-CollectTupleLanded -Prefetch $config.prefetch -Collect $config.collect `
+                -EligibilityFailure 'none' -Site 'ledger_preflight' -PostSpawn $false
+        }
+    }
+    if ([string]$config.collect.state -ceq 'on') {
+        $collectReservation = Publish-CollectPendingManifest -Config $config -ModelPath $modelPath `
+                                  -SourceTag $sourceTag -Selection $selection -ExpectSha256 $expectSha `
+                                  -RepackManifestSha256 $gateInfo.manifest_sha256
+        if (-not $collectReservation.ok) {
+            # 5CTL 3-4 row 2: collection turns off and THE RUN CONTINUES. There is deliberately no
+            # restart path here - nothing has been spawned yet, so there is no child to replace.
+            Disable-CollectOnConfig -Config $config -Reason 'collect_manifest_preflight_failed' `
+                -Detail ([string]$collectReservation.reason)
+            $collectReservation = $null
+            # 5CT-TUPLE 1-5-2 L3: pre-spawn. The publish failed, so no reservation stands and there
+            # is nothing to clean up beyond the line above.
+            Assert-CollectTupleLanded -Prefetch $config.prefetch -Collect $config.collect `
+                -EligibilityFailure 'none' -Site 'pending_publish' -PostSpawn $false
+        }
+    }
 
     # (11) start the server child
     Set-FailureStage 'fail_server_start'
@@ -10707,7 +14409,7 @@ function Invoke-LauncherMain {
     $script:LastServerPort = [int]$config.port
     $script:LastServerConfig = $config
     $sr = Start-OwnedChild -Exe $serverExe -Args0 $config.argv -EnvVars $config.env -WorkDir $root `
-              -StdOutPath $srvOut -StdErrPath $srvErr -NewProcessGroup $true -Role 'server'
+              -StdOutPath $srvOut -StdErrPath $srvErr -NewProcessGroup $true -Role 'server' -SmokeModelPath $modelPath
     if (-not $sr.ok) { Stop-Launcher 'fail_server_start' ('server start failed: ' + $sr.reason) }
     $child = $sr.child
     Write-Line ''
@@ -10723,17 +14425,97 @@ function Invoke-LauncherMain {
     # otherwise overwrite the prefix that was just restored into slot 0.
     $wsRestore = Invoke-WarmstartRestore -Config $config
     if ($wsRestore.recovery) {
+        $oldCanonical = [string]$config.collect.canonical_path
+        $oldReservation = $(if ($null -ne $collectReservation) { [string]$collectReservation.reservation_id } else { '' })
         $rec = Invoke-WarmstartRecoveryRestart -Config $config -ServerExe $serverExe -Root $root `
-                   -StdOutPath $srvOut -StdErrPath $srvErr
+                   -StdOutPath $srvOut -StdErrPath $srvErr -OldReservationId $oldReservation
         $child = $rec.child
         $config = $rec.config
         $srvErr = $rec.err_log
         $script:LastServerConfig = $config
         $wsRestore = @{ restored = $false; recovery = $true; n_restored = 0 }
+        # 5CTL 2-5: the reservation described the child that was just replaced. Re-run pending on
+        # the new metrics path, or turn collection off and replace the child without it.
+        if ([string]$config.collect.state -ceq 'on' -and $null -ne $collectReservation) {
+            $re = Update-CollectAfterRecovery -Config $config -OldCanonicalPath $oldCanonical `
+                      -OldReservationId $oldReservation -ModelPath $modelPath -SourceTag $sourceTag `
+                      -Selection $selection -ExpectSha256 $expectSha `
+                      -RepackManifestSha256 $gateInfo.manifest_sha256
+            if ($re.ok) {
+                $collectReservation = @{ ok = $true; reservation_id = [string]$re.reservation_id }
+            } else {
+                Disable-CollectOnConfig -Config $config -Reason ([string]$re.enum_reason) -Detail ([string]$re.detail)
+                # 5CT-TUPLE 1-5-2 L4: post-spawn. Update-CollectAfterRecovery has already removed
+                # this run's own pending manifest, so the owned state is tidy before the throw. The
+                # replacement child on the next line is never started on a tuple run: handing the
+                # user a live server that is not collecting is the outcome this gate forbids. The
+                # live child is stopped by the outer teardown, which may promote fail_teardown over
+                # the pending fail_custom_args - that priority is not this atom's to change.
+                Assert-CollectTupleLanded -Prefetch $config.prefetch -Collect $config.collect `
+                    -EligibilityFailure 'none' -Site 'recovery_manifest' -PostSpawn $true
+                $rc = Restart-CollectOffChild -Config $config -ServerExe $serverExe -Root $root `
+                          -StdOutPath $srvOut -StdErrPath $srvErr
+                $child = $rc.child ; $config = $rc.config ; $srvErr = $rc.err_log
+                $script:LastServerConfig = $config
+                $collectReservation = $null
+            }
+        }
     }
+
+    # 5CTL 2-5: ready_qpc, taken on the counter the engine stamps its own requests with. It is taken
+    # HERE - after any recovery - because it has to describe the child that will actually serve.
+    $collectReadyQpc = [System.Diagnostics.Stopwatch]::GetTimestamp()
 
     # (12) RS 5 degraded branches: warmup and browser open are both best-effort and never terminal.
     Invoke-ReadyWarmup -Config $config -Restore $wsRestore
+
+    # (12b) 5CTL 2-5 / 2-2-1: the launcher's own leading segment is complete. Verify it and promote
+    # the reservation to final - BEFORE the browser opens and before the serving loop hands the
+    # server to the user. Both failures below are fail-close: the collecting child is never handed
+    # over, it is replaced by a non-collecting one.
+    if ([string]$config.collect.state -ceq 'on' -and $null -ne $collectReservation) {
+        $prefixDoneQpc = [System.Diagnostics.Stopwatch]::GetTimestamp()
+        $fin = $null
+        if (-not (Test-CollectPrefixVerified)) {
+            $fin = @{ ok = $false; reason = 'collect_prefix_unverified'
+                      detail = 'a launcher request in the leading segment was not confirmed with HTTP 200' }
+        } else {
+            $fin = Complete-CollectFinalManifest -Config $config -Child $child `
+                       -ReservationId ([string]$collectReservation.reservation_id) `
+                       -ReadyQpc $collectReadyQpc -PrefixDoneQpc $prefixDoneQpc `
+                       -ModelPath $modelPath -SourceTag $sourceTag -Selection $selection `
+                       -ExpectSha256 $expectSha -RepackManifestSha256 $gateInfo.manifest_sha256
+            # 5CT-REPAIR 2 (B_rdv): the handover is published HERE - after the final manifest's
+            # atomic replace and read-back both succeeded, and still before Open-BrowserBestEffort
+            # and the serving loop. A publish failure is folded into the SAME fail-close branch
+            # below through the existing collect_manifest_commit_failed literal (trap (c)5-4), so
+            # the collecting child is replaced exactly as it would be for any other commit failure.
+            if ($fin.ok) {
+                $rdvRes = Publish-CollectRendezvous -Config $config `
+                              -ReservationId ([string]$collectReservation.reservation_id) `
+                              -Manifest $fin.manifest
+                if (-not $rdvRes.ok) { $fin = $rdvRes }
+            }
+        }
+        if (-not $fin.ok) {
+            Remove-CollectOwnPending -CanonicalPath ([string]$config.collect.canonical_path) `
+                -ReservationId ([string]$collectReservation.reservation_id)
+            Disable-CollectOnConfig -Config $config -Reason ([string]$fin.reason) -Detail ([string]$fin.detail)
+            # 5CT-TUPLE 1-5-2 L5: post-spawn, and the last gate before the user gets the server.
+            # The owned pending manifest was removed two lines above, so the throw leaves no
+            # orphan. Everything downstream is skipped on a tuple run - the replacement child, the
+            # browser and the serving loop - which is the concrete meaning of "the handover never
+            # happens".
+            Assert-CollectTupleLanded -Prefetch $config.prefetch -Collect $config.collect `
+                -EligibilityFailure 'none' -Site 'prefix_final_rendezvous' -PostSpawn $true
+            $rc = Restart-CollectOffChild -Config $config -ServerExe $serverExe -Root $root `
+                      -StdOutPath $srvOut -StdErrPath $srvErr
+            $child = $rc.child ; $config = $rc.config ; $srvErr = $rc.err_log
+            $script:LastServerConfig = $config
+            $collectReservation = $null
+        }
+    }
+
     Open-BrowserBestEffort -Config $config -Catalog $catalog
 
     # (13) smoke or interactive serve
@@ -10833,7 +14615,14 @@ function Invoke-LauncherWarmup {
     }
     $uri = ('http://{0}:{1}/v1/chat/completions' -f $Config.host, $Config.port)
     $body = '{"model":"local","messages":[{"role":"user","content":"warmup"}],"max_tokens":1,"stream":false}'
+    # 5CTL 2-5: stamp the request on the engine's own counter and record the outcome. This does not
+    # change the degraded behaviour below - the record is read later, by the collect gate only.
+    $qpc0 = [System.Diagnostics.Stopwatch]::GetTimestamp()
     $r = Invoke-HttpJson -Uri $uri -Method 'POST' -Body $body -TimeoutSec 300
+    Add-CollectPrefixRecord -Kind 'launcher_warmup' -DispatchQpc $qpc0 `
+        -ResponseQpc ([System.Diagnostics.Stopwatch]::GetTimestamp()) `
+        -HttpStatus $(if ($r.ok) { [int]$r.status } else { $null }) `
+        -Ok ([bool]($r.ok -and $r.status -eq 200))
     if ($r.ok -and $r.status -eq 200) {
         Write-Line '[warmup] launcher warmup request completed.'
         Write-Diag -Kind 'WARMUP_OK' -Data @{ status = $r.status }
@@ -10947,8 +14736,17 @@ function Invoke-LauncherWarmfile {
     # the stage announces itself before it blocks. Display only - the path is not on this line.
     Write-Line ('[warmup] precomputing the warmup file prefix ({0} bytes); this runs once and can take minutes.' -f $b.bytes.Length)
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    # 5CTL 2-5: same stamping as the generic warmup above.
+    $qpc0 = [System.Diagnostics.Stopwatch]::GetTimestamp()
     $r = Invoke-HttpJson -Uri $uri -Method 'POST' -Body $body -TimeoutSec $script:WARMFILE_TIMEOUT_SEC
     $sw.Stop()
+    # 5CTL 2-5: a warmfile POST that reached HTTP 200 IS a real request and is counted, even if the
+    # token-count parse below then fails - that failure is about the response body, not about
+    # whether the engine served a request in the leading segment.
+    Add-CollectPrefixRecord -Kind 'launcher_warmfile' -DispatchQpc $qpc0 `
+        -ResponseQpc ([System.Diagnostics.Stopwatch]::GetTimestamp()) `
+        -HttpStatus $(if ($r.ok) { [int]$r.status } else { $null }) `
+        -Ok ([bool]($r.ok -and $r.status -eq 200))
     if (-not ($r.ok -and $r.status -eq 200)) {
         $reason = $r.reason
         if (-not $reason) { $reason = ('status ' + $r.status) }

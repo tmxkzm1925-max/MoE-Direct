@@ -4,39 +4,61 @@ This directory publishes the engine delta behind the release zips whose patch
 is out - one patch per distinct engine revision, not per release number: a
 release that changes only the launcher or the docs reuses the previous engine
 tree (v0.2.3 ships the v0.2.2 engine unchanged), and the initial v0.2 predates
-this directory. **Not every release is covered.** The latest published patch is
-v0.2.2, and the engine in the current v0.3-preview zip is a later revision
-whose delta is not out yet; the first section below is what stands in for it
-until v0.3.1. The launcher, repacker, catalog and expectation files are
+this directory. **Not every release is covered.** The latest patch here is
+v0.3.1. It reconstructs that release's source tree; the historical
+v0.3-preview source state remains identified by its receipt rather than a
+reconstructible patch. The launcher, repacker, catalog and expectation files are
 published at the repository root; this is the remaining piece: what was changed
 inside the engine. The revisions are listed newest first, and the earlier ones
 are kept because their zips are still downloadable.
 
-## v0.3-preview - not published yet
+## v0.3.1 - source and build reference
+
+- **Base**: llama.cpp release `b10057`, commit `0bd0ec60998d0f71ec45471b633bf2403ac81956`.
+- **Patch**: [moedirect-v0.3.1-b10057.patch](moedirect-v0.3.1-b10057.patch),
+  77 paths: 26 modified upstream files and 51 additions.
+- **Patch SHA-256**: `236f5345da709bb151a3fb450014632e0691feec5076617b5efb5cdea85a9c8d`.
+- **Reconstructed tree**: `77e6cb26213d7719db707980b17168a81ad97691`.
+- **Source and build instructions**: [v0.3.1/README.md](v0.3.1/README.md),
+  with the unchanged build procedure and its recorded 17-file hash reference.
+
+The recorded CUDA-off build produced matching outputs across two clean builds
+for 16 shipped runtime files plus the unshipped engine selftest. Its full
+selftest reported 1484/1484. `ggml-cuda.dll` and three NVIDIA runtime DLLs were
+supplied separately; their exact hashes and provenance are listed in the
+instructions. Those four files and the whole ZIP are outside the two-build
+reproduction claim.
+
+The root `BUILD_RECEIPT.txt` binds this source tree and patch to the recorded
+build outputs. Its catalog identifier `moe-direct-v0.3.1-src-77e6cb26` is not
+an assertion that a public Git tag exists. No v0.3.1 fork URL is asserted here.
+
+## v0.3-preview - historical source boundary
 
 The engine in the v0.3-preview zip carries the virtual repack path, and its
-delta is **not** in this directory. It is scheduled for v0.3.1, as a patch
-against the same pinned base commit plus the matching fork branch, on the
-terms every section below is held to.
+exact historical delta is **not** in this directory. The v0.3.1 patch above
+provides the later release tree; it does not reconstruct the earlier preview
+source byte for byte.
 
-What exists in the meantime is narrower and worth stating exactly.
-`BUILD_RECEIPT.txt`, at the root of this repository and inside the bundle,
+The preview's record is narrower.
+`BUILD_RECEIPT.txt` inside the v0.3-preview bundle
 records the SHA-256 and the byte size of each of the seven engine source
 files that make up that state, together with the toolchain and the hashes of
-every shipped build output. What it does not carry is a tree id: the
-v0.3-preview engine tree was never committed, so no tree id exists for it,
-and the mechanical patch-to-tree proof the v0.2.x sections give cannot be
+every shipped build output. That receipt carries per-file hashes rather than
+a complete recorded tree ID, and no corresponding reconstructible source
+snapshot is supplied here. The mechanical patch-to-tree proof below cannot be
 given for this release. Per-file hashes identify the source state; they do
-not let you reconstruct it. That is exactly the gap v0.3.1 closes.
+not let you reconstruct it. The current root receipt separates the v0.3.1
+record from retained historical generations.
 
 One build difference is already visible in that receipt, and it is worth
 knowing before you read the **Building** section below. The v0.2.x zips carry
 the stock `ggml-cuda.dll` from the upstream `b10057` release; the v0.3-preview
 zip ships one built here instead, listed among its own build outputs, so this
-build had the CUDA backend enabled rather than switched off. The exact
-configure line comes with the patch.
+build had the CUDA backend enabled rather than switched off. The v0.3.1
+build instructions describe their own release and supplied-runtime boundary.
 
-## v0.2.2 - what exactly this is (latest published patch)
+## v0.2.2 - what exactly this is
 
 - **Base**: llama.cpp release `b10057`, commit `0bd0ec60998d0f71ec45471b633bf2403ac81956` -
   the same base commit v0.2.1 was built on.
@@ -72,9 +94,9 @@ configure line comes with the patch.
 
 Patch to tree is the whole of that claim, and it is worth being exact about where it
 stops: nothing above binds that tree to the bytes of the shipped executables. What
-seals the shipped set is the SHA manifest inside the zip, and a build receipt that
-machine-binds base commit, tree id and patch hash in one record is planned for a
-future release. The boundaries stated under **Building** below apply to this patch
+seals the shipped set is the SHA manifest inside the zip. The v0.3.1 receipt
+now binds those identities for its own release; it does not retroactively
+change the v0.2.x evidence. The boundaries stated under **Building** below apply to this patch
 unchanged.
 
 ## v0.2.1 - what exactly this is
@@ -101,12 +123,12 @@ unchanged.
   git write-tree    # prints 32a97db0d9941a0f302b4d6ca6200c964c41b1f6
   ```
 
-## Building
+## Building v0.2.x
 
-This section describes the v0.2.x builds, the ones the patches above
-reproduce. The v0.3-preview build differs, most visibly in the CUDA backend;
-`BUILD_RECEIPT.txt` and the v0.3-preview section above are its record until
-its patch lands.
+This section describes only the v0.2.x builds. For v0.3.1, use
+[the versioned instructions](v0.3.1/README.md). The v0.3-preview build differs,
+most visibly in the CUDA backend; its bundle receipt and the historical
+section above remain its record.
 
 The shipped binaries were built with MSVC 14.44 (Visual Studio 2022 Build
 Tools), CMake and Ninja, in Release, with:
@@ -141,24 +163,23 @@ mainline PR series.
 
 ## The same tree, browsable
 
-If you would rather read the source than apply a patch, the identical tree is
-pushed as a branch on a fork, one branch per engine revision, one commit on
-top of the pinned base, carrying exactly the tree that revision's patch
-reproduces (releases that reuse an engine tree share its branch).
-The patch and the branch are cross-evidence for each other:
+The v0.2.x source revisions are also available as branches on a fork, one
+branch per engine revision, one commit on top of the pinned base, carrying
+exactly the tree that revision's patch reproduces (releases that reuse an
+engine tree share its branch).
+For the v0.2.x source revisions, the patch and branch are cross-evidence:
 [`tmxkzm1925-max/llama.cpp`, branch `moe-direct-v0.2.2`](https://github.com/tmxkzm1925-max/llama.cpp/tree/moe-direct-v0.2.2)
-(tree `38df4497...`) for the latest published patch, and branch
+(tree `38df4497...`), and branch
 [`moe-direct-v0.2.1`](https://github.com/tmxkzm1925-max/llama.cpp/tree/moe-direct-v0.2.1)
-(tree `32a97db0...`) for the one before it. The v0.3-preview engine has no
-branch yet; it gets one with its patch.
+(tree `32a97db0...`). The historical v0.3-preview tree has no branch identified
+here. For v0.3.1, the patch and complete tree ID above are the source entry point.
 
 ## Status
 
 A mainline llama.cpp PR is in preparation. It will be a rebased, split series
 with per-change rationale, not this single patch. Until then, this file plus
-the base pin is the complete, verifiable statement of what the engine in the
-v0.2.x releases runs, and v0.3.1 brings the v0.3-preview engine onto the same
-footing.
+the base pin reconstruct the source trees identified above for v0.2.x and
+v0.3.1. The historical v0.3-preview limitation remains explicit.
 
 llama.cpp is by Georgi Gerganov and contributors, and this project exists on
 top of that work; see `THIRD_PARTY_NOTICES.md` at the repository root.

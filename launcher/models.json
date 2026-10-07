@@ -1,9 +1,9 @@
 {
   "catalog_schema_version": 2,
-  "source_tag": "moe-direct-v0.3-preview-src-0e98704b",
+  "source_tag": "moe-direct-v0.3.1-src-77e6cb26",
   "runtime": {
     "server_exe": "llama-server.exe",
-    "repacker_exe": "repacker/python/python.exe",
+    "repacker_exe": "UNRESOLVED_repacker_exe",
     "repacker_argv": ["./repacker/repack_experts.py"],
     "expects_dir": "expects",
     "webui": false
@@ -88,6 +88,7 @@
       "prefetch_evidence": "observe",
       "prefetch_activation": "off",
       "prefetch": null,
+      "prefetch_promotion_hold": true,
       "gates": {
         "format_validated": true,
         "performance_validated": false
@@ -136,6 +137,7 @@
       "prefetch_evidence": "observe",
       "prefetch_activation": "off",
       "prefetch": null,
+      "prefetch_promotion_hold": true,
       "gates": {
         "format_validated": true,
         "performance_validated": false
@@ -248,9 +250,10 @@
         "n_expert_used": 8
       },
       "min_budget_mb": 10240,
-      "prefetch_evidence": "paired-live",
-      "prefetch_activation": "catalog-fixed",
-      "prefetch": { "k": 8, "n": 4 },
+      "prefetch_evidence": "unverified",
+      "prefetch_activation": "off",
+      "prefetch": null,
+      "prefetch_promotion_hold": true,
       "gates": {
         "format_validated": true,
         "performance_validated": false
@@ -274,7 +277,7 @@
         },
         {
           "model": "Kimi K2.6 447GB mixed-quant (kimi-k2.6-ram-447gb)",
-          "tier": "live B ABBA (official pairing for the prefetch promotion; basis of prefetch_evidence=paired-live / prefetch_activation=catalog-fixed)",
+          "tier": "live B ABBA (official paired run, measured for this row's earlier prefetch promotion; the row no longer carries that promotion since 2026-10-06: the engine has no prefetch adapter for this architecture)",
           "machine_storage": "reference host: Ryzen 7 7800X3D / DDR5 32GB / RTX 5080 16GB / Kioxia EXCERIA PLUS G4 PCIe Gen5 NVMe / Windows 11",
           "budget_qd_prefetch": "budget 10240 MB / QD 8 / prefetch ON K8/N4 vs OFF, A-B-B-A arms, RAMMap before every arm, ISLC off; -ngl 99 --n-cpu-moe 61 (dense on CUDA)",
           "workload_window": "2026-07-31 run k26liveB_20260731T213127, 4 probes x 800 predicted tokens per arm, adjacent-pair readout frozen before the run",
@@ -321,9 +324,13 @@
         "n_expert_used": 6
       },
       "min_budget_mb": 8192,
+      "source_shards_sha256": [
+        "b43b3c3ab930001bf606987dd0f5460d6ccdeea88064dc4e2bb915dcc153d72c"
+      ],
       "prefetch_evidence": "observe",
       "prefetch_activation": "off",
       "prefetch": null,
+      "prefetch_promotion_hold": true,
       "gates": {
         "format_validated": true,
         "performance_validated": false

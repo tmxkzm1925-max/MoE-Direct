@@ -4,8 +4,10 @@
 
 ## Supported models
 
-MoE-Direct does not download weights. Get the GGUF from the exact repository and revision below -
-a different revision may have different tensors and will be rejected by the identity check.
+MoE-Direct does not download weights. The catalog reference measurements apply to the exact
+repositories and revisions below. A structurally compatible file with different source bytes
+may still run, but it is labelled unvalidated and receives no catalog prefetch or reference
+performance claim.
 
 Every profile carries **two independent gates**, and one never implies the other:
 
@@ -13,7 +15,10 @@ Every profile carries **two independent gates**, and one never implies the other
   passed. This is what protects your output. That wording describes the packed path, which is what
   the gate was run on. A virtual repack copies nothing, so it has no byte comparison to make: its
   equivalent evidence is the plan report and the manifest, gated by the launcher and re-derived
-  independently by the engine, and the gate verdicts in this table are the packed ones either way.
+  independently by the engine. The tier and gate verdicts in this table describe the packed path.
+  In virtual mode the screen shows copy integrity as `N/A`, format gate
+  `PASS (virtual plan gate 8/8)`, serving validation as `unvalidated`, and performance
+  as `[unmeasured]`; the reference measurements are labelled as packed-path results.
 - **Performance gate** - a serving run of this model passed the frozen release gate on the
   reference machine. This is only about speed.
 
@@ -23,44 +28,39 @@ Every profile carries **two independent gates**, and one never implies the other
 | `format-validated` | Format gate passed. Any speed number shown is an observation, not a gate pass. |
 | `experimental` | Neither gate established. Your own risk. No pinned catalog entry ships at this tier; a profile derived by [Running an unlisted model (experimental)](#running-an-unlisted-model-experimental) is exactly this tier. |
 
-| Model (profile id) | Source | Experts | Repacked expert store | Min cache budget | Tier | Prefetch |
+| Model (profile id) | Source | Experts | Repacked expert store | Min cache budget | Tier | Launcher prefetch in v0.3.1 |
 |---|---|---:|---:|---:|---|---|
-| **Qwen3.5-122B-A10B Q4_K_M** (`qwen35-122b-nonextn`) **<- start here** | [bartowski/Qwen_Qwen3.5-122B-A10B-GGUF](https://huggingface.co/bartowski/Qwen_Qwen3.5-122B-A10B-GGUF) rev `fec8b222a2eddc3346d6b6d7f7c85efea93cd6bf` | 256 (top-8) | 72.8 GB | 8192 MB | `reference-validated` | `validated` (K=8, N=4) |
-| gpt-oss-120b MXFP4 (`gpt-oss-120b`) | [ggml-org/gpt-oss-120b-GGUF](https://huggingface.co/ggml-org/gpt-oss-120b-GGUF) rev `8d158cefb5f175c6f8842bbd8f68eca54d951ab4` | 128 (top-4) | 61 GB | 8192 MB | `format-validated` | `reference-only` |
-| Qwen3.5-35B-A3B Q4_K_M (`qwen35-35b`) | [unsloth/Qwen3.5-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.5-35B-A3B-GGUF) rev `bc014a17be43adabd7066b7a86075ff935c6a4e2` | 256 (top-8) | 19.5 GB | 4096 MB | `format-validated` | `disabled` |
-| Qwen3.5-397B-A17B Q4_K_M, 6 shards (`qwen35-397b`) | [unsloth/Qwen3.5-397B-A17B-GGUF](https://huggingface.co/unsloth/Qwen3.5-397B-A17B-GGUF) rev `da33c16fa4440f831149fcf53b98a22bc07785e5` | 512 (top-10) | shown by the launcher before it writes | 8192 MB | `format-validated` | `disabled` |
-| Kimi K2.6 447 GB mixed-quant (`kimi-k2.6-ram-447gb`) | [baa-ai/Kimi-K2.6-RAM-447GB-GGUF](https://huggingface.co/baa-ai/Kimi-K2.6-RAM-447GB-GGUF) rev `1e8bc2c2c759db5b4bb783965129d4e1e9182bc6` | 384 (top-8) | 436 GB | 10240 MB | `format-validated` | `validated` (K=8, N=4) |
-| DeepSeek-V4-Flash-0731 MXFP4/Q8_0 (`deepseek-v4-flash`) | [bullerwins/DeepSeek-V4-Flash-0731-GGUF](https://huggingface.co/bullerwins/DeepSeek-V4-Flash-0731-GGUF) rev `ed48c7a2df419aaa01e325521cd6f93464969641` | 256 (top-6) | shown by the launcher before it writes | 8192 MB | `format-validated` | `disabled` |
+| **Qwen3.5-122B-A10B Q4_K_M** (`qwen35-122b-nonextn`) **<- start here** | [bartowski/Qwen_Qwen3.5-122B-A10B-GGUF](https://huggingface.co/bartowski/Qwen_Qwen3.5-122B-A10B-GGUF) rev `fec8b222a2eddc3346d6b6d7f7c85efea93cd6bf` | 256 (top-8) | 72.8 GB | 8192 MB | `reference-validated` | Catalog ON (K=8, N=4; exact source pin required) |
+| gpt-oss-120b MXFP4 (`gpt-oss-120b`) | [ggml-org/gpt-oss-120b-GGUF](https://huggingface.co/ggml-org/gpt-oss-120b-GGUF) rev `8d158cefb5f175c6f8842bbd8f68eca54d951ab4` | 128 (top-4) | 61 GB | 8192 MB | `format-validated` | OFF (held) |
+| Qwen3.5-35B-A3B Q4_K_M (`qwen35-35b`) | [unsloth/Qwen3.5-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.5-35B-A3B-GGUF) rev `bc014a17be43adabd7066b7a86075ff935c6a4e2` | 256 (top-8) | 19.5 GB | 4096 MB | `format-validated` | OFF (held) |
+| Qwen3.5-397B-A17B Q4_K_M, 6 shards (`qwen35-397b`) | [unsloth/Qwen3.5-397B-A17B-GGUF](https://huggingface.co/unsloth/Qwen3.5-397B-A17B-GGUF) rev `da33c16fa4440f831149fcf53b98a22bc07785e5` | 512 (top-10) | shown by the launcher before it writes | 8192 MB | `format-validated` | OFF (held) |
+| Kimi K2.6 447 GB mixed-quant (`kimi-k2.6-ram-447gb`) | [baa-ai/Kimi-K2.6-RAM-447GB-GGUF](https://huggingface.co/baa-ai/Kimi-K2.6-RAM-447GB-GGUF) rev `1e8bc2c2c759db5b4bb783965129d4e1e9182bc6` | 384 (top-8) | 436 GB | 10240 MB | `format-validated` | OFF (no engine prefetch adapter) |
+| DeepSeek-V4-Flash-0731 MXFP4/Q8_0 (`deepseek-v4-flash`) | [bullerwins/DeepSeek-V4-Flash-0731-GGUF](https://huggingface.co/bullerwins/DeepSeek-V4-Flash-0731-GGUF) rev `ed48c7a2df419aaa01e325521cd6f93464969641` | 256 (top-6) | shown by the launcher before it writes | 8192 MB | `format-validated` | OFF (held) |
 
 Notes on this table:
 
 - **The expert-store column is the packed path's cost.** It is what the repack writes when it
   writes a store. Choose the virtual repack mode instead and that column becomes a manifest and its plan
   report next to your GGUF (measured at about 6 MB for the 122B test model and about 16 MB for
-  the 397B one); nothing else in the table changes, because the mode does not
-  change which model is which.
+  the 397B one). Model identity is unchanged, but the packed-path tier and performance
+  verdicts do not transfer to a virtual run; its status is described above.
 - **First time? Take Qwen3.5-122B.** It is the only `reference-validated` profile and the one the
   published speed number belongs to. Budget about 73 GB of disk for its expert store.
-- **Prefetch column.** `validated` means the next-layer expert prefetch was measured and frozen for
-  that profile on the reference machine. `reference-only` means the signal exists but the
-  end-to-end lever has not been qualified, and `disabled` means the family adapter is not built
-  yet. The engine and the launcher both refuse a prefetch override on a profile that is not
-  `validated` - this is deliberate, not a bug. K2.6 reached `validated` through a paired A-B-B-A
-  run in which both adjacent pairs favoured the ON arm and all four arms produced byte-identical
-  output. **That row describes the shipped catalog.** The same catalog file shipped unchanged across the
-  v0.2.x releases from v0.2.1 on, and v0.3-preview replaces it: that file moves to catalog schema
-  version 2. The promotion travels with `models.json`, not
-  with the model: a v0.2 bundle you already downloaded still carries `reference-only` for K2.6 and
-  still serves it with prefetch off, and only a bundle shipping the updated catalog turns it on.
-  The promotion is also about prefetch and nothing else: K2.6's performance gate is exactly where
-  it was, unpassed. gpt-oss-120b is the one profile still sitting at `reference-only`. Both runs
-  are recorded under [Non-official observations](../TECHNICAL.md#non-official-observations).
+- **Prefetch column.** Qwen3.5-122B is the only catalog-fixed ON profile in v0.3.1,
+  using K=8 / N=4 when the source pin and startup checks pass. The other five catalog
+  profiles remain OFF in the launcher, including `init` requests; `adapt` cannot activate.
+  The catalog stores evidence separately from activation, so an OFF row does not by itself
+  mean the engine lacks an adapter. Kimi K2.6 is the exception here: the shipped engine has
+  no `deepseek2` prefetch adapter. Its earlier paired-run observations remain historical
+  evidence and do not enable prefetch in this release. This restriction concerns prefetch,
+  not serving the model. Historical runs are retained under
+  [Non-official observations](../TECHNICAL.md#non-official-observations).
 - **DeepSeek-V4-Flash-0731 is new in v0.2.1**, and it is the newest architecture in the catalog
   rather than the most measured one. Its repack verified 33,024 of 33,024 record-part pairs, and a smoke run
   on the reference machine held 3.13-3.28 tok/s across four probes with zero fallback events
-  (`PROBE`: budget 8192 MB, QD 8, prefetch off, ctx 8192). Prefetch is `disabled` for it because
-  the depth constants for that family have not been searched, not because the family is
-  unsupported. The launcher will accept a context up to 131072 on the custom path, but nothing
+  (`PROBE`: budget 8192 MB, QD 8, prefetch off, ctx 8192). This is a historical observation,
+  not a measurement of the v0.3.1 binary. Prefetch remains OFF under the current catalog
+  hold; observation evidence alone does not qualify a live K/N setting. The launcher will accept a context up to 131072 on the custom path, but nothing
   above 8192 has been exercised here, so treat that headroom as untested rather than offered.
 - **Text only.** This release validates text serving. Multimodal (mmproj) inputs are **not verified** -
   not blocked, just unlabelled. Reports welcome.
@@ -160,7 +160,7 @@ three checks actually does, is in
 
 | Where we are | Status |
 |---|---|
-| Prefetch for the deepseek2 family, which is what Kimi K2.6 needs | **Landed and promoted.** The signal adapter for that family exists, a first live four-arm run on K2.6 selected K=8 / N=4, and the paired A-B-B-A run that one run could not stand in for has since been done: both adjacent pairs favoured the ON arm and all four arms produced byte-identical output. `prefetch_state` for that profile is `validated` in the v0.2.1 catalog, so a bundle shipping that catalog enables prefetch for it by itself; a v0.2 bundle still carries `reference-only` and serves it with prefetch off. Both runs, and the exact protocol, are under [Non-official observations](../TECHNICAL.md#non-official-observations). None of this touches the performance gate, which K2.6 still has not passed. |
+| Prefetch for the deepseek2 family, which is what Kimi K2.6 needs | **OFF in v0.3.1.** The shipped engine has no prefetch adapter for this architecture. The catalog therefore records `unverified` evidence, `off` activation, no K/N tuple, and a promotion hold. Earlier paired-run results remain historical observations; they do not establish current engine capability or an official performance gate pass. |
 | DeepSeek-V4-Flash-0731 (284B, `deepseek4`) | **In the catalog since v0.2.1.** The architecture is native to the base commit this release is built on, its expert tensors are MXFP4, which is a layout the repacker already handles, and the repack verified 33,024 of 33,024 record-part pairs. A direct-read smoke run held 3.13-3.28 tok/s across four probes with zero fallback events (`PROBE`: reference machine, budget 8192 MB, QD 8, prefetch off, ctx 8192). It ships with the format gate passed, the performance gate unpassed and prefetch disabled, which is where the evidence actually stands; the prefetch depth search for this family is queued for a later release. |
 | Any model of an already-supported architecture (`experimental` tier) | **Shipped in v0.2.2 behind `-ExperimentalArchTemplate`; on by default since v0.2.3.** The catalog still runs its six pinned models the way it always did; this adds a second way of passing the same checks for a GGUF of a known architecture, derived, repacked, verified and served labelled `experimental` with prefetch off - an honest warning, not a block and not a promise. Templates exist for three architectures (`gpt-oss`, `qwen35moe`, `deepseek2`); the end-to-end evidence is one model of one of them (`gpt-oss`), which is what keeps the label. The default moved because behind a switch nobody found it, not because the evidence grew: an architecture with no template is still refused, and the repack still stops for your approval. `-ArchTemplate off` turns it off for a run, and the model menu's `arch template:` row stores the choice. See [Running an unlisted model (experimental)](#running-an-unlisted-model-experimental). |
 | Kimi K3 (2.8T class) | **Not yet ready, but moving.** Disk-space limits ruled out the MXFP4 build for now; a Kimi-K3 Q2_K_XL sits prepared on disk instead. Its repacker catalog entry is registered (2026-08-13) and does ship: the entry and its expectation file are in the zip and in this repository, in both `expects/` copies. Serving is what is not registered, in the launcher or in the engine, so an attempt to serve it fail-closes. The remaining chain is the real repack verify, a smoke run, and engine-side support for the `kimi-k3` architecture. We will do our best to bring it in at a format-validated grade or higher as soon as possible. (updated 2026-08-14) |
