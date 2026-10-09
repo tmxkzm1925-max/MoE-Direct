@@ -1,6 +1,6 @@
 {
   "catalog_schema_version": 2,
-  "source_tag": "moe-direct-v0.3.1-src-77e6cb26",
+  "source_tag": "moe-direct-v0.3.1.1-src-38a1abe5",
   "runtime": {
     "server_exe": "llama-server.exe",
     "repacker_exe": "UNRESOLVED_repacker_exe",

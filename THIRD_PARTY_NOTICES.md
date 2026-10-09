@@ -4,9 +4,9 @@
 
 Base: llama.cpp tag `b10057`, commit `0bd0ec60998d0f71ec45471b633bf2403ac81956`.
 MIT License, Copyright (c) 2023-2026 The ggml authors; full upstream text: `LICENSE.llama.cpp.txt`.
-Local release source identity: `moe-direct-v0.3.1-src-77e6cb26` (a catalog identity, not a public Git tag).
-Patched source tree: `77e6cb26213d7719db707980b17168a81ad97691`.
-Patch `moedirect-v0.3.1-b10057.patch`, SHA-256 `236f5345da709bb151a3fb450014632e0691feec5076617b5efb5cdea85a9c8d`.
+Local release source identity: `moe-direct-v0.3.1.1-src-38a1abe5` (a catalog identity, not a public Git tag).
+Patched source tree: `38a1abe5cc46f7422ac421f028c9844b38f286fc`.
+Patch `moedirect-v0.3.1.1-b10057.patch`, SHA-256 `21050a201081e78729ae4e896df81f63159b5a371368c7fa7c9dbd735cf6ce32`.
 
 Included upstream-derived runtime: `llama-server.exe`, `llama-server-impl.dll`, `llama-common.dll`, `llama.dll`, `mtmd.dll`, `ggml.dll`, `ggml-base.dll`, `ggml-cpu-alderlake.dll`, `ggml-cpu-cannonlake.dll`, `ggml-cpu-cascadelake.dll`, `ggml-cpu-haswell.dll`, `ggml-cpu-icelake.dll`, `ggml-cpu-sandybridge.dll`, `ggml-cpu-skylakex.dll`, `ggml-cpu-sse42.dll`, `ggml-cpu-x64.dll`, `ggml-cuda.dll`.
 The CUDA backend `ggml-cuda.dll` comes from the recorded runtime4 source provenance; it is not claimed as reproduced by the clean CPU builds.
@@ -35,6 +35,10 @@ This bundle contains no separate UI assets. Its closure-built server implementat
 ## Models
 
 No model weights are included. Users supply their own GGUF files under their respective licenses.
+
+## MoE-Direct files
+
+The remaining files are MoE-Direct's own work under the MIT License in `LICENSE` (trademark terms in `TRADEMARKS.md`, citation metadata in `CITATION.cff`): the launcher `Start-MoeDirect.cmd` and `Start-MoeDirect.ps1`, the model catalog `models.json`, the source and build receipt `BUILD_RECEIPT.txt`, this file `THIRD_PARTY_NOTICES.md`, the repacker script `repacker/repack_experts.py`, and the tensor-layout expectation files in `expects/` and `repacker/expects/` (the same ten files in each): `deepseek-v4-flash.expect.json`, `gpt-oss-120b.expect.json`, `kimi-k2.6-ram-447gb.expect.json`, `kimi-k3-ud-q2kxl.expect.json`, `minimax-m27.expect.json`, `mistral-small-4.expect.json`, `qwen35-122b-nonextn.expect.json`, `qwen35-122b.expect.json`, `qwen35-35b.expect.json`, `qwen35-397b.expect.json`.
 
 
 ## NVIDIA CUDA 13.3 Attachment B (original notice text)

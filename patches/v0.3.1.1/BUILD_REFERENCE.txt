@@ -1,0 +1,21 @@
+﻿# G4-0 deterministic build reference (two clean-build SHA match)
+# base=0bd0ec60998d0f71ec45471b633bf2403ac81956 tree=38a1abe5cc46f7422ac421f028c9844b38f286fc patch_sha256=21050a201081e78729ae4e896df81f63159b5a371368c7fa7c9dbd735cf6ce32
+# toolchain: MSVC 14.44.35207 / Ninja / Release / CUDA=OFF BACKEND_DL=ON CPU_ALL_VARIANTS=ON / /Brepro / UI_GZIP=OFF / BUILD_UI=OFF
+# named set: 17 files (the assembler's runtime files built here + moe-direct-selftest.exe); hashes of the first build's stash binA
+f196e4d113749e53f9fe76a7bf5ffa4650d32e66687383898617ed1310301281  ggml-base.dll
+6f181c7b4a2b7b6590f61971b82c311150677068f113a0e530d53033628a16f3  ggml-cpu-alderlake.dll
+df640435449f78a3ab3ecab3a4977fd891fa72f57ba4cbb77edddec97f85d35a  ggml-cpu-cannonlake.dll
+f47d9e6f09e89b5844557915e36a8076c4f39f9273d191ac28a15d9c0e38e0cf  ggml-cpu-cascadelake.dll
+3a88e4c3b0a0fb967f46c171bc00d1f2b7591800ff89290c5ef986f9af964d5a  ggml-cpu-haswell.dll
+8799431183da58543e7d41ac3d1bd8b1179026d286acc54618e9bc4cf5b14c6e  ggml-cpu-icelake.dll
+34a9a3bdb540cd46c994a73d5dac57452e5fb73f2623aaad619ff7c935dda5b9  ggml-cpu-sandybridge.dll
+4dd8c0e8c38019b9739477cc2a918198daa1e941cdc65eec9dc054d8b0f38bc6  ggml-cpu-skylakex.dll
+e1d97063a83c2bab68b8085d99801ab6be82928be84be1b194922a10145f7530  ggml-cpu-sse42.dll
+38243a50d43febfbeb7250db8cc45f3a51dff3b0af84d2702dba123350918242  ggml-cpu-x64.dll
+c008873b402e7ed256890ce4406fb15027a0b88e5890b07434c1b3013d9bb399  ggml.dll
+55b1a8ec69e5cbce065d089c53461b62b518f3762700e2d7571ac6c843072853  llama-common.dll
+43e961c325a4af8567cc45de56826339e4cf85d18c0f146149b8c0a6dfe15892  llama-server-impl.dll
+3881085f822f799151a339b1e14e18ce1cf87ed7f6975d08b3cf51ccc395deca  llama-server.exe
+75692bdebb52cbe89317af039f70e394ba4bf78031290cb53e2eb12c533be41f  llama.dll
+9a74064d3347d476f5708a876b564da57ded776aa711bda23983980727ca33bd  moe-direct-selftest.exe
+4b8aed9bf0c5eb2ff926911f3ea41f561be8c91025c9e052f7aa2ffb696895f4  mtmd.dll

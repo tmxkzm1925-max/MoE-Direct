@@ -5,5 +5,9 @@ patches/moedirect-v0.3.1-b10057.patch -text
 patches/v0.3.1/build_closure.ps1 -text
 patches/v0.3.1/BUILD_REFERENCE.txt -text
 patches/v0.3.1/reference/make_bundle.ps1 -text
+patches/moedirect-v0.3.1.1-b10057.patch -text
+patches/v0.3.1.1/build_closure.ps1 -text
+patches/v0.3.1.1/BUILD_REFERENCE.txt -text
+patches/v0.3.1.1/reference/make_bundle.ps1 -text
 BUILD_RECEIPT.txt -text
 THIRD_PARTY_NOTICES.md -text

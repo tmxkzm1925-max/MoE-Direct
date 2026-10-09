@@ -74,7 +74,7 @@ from the [supported list](#supported-models).
    then paste:
 
    ```powershell
-   $zip = 'moe-direct-v0.3.1-win-x64.zip'
+   $zip = 'moe-direct-v0.3.1.1-win-x64.zip'
    $pattern = '^([0-9a-fA-F]{64})[ \t]+\*?' + [regex]::Escape($zip) + '$'
    $rows = @(Get-Content -LiteralPath '.\SHA256SUMS.txt' -ErrorAction Stop |
        Where-Object { $_ -match $pattern })
@@ -175,6 +175,10 @@ Work ships one piece per release, when it is measured, not on a schedule.
   under 2% extra bytes read. That number is a `PROBE`: it compares in-place with prefetch
   against in-place without it, not against the packed path, and it was measured on a working
   tree that predates the release binary rather than re-run on this zip's.
+- **v0.3.1.1 is a repair-only patch.** On Windows the dense (non-expert) weights stayed in RAM
+  as an unused copy after they were uploaded to VRAM. The loader now reads them straight from
+  the file, so that copy is never created. Decode speed and output are unchanged, and no other
+  feature changed.
 - **The virtual path remains a preview.** Packed stays the default. v0.3.1 fixes the
   status screen's distinction between the two paths: virtual copy integrity is N/A,
   its own 8-item plan gate is shown, serving validation remains unvalidated, and
