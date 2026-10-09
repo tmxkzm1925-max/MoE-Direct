@@ -86,7 +86,7 @@ body:
     id: zip_sha
     attributes:
       label: SHA-256 of the release zip you extracted
-      placeholder: "Get-FileHash .\\moe-direct-v0.2-win-x64.zip -Algorithm SHA256"
+      placeholder: "Get-FileHash .\\moe-direct-v0.3.1.1-win-x64.zip -Algorithm SHA256"
     validations:
       required: true
 

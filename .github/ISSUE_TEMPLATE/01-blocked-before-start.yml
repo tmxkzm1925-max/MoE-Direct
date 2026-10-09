@@ -26,7 +26,7 @@ body:
     attributes:
       label: Before you file
       options:
-        - label: "I downloaded `moe-direct-v0.2-win-x64.zip` from the Releases page, not GitHub's auto-generated \"Source code\" archive."
+        - label: "I downloaded `moe-direct-v0.3.1.1-win-x64.zip` from the Releases page, not GitHub's auto-generated \"Source code\" archive."
           required: true
         - label: "I compared the zip's SHA-256 against `SHA256SUMS.txt`."
           required: true
@@ -59,7 +59,7 @@ body:
     id: zip_sha
     attributes:
       label: SHA-256 of the zip you downloaded
-      description: "`Get-FileHash .\\moe-direct-v0.2-win-x64.zip -Algorithm SHA256`"
+      description: "`Get-FileHash .\\moe-direct-v0.3.1.1-win-x64.zip -Algorithm SHA256`"
       placeholder: "e.g. 9840760b..."
     validations:
       required: true

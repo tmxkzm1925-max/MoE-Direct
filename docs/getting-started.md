@@ -53,7 +53,7 @@ they contain no binaries):
 
 | Asset | What it is |
 |---|---|
-| `moe-direct-v0.3.1-win-x64.zip` | The runtime bundle. This is the one you want. |
+| `moe-direct-v0.3.1.1-win-x64.zip` | The runtime bundle. This is the one you want. |
 | `SHA256SUMS.txt` | The checksum of that zip. |
 
 **Then, in this order.** The order matters: Windows marks downloaded files, and unblocking the zip
@@ -62,7 +62,7 @@ they contain no binaries):
 1. **Verify the download.** In Explorer, open the folder that holds both downloaded files,
    right-click empty space > Open in Terminal (PowerShell), then paste:
    ```powershell
-   $zip = 'moe-direct-v0.3.1-win-x64.zip'
+   $zip = 'moe-direct-v0.3.1.1-win-x64.zip'
    $pattern = '^([0-9a-fA-F]{64})[ \t]+\*?' + [regex]::Escape($zip) + '$'
    $rows = @(Get-Content -LiteralPath '.\SHA256SUMS.txt' -ErrorAction Stop |
        Where-Object { $_ -match $pattern })
@@ -79,13 +79,13 @@ they contain no binaries):
    not who published it. The Windows executables are unsigned. Windows code signing is
    separate from GitHub release artifact attestations; check the release notes for the
    verification evidence published with this release.
-2. **Unblock the zip itself** - right-click `moe-direct-v0.3.1-win-x64.zip` -> Properties -> tick
-   **Unblock** -> OK. (Equivalent: `Unblock-File .\moe-direct-v0.3.1-win-x64.zip`.) If the
+2. **Unblock the zip itself** - right-click `moe-direct-v0.3.1.1-win-x64.zip` -> Properties -> tick
+   **Unblock** -> OK. (Equivalent: `Unblock-File .\moe-direct-v0.3.1.1-win-x64.zip`.) If the
    **Unblock** checkbox is not there, the file was never marked - carry on. If a managed policy
    or Smart App Control offers no continuation, do not disable system-wide protection; wait for
    a signed build or use another machine.
 3. **Extract with Windows "Extract All"** into a **new, empty** folder, for example
-   `C:\moe-direct\v0.3.1\`. Other archivers differ in how they propagate the mark-of-the-web, so
+   `C:\moe-direct\v0.3.1.1\`. Other archivers differ in how they propagate the mark-of-the-web, so
    this is the one path we document.
 4. **Put your GGUF somewhere the launcher can find it.** Any path works, but if you place models
    under `<drive>:\moe-models\` (up to three levels deep, e.g.
