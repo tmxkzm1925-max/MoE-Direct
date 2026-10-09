@@ -170,7 +170,7 @@ Work ships one piece per release, when it is measured, not on a schedule.
 - **v0.3 introduced the virtual preview; v0.3.1 ships the foundation and release fixes.** Up through v0.2.3, running a model
   here meant a one-time repack that wrote a second packed copy of the experts — your disk
   paid the model's size again, just to get the layout the engine wanted. From v0.3 the
-  repack can be virtual: a small manifest, no data moved, space cost exactly 1.0x, reading
+  repack can be virtual: a small manifest, no data moved, space cost about 1.0x, reading
   experts straight out of the file you already have. The preview included a preregistered A/B: prefetch made in-place decode about 14% faster at
   under 2% extra bytes read. That number is a `PROBE`: it compares in-place with prefetch
   against in-place without it, not against the packed path, and it was measured on a working
@@ -248,8 +248,8 @@ upstream copyright and license preserved; source releases keep all upstream noti
 MoE-Direct additions (c) 2026 tmxkzm1925-max, released under the [MIT License](LICENSE). The
 MoE-Direct name identifies this project and its official builds - see
 [TRADEMARKS.md](TRADEMARKS.md). If you use this work, please cite it
-([CITATION.cff](CITATION.cff)). Archived releases carry a DOI:
-[10.5281/zenodo.21739367](https://doi.org/10.5281/zenodo.21739367).
+([CITATION.cff](CITATION.cff)). The technical note on the design and measurement method carries a
+DOI: [10.5281/zenodo.21739367](https://doi.org/10.5281/zenodo.21739367).
 
 **Thanks.** This project was built by one person with a great deal of machine help, and the help
 was not incidental. Anthropic's Claude and OpenAI's GPT models did design work, implementation and,

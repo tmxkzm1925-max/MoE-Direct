@@ -70,7 +70,7 @@ a manifest that records where each routed slice already lives inside the source 
 belongs to, its absolute offset, its size, and the alignment the reads have to respect, together
 with the per-shard header digests and the source identity that bind the manifest to your files.
 The engine serves the experts by reading those addresses out of the original GGUF. Space cost is
-exactly 1.0x, no expert byte is moved, and the output folder holds a manifest and its plan
+about 1.0x, no expert byte is moved, and the output folder holds a manifest and its plan
 report rather than a store.
 
 The verification story changes with the copy, and the difference is the honest part. The packed
@@ -145,12 +145,19 @@ file at queue depths 1, 2, 4 and 8, in both directions, and takes the shallowest
 within 90 % of the best throughput it saw; on a profile with validated prefetch it prefers, among
 those, the shallowest depth that still leaves room for the prefetch lanes (QD at least N+1), and
 only falls back to the default when none qualifies. The result is remembered per model, profile and volume,
-and re-measured when any of those change. Your own setting always wins over the measurement: the
-sweep decides the default, not the final value.
+and re-measured when any of those change. On the packed path your own setting always wins over the
+measurement: the sweep decides the default, not the final value.
 
 **How it behaves.** You see the measured points and the chosen depth on the status screen before
 anything starts. On a machine where the sweep cannot run, the launcher says so and falls back rather
 than assuming.
+
+**In a virtual repack.** A virtual repack has no `experts.bin` to measure, so the launcher skips the
+sweep and pins the queue depth to 8, the value measured in advance. Every way of setting the queue
+depth is refused rather than applied: the `-QD` option, a `qd` value in the stored preset and a `qd`
+change in the custom editor all stop the launcher with `fail_custom_args`. A `-Prefetch` value other
+than `catalog` is refused the same way. Template and derived models cannot run as a virtual repack
+in this preview.
 
 **What was measured.** In ordinary use on the reference machine, moving from queue depth 1 with
 prefetch off to queue depth 8 with prefetch on took Qwen3.5-122B from 4.31 to 6.60 tok/s, and
@@ -407,8 +414,8 @@ A/B, it does not replace the official ratio, and it is not used in any gate.*
 
 **Which binary this section is about.** Everything below concerns the v0.2 and v0.2.1 release
 binaries, and the pairs above that carry the headline are the v0.2.1 ones. None of them has been
-re-run since: the v0.3-preview zip ships a later engine, and no pair on that binary is published
-here.
+re-run since: the zips from v0.3-preview to the current v0.3.1.1 ship later engines, and no pair on
+those binaries is published here.
 
 Earlier editions of this README had to explain an awkward gap: the official gate numbers came from
 a working tree that predated the shipped zip, and the only run on the exact release binary was a
@@ -597,13 +604,14 @@ server which never answers cannot hold the launcher for ever.
 
 **What was measured.** `PROBE` - one live start on the reference machine, Qwen3.5-122B, warm start
 not restoring. The file precomputed to a server-reported 282 tokens in 12.0 s. The first real
-request that followed reported `cache_n` 278 of its 299 prompt tokens, i.e. 93.0 % of the
-precomputed prefix reused with 21 tokens of genuinely new text evaluated, and the response was
-normal. The 4-token gap is understood rather than tolerated, and it is the contract's own false
-negative rather than a reuse failure: one token at the tokenizer seam, and three from a checkpoint
-rollback. Qwen3.5 is a hybrid-attention model, so the server keeps its prompt checkpoint a short
-distance back from the end and cannot rewind to an arbitrary position; that is why the console
-wording asks for `cache_n` *close to* N instead of at least N. One run, one model, this machine.
+request that followed reported `cache_n` 278 of its 299 prompt tokens: 98.6 % of the 282 precomputed
+tokens were reused (93.0 % of the whole request), 17 of the 21 tokens evaluated were new text beyond
+the precomputed length, and the response was normal. The 4-token gap is understood rather than
+tolerated, and it is the contract's own false negative rather than a reuse failure: one token at the
+tokenizer seam, and three from a checkpoint rollback. Qwen3.5 is a hybrid-attention model, so the
+server keeps its prompt checkpoint a short distance back from the end and cannot rewind to an
+arbitrary position; that is why the console wording asks for `cache_n` *close to* N instead of at
+least N. One run, one model, this machine.
 
 ### Serving a model the catalog does not pin
 
@@ -638,28 +646,27 @@ which one of them is missing or disagrees fails to assemble.
 **How it behaves.** It shipped in v0.2.2 behind `-ExperimentalArchTemplate` and is on by default
 since v0.2.3, where the canonical control is `-ArchTemplate on|off` and the older switch remains as
 a compatible spelling of `on`. The answer is resolved before the model is identified, which is why
-the stored form is a machine-wide launcher preference rather than a per-model preset entry: a preset
-is bound to a profile that does not exist yet at that point in the run. The command-line flag itself
-is per-run and is not written down; the two pre-identification controls are what store a choice -
-the model menu's toggle row, and a single question on the `-Model` path asked only when that run
-would really take the template route. A preference file that fails its strict load does not fall
-back to on: the run continues with the path closed and says so, the interactive controls refuse to
-overwrite it, and only an explicit `-ArchTemplate on` reopens it. None of the checks moved with the
-default. A file that
-matches a catalog entry takes the catalog path, and a match that then fails a catalog, expectation
-or seal check is a hard failure rather than a demotion onto the template path - a silent downgrade
-there would be exactly the way a misconfiguration hides itself. An architecture with no template
-still stops before any repack output is written. A derived profile is identified as
-`derived-<arch>-<digest>` from the inventory digest, so the same model derives to the same id on
-every machine, and it serves with prefetch disabled: the depth constants are a per-family measured
-thing and none exist for a model nobody has measured. Three axes are reported separately on the
-status screen rather than collapsed into one badge - copy integrity, meaning whether every selected
-routed slice verified byte for byte; inventory authority, meaning who decided which tensors the
-inventory contains; and serving validation, meaning whether this configuration has been validated
-for serving. The sentence the template path is allowed to use is fixed and says what was copied and
-from where: *the template-selected routed-expert inventory was copied byte-for-byte from your
-file*. It deliberately does not say that your file is byte-verified, which would claim an authority
-nobody established.
+the stored form is a per-user launcher preference (stored per Windows user account) rather than a
+per-model preset entry: a preset is bound to a profile that does not exist yet at that point in the
+run. The command-line flag itself is per-run and is not written down; the two pre-identification
+controls are what store a choice - the model menu's toggle row, and a single question on the
+`-Model` path asked only when that run would really take the template route. A preference file that
+fails its strict load does not fall back to on: the run continues with the path closed and says so,
+the interactive controls refuse to overwrite it, and only an explicit `-ArchTemplate on` reopens it.
+None of the checks moved with the default. A file that matches a catalog entry takes the catalog
+path, and a match that then fails a catalog, expectation or seal check is a hard failure rather than
+a demotion onto the template path - a silent downgrade there would be exactly the way a
+misconfiguration hides itself. An architecture with no template still stops before any repack output
+is written. A derived profile is identified as `derived-<arch>-<digest>` from the inventory digest,
+so the same model derives to the same id on every machine, and it serves with prefetch disabled: the
+depth constants are a per-family measured thing and none exist for a model nobody has measured.
+Three axes are reported separately on the status screen rather than collapsed into one badge - copy
+integrity, meaning whether every selected routed slice verified byte for byte; inventory authority,
+meaning who decided which tensors the inventory contains; and serving validation, meaning whether
+this configuration has been validated for serving. The sentence the template path is allowed to use
+is fixed and says what was copied and from where: *the template-selected routed-expert inventory was
+copied byte-for-byte from your file*. It deliberately does not say that your file is byte-verified,
+which would claim an authority nobody established.
 
 **What was measured.** `GATE` - the M5 end-to-end run, on gpt-oss-20b: 24 layers, 32 experts, top-4,
 MXFP4, about 12.1 GB, 144 routed expert tensors. It was chosen because its shape differs from the

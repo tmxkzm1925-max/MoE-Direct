@@ -56,24 +56,28 @@ disk: your experts exist twice while you use it. The virtual path buys nothing a
 Instead of writing a second copy, the repack writes a manifest that records, for every routed
 slice, where it already sits inside your original GGUF: which shard, at what offset, how many
 bytes, and what alignment the reads have to respect. The engine then reads the experts straight out
-of the file you downloaded. The space cost is exactly 1.0x and no expert byte is ever moved. What
-the checks can prove changes with it, and the honest version is worth stating: the packed path
-hashes every record it writes against your source bytes, while the virtual path has nothing to
-hash, because nothing was copied, so what is verified there is the manifest itself, the addresses
-it hands the engine, and the binding to your file's headers, not a payload hash of every slice.
-**It is slower than the packed path today.** Reading in place means the experts sit scattered
-through the original file, and scattered reads cost more than a layout built for reading; prefetch
-recovers part of that and not all of it. So the packed path stays the default, the virtual one is
-something you turn on from the model menu when the disk matters more than the speed, and making it
-fast enough to be the default is the work of the next release. The virtual output folder is listed
-with everything else in
+of the file you downloaded. The space cost is about 1.0x (the original plus a manifest and its plan
+report, a few MB) and no expert byte is ever moved. What the checks can prove changes with it, and
+the honest version is worth stating: the packed path hashes every record it writes against your
+source bytes, while the virtual path has nothing to hash, because nothing was copied, so what is
+verified there is the manifest itself, the addresses it hands the engine, and the binding to your
+file's headers, not a payload hash of every slice. **It is slower than the packed path today.**
+Reading in place means the experts sit scattered through the original file, and scattered reads cost
+more than a layout built for reading; prefetch recovers part of that and not all of it. So the
+packed path stays the default, the virtual one is something you turn on from the model menu when the
+disk matters more than the speed, and making it fast enough to be the default is the work of the
+next release. The virtual output folder is listed with everything else in
 [What gets written to your disk](disk-layout.md#what-gets-written-to-your-disk).
 
-The launcher measures your machine instead of assuming ours. A short read-only sweep picks the queue
-depth for your drive, and the cache budget is sized from your installed RAM and the model's own
-geometry. Both are printed before you start, and both stay overridable. What you get at the end is
-an ordinary local `llama-server` endpoint on loopback, speaking the implemented OpenAI-compatible
-subset (see [Connecting a client](clients.md#connecting-a-client)).
+The launcher measures your machine instead of using fixed values. A short read-only sweep picks the
+queue depth for your drive, and the cache budget is sized from your installed RAM and the model's
+own geometry. Both are printed before you start, and you can change either one. The exception is a
+virtual repack, where the sweep does not run and the queue depth is fixed at 8; as of v0.3.1.1
+neither the queue depth nor the prefetch setting can be changed there. QD 8 with its matching
+prefetch is the only combination validated so far, and setting these values yourself is planned for
+the next patch. What you get at the end is an ordinary local `llama-server` endpoint on loopback,
+speaking the implemented OpenAI-compatible subset (see
+[Connecting a client](clients.md#connecting-a-client)).
 
 Each of those techniques is written up in full, with the problem it solves, what it does, how it
 behaves and what was measured, in

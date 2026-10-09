@@ -99,9 +99,9 @@ template path, and remembers your answer. The custom screen has the same item, b
 `applies from the next start` there and means it: by that point your model is already identified,
 and pretending otherwise would be a lie.
 
-The setting is stored machine-wide, next to your saved preset rather than inside it, because the
-launcher has to know the answer *before* it has identified your model, and a preset is bound to a
-model it has not identified yet.
+The setting is stored per Windows user account, next to your saved preset rather than inside it,
+because the launcher has to know the answer *before* it has identified your model, and a preset is
+bound to a model it has not identified yet.
 
 `-ArchTemplate on` turns it back on the same way. The old `-ExperimentalArchTemplate` still works
 and still means "on", so scripts written against v0.2.2 keep running; it is now the older spelling

@@ -39,9 +39,9 @@ same kind of thing.
 | Qwen3.5-122B on a virtual repack, prefetch on against prefetch off | decode **14.2 % faster** overall (the two counted pairs gained 16.7 % and 11.8 %), i.e. 3.26 and 3.40 tok/s with prefetch off against 3.81 and 3.81 with it on, **37.4 ms per token** saved, for **1.8 % more bytes read** | `PROBE` | Preregistered protocol, reference machine, Qwen3.5-122B-A10B Q4_K_M in 2 shards. Both arms served from a **virtual repack**: a manifest only, with every read served out of the original GGUF. The single variable is static prefetch (K=8, N=4) on against off; everything else is held equal at budget 8192 MB, QD 8, ctx 12288, dense layers on CUDA (`-ngl 99 --n-cpu-moe 49`), 8 threads, greedy, warm-up off. One A-B-B-A block, off/on/on/off, counted as two pairs; the decision axis is decode on the L3 prompt at `n_predict` 256. The thresholds it was run against were written down beforehand, but they are an internal preregistered probe decision, not a release gate, and nothing here is promoted on them. Physical read amplification 1.0177. **This is virtual-with-prefetch against virtual-without, not virtual against packed** - no packed-versus-virtual comparison is published yet. Measured from a working tree that predates the release binary, not re-run on this zip's binary. |
 
 **Which build these came from.** The `PROBE` pair in [The headline numbers](#the-headline-numbers)
-was measured on the v0.2.1 release binary and has not been rerun on the current v0.3-preview zip. The
-v0.2 pair kept below is the previous generation's record; the frozen gate predates both. That
-earlier pair, run on 2026-08-02 against the v0.2 binary, is kept in
+was measured on the v0.2.1 release binary and has not been rerun on any later release, including the
+current v0.3.1.1 zip. The v0.2 pair kept below is the previous generation's record; the frozen gate
+predates both. That earlier pair, run on 2026-08-02 against the v0.2 binary, is kept in
 [TECHNICAL.md](../TECHNICAL.md#the-release-pair-headline-source) rather than deleted, because
 that engine is not this one.
 

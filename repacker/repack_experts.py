@@ -33,7 +33,7 @@ v1(SCHEMA v1.1, gpt-oss 전용) 대비 v2 확장(설계 §2):
        구 report(manifest_sha256 필드 없음)로 만들어진 산출물의 무재팩 승급 경로.)
     python repack_experts.py --mode virtual --profile <id> --model <gguf> --out <dir>
       (SPEC_REPACK_V3 §4: 가상 재팩 — experts.bin 을 만들지 않고 manifest v3(schema "3.0",
-       mode "virtual")+plan_report.json 만 산출한다. 데이터 이동 0·공간 정확히 원본 1.0×.
+       mode "virtual")+plan_report.json 만 산출한다. 데이터 이동 0·공간 원본 약 1.0×(manifest·보고서 수 MB 추가).
        --mode bin(기본)은 아래 v2 규약 그대로이며 바이트 단위로 불변이다.)
 
 요건: Python 3.11 · 표준 라이브러리만(ctypes 포함) · Windows 전용(섹터 질의·RAM 질의는
@@ -2217,7 +2217,7 @@ def _append_repack_log(entry):
 #
 # experts.bin 을 **만들지 않는다**. 리패커는 manifest v3(+plan_report)만 산출하고, 소비자가 원본
 # GGUF 에서 `(source_index, abs_offset + expert×slice_bytes)` per-part 산개 읽기로 슬롯을 채운다.
-# 공간=정확히 원본 1.0×·온보딩=헤더 파싱+산술(데이터 이동 0).
+# 공간=원본 약 1.0×(manifest·보고서만 추가)·온보딩=헤더 파싱+산술(데이터 이동 0).
 #
 # ★mode=bin(기본)은 v2 바이트 규약 그대로다 — 이 절의 어떤 함수도 bin 경로에서 호출되지 않는다.
 #   bin 경로와의 유일한 접점: ①build_manifest 직후의 스키마 가드(_guard_manifest_mode — v2
@@ -7627,7 +7627,7 @@ def build_parser():
     ap.add_argument('--mode', type=str, default=MODE_BIN, choices=[MODE_BIN, MODE_VIRTUAL],
                      help='output mode. bin=legacy v2 (experts.bin + manifest v2, byte contract unchanged; default) / '
                           'virtual=manifest v3 + plan_report only, consumers read the original GGUF in place '
-                          '(no experts.bin, disk footprint exactly 1.0x).')
+                          '(no experts.bin, disk footprint about 1.0x: the source plus a small manifest).')
     ap.add_argument('--source-full-sha', action='store_true', dest='source_full_sha',
                      help='mode=virtual only: also record a full-file SHA-256 of every source shard in '
                           'plan_report.json as optional provenance (reads every source byte; the manifest always '

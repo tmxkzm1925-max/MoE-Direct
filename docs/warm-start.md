@@ -133,12 +133,13 @@ HTTP failure, a timeout: each of those prints a warning, records the reason and 
 without the precompute. The request is bounded at 30 minutes, because a genuine cold prefill of a
 large file takes minutes and a server that never answers must not hold the launcher for ever.
 
-One measurement, from this machine and claimed no wider: on Qwen3.5-122B a system prompt file
-precomputed to 282 tokens in 12.0 s, and the first real request after it reported `cache_n` 278 of
-its 299 prompt tokens - 93 % of the precomputed prefix reused, 21 tokens of genuinely new text
-evaluated. The 4-token difference is the two effects named above, one token at the tokenizer seam
-and three from the checkpoint tail this model family keeps. The mechanism and the full conditions
-are in [TECHNICAL.md](../TECHNICAL.md#warm-up-file-precompute).
+Measured on my own machine; other environments have not been measured. On Qwen3.5-122B a system
+prompt file precomputed to 282 tokens in 12.0 s, and the first real request after it took 278 of its
+299 prompt tokens from the cache (`cache_n` 278). That is 98.6 % of the 282 precomputed tokens
+reused, and 93.0 % of the whole request served from the cache. Of the 21 tokens evaluated, 17 were
+new text beyond the precomputed length and 4 were recomputed because of the two effects named above:
+one token at the tokenizer seam and three from the checkpoint tail this model family keeps. The
+mechanism and the full conditions are in [TECHNICAL.md](../TECHNICAL.md#warm-up-file-precompute).
 
 ### Starting the server yourself
 

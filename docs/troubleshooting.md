@@ -132,10 +132,18 @@ be there for it is `manifest.json` and `plan_report.json`; the same status cover
 
 ### fail_custom_args
 
-Exit `3`. *A custom value failed the type or bounds check in non-interactive mode.*
+Exit `3`. *A custom value could not be accepted, so the launcher stopped.*
 
-Only reachable when the launcher is driven with arguments. The message names the offending value
-and its allowed range. In interactive mode a bad value simply re-prompts instead of exiting.
+This happens in two cases.
+
+- A value passed as a command-line option failed its type or bounds check. The message names the
+  offending value and its allowed range. A value entered in the launcher's custom editor is asked
+  for again instead of ending the run.
+- The launcher was run with a virtual repack and a queue depth or prefetch value was set. Whether
+  the value came from a command-line option, the stored preset or the custom editor, the launcher
+  stops, and the message says where the value came from and why it was refused. Running a template
+  or derived model as a virtual repack also ends with this code. In that case, run again without the
+  queue depth and prefetch settings, or use a packed repack.
 
 ### fail_gate_bundle
 
