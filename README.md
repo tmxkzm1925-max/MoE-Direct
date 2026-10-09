@@ -177,8 +177,7 @@ Work ships one piece per release, when it is measured, not on a schedule.
   tree that predates the release binary rather than re-run on this zip's.
 - **v0.3.1.1 is a repair-only patch.** On Windows the dense (non-expert) weights stayed in RAM
   as an unused copy after they were uploaded to VRAM. The loader now reads them straight from
-  the file, so that copy is never created. Decode speed and output are unchanged, and no other
-  feature changed.
+  the file, so that copy is never created. No other feature changed.
 - **The virtual path remains a preview.** Packed stays the default. v0.3.1 fixes the
   status screen's distinction between the two paths: virtual copy integrity is N/A,
   its own 8-item plan gate is shown, serving validation remains unvalidated, and
