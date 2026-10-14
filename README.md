@@ -74,7 +74,7 @@ from the [supported list](#supported-models).
    then paste:
 
    ```powershell
-   $zip = 'moe-direct-v0.3.1.1-win-x64.zip'
+   $zip = 'moe-direct-v0.3.2-win-x64.zip'
    $pattern = '^([0-9a-fA-F]{64})[ \t]+\*?' + [regex]::Escape($zip) + '$'
    $rows = @(Get-Content -LiteralPath '.\SHA256SUMS.txt' -ErrorAction Stop |
        Where-Object { $_ -match $pattern })
@@ -96,12 +96,12 @@ from the [supported list](#supported-models).
    "Extract All" into a new, empty folder.
 2. Download **every shard** of one exact tested GGUF and revision from
    [docs/models.md](docs/models.md), and keep all shards in one folder. **Place your GGUF**
-   under `<drive>:\moe-models\<any-folder>\` and double-click `Start-MoeDirect.cmd`. Pick your
+   under `<drive>:\moe-models\<any-folder>\` and double-click `MoE-Direct-launcher.exe`. Pick your
    model with the arrow keys.
 3. **Approve the one-time repack** (the launcher shows the exact disk cost and time before
    writing anything), press Enter when the status screen appears, and connect any
    OpenAI-compatible client to the printed URL.
-   To stop the server, type `stop` + Enter or press Ctrl+C; after Ctrl+C the command shell may also ask `Terminate batch job (Y/N)?` - the launcher has already shut the server down and printed its `[moe-launcher] status=` line by then, so either answer is safe.
+   To stop the server, press Ctrl+F (unload the model); press q twice to quit the launcher. Closing the window ends the server at once without saving the cache.
 
 That is the whole loop. The first run repacks once (minutes to ~18 minutes here, with live
 progress); every later run goes straight to serving. A **cold** session's first conversation is
@@ -142,7 +142,7 @@ path: **[docs/models.md](docs/models.md)**.
 In v0.3.1, catalog prefetch is enabled only for the validated Qwen3.5-122B row.
 The gpt-oss-120b, Qwen35B, Qwen397B, Kimi K2.6 and DSV4 rows remain off, including
 `init` requests. This is a prefetch policy, not a ban on serving those models.
-`adapt` is offered as a request but cannot activate in this release.
+The launcher offers `catalog` and `init` as prefetch requests; `adapt` is not offered.
 
 ## Measured results
 
@@ -188,8 +188,10 @@ Work ships one piece per release, when it is measured, not on a schedule.
   adaptive prefetch remain future work. v0.3.1 does not ship the adaptive controller,
   the Qwen122 prefill default change to `-ub 2048`, or the KV-Q8 opt-in switch. Those
   features still need their release-specific implementation and validation.
-  The next patch will expose manual prefetch settings; the current launcher keeps
-  unvalidated catalog profiles off.
+  From v0.3.2 the launcher exposes manual prefetch settings: K (1-16, at most the model's
+  expert count) and N are set together, prefetch runs only while the queue depth is
+  at least N+1, and a pair that is not a validated catalog pair is labelled
+  unmeasured. Without a pair, unvalidated catalog profiles stay off.
 - **Then the engine gets its surgery:** the engine-neutral expert-execution core — the parts
   this project owns (the expert store, cache, placement and prefetch) pulled behind a clean
   boundary, with llama.cpp as the first engine behind it.

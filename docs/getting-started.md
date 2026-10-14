@@ -53,7 +53,7 @@ they contain no binaries):
 
 | Asset | What it is |
 |---|---|
-| `moe-direct-v0.3.1.1-win-x64.zip` | The runtime bundle. This is the one you want. |
+| `moe-direct-v0.3.2-win-x64.zip` | The runtime bundle. This is the one you want. |
 | `SHA256SUMS.txt` | The checksum of that zip. |
 
 **Then, in this order.** The order matters: Windows marks downloaded files, and unblocking the zip
@@ -62,7 +62,7 @@ they contain no binaries):
 1. **Verify the download.** In Explorer, open the folder that holds both downloaded files,
    right-click empty space > Open in Terminal (PowerShell), then paste:
    ```powershell
-   $zip = 'moe-direct-v0.3.1.1-win-x64.zip'
+   $zip = 'moe-direct-v0.3.2-win-x64.zip'
    $pattern = '^([0-9a-fA-F]{64})[ \t]+\*?' + [regex]::Escape($zip) + '$'
    $rows = @(Get-Content -LiteralPath '.\SHA256SUMS.txt' -ErrorAction Stop |
        Where-Object { $_ -match $pattern })
@@ -79,28 +79,29 @@ they contain no binaries):
    not who published it. The Windows executables are unsigned. Windows code signing is
    separate from GitHub release artifact attestations; check the release notes for the
    verification evidence published with this release.
-2. **Unblock the zip itself** - right-click `moe-direct-v0.3.1.1-win-x64.zip` -> Properties -> tick
-   **Unblock** -> OK. (Equivalent: `Unblock-File .\moe-direct-v0.3.1.1-win-x64.zip`.) If the
+2. **Unblock the zip itself** - right-click `moe-direct-v0.3.2-win-x64.zip` -> Properties -> tick
+   **Unblock** -> OK. (Equivalent: `Unblock-File .\moe-direct-v0.3.2-win-x64.zip`.) If the
    **Unblock** checkbox is not there, the file was never marked - carry on. If a managed policy
    or Smart App Control offers no continuation, do not disable system-wide protection; wait for
    a signed build or use another machine.
 3. **Extract with Windows "Extract All"** into a **new, empty** folder, for example
-   `C:\moe-direct\v0.3.1.1\`. Other archivers differ in how they propagate the mark-of-the-web, so
+   `C:\moe-direct\v0.3.2\`. Other archivers differ in how they propagate the mark-of-the-web, so
    this is the one path we document.
 4. **Put your GGUF somewhere the launcher can find it.** Any path works, but if you place models
    under `<drive>:\moe-models\` (up to three levels deep, e.g.
    `D:\moe-models\qwen3.5-122b\<repo-name>\model-00001-of-00002.gguf`) the launcher lists them for
    you and you can pick one with the arrow keys. Multi-shard models must have all their shards in
    one folder.
-5. **Double-click `Start-MoeDirect.cmd`** in the extracted folder.
-   *Prefer PowerShell?* `Start-MoeDirect.ps1` works too - the `.cmd` delegates to that PowerShell
-   launcher, it is only a double-click entry point that starts PowerShell with a bypass scoped to
-   that one process (nothing machine-wide is changed, nothing is installed). If you run the `.ps1` by
-   right-click -> "Run with PowerShell", the window can close on failure before you read the error;
-   run it from an open console instead. The `.cmd` keeps the window open and prints the log folder.
+5. **Double-click `MoE-Direct-launcher.exe`** in the extracted folder. It is the launcher: one
+   program, built from the Go source in this repository's `launcher/` folder. It needs no
+   PowerShell, changes no execution policy and installs nothing. It is not signed yet, so Windows
+   may show a warning before it starts. Started from an open console with `-model <file.gguf>`,
+   it runs without its screen (the argument-driven mode; `-h` lists the arguments).
 
-   ![The extracted bundle folder with Start-MoeDirect.cmd selected](img/01-bundle-extracted.png)
-   *The extracted folder - `Start-MoeDirect.cmd` is the double-click entry point.*
+   The extracted folder holds `MoE-Direct-launcher.exe` and `models.json` at the top, next to
+   `llama-server.exe`, the fit-params pair (`llama-fit-params.exe`, `llama-fit-params-impl.dll`)
+   and the engine DLLs, with `expects\` and `repacker\` as subfolders. `bundle_manifest.json`
+   lists every file with its SHA-256, and the launcher checks the folder against it at every start.
 
    ![The model selection menu](img/02-model-menu.png)
    *The first screen after the bundle integrity check: GGUF files found under

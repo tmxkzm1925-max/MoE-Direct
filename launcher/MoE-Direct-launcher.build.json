@@ -1,0 +1,21 @@
+{
+  "record_format": "moe-direct-launcher-build/1",
+  "binary": "MoE-Direct-launcher.exe",
+  "binary_sha256": "69c6078505f491b60013336ca71feeb486478e170d0bac07af26f64e5e06029e",
+  "binary_bytes": "15058944",
+  "toolchain": "go1.27.2",
+  "go_version": "go version go1.27.2 windows/amd64",
+  "package": "./cmd/MoE-Direct-launcher",
+  "flags": "-trimpath -buildvcs=false -ldflags=-buildid=",
+  "env": "GOTOOLCHAIN=local GOENV=off GOWORK=off GOFLAGS=-mod=readonly CGO_ENABLED=0 GOOS=windows GOARCH=amd64 GOAMD64=v1",
+  "go_sum_sha256": "f7fbf8c9a139b22fdd87d2c2d2439d4025a4273ba76fe016f4b078c3bff65406",
+  "go_mod_sha256": "d7a2677791d26d452ff4f9323aab13d20181e3193a7247c9ca0d27888ff7210b",
+  "source_files": "245",
+  "source_sha256": "ae4af12bda93cc0214c0d70240f98e551ef020fd159807a8867a11ed8b36ca59",
+  "modules": "all modules verified",
+  "launcher_version": "v0.3.2",
+  "bundle_version": "v0.3.2",
+  "version_gate": "TestS8LA30 pass",
+  "build_command": "powershell -NoProfile -ExecutionPolicy Bypass -File bench/moe-direct/launcher-go/build.ps1 -BundleVersion v0.3.2 -OutDir <dir>",
+  "built_utc": "2026-10-14T00:33:01Z"
+}

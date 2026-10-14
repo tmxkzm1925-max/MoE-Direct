@@ -72,10 +72,11 @@ next release. The virtual output folder is listed with everything else in
 The launcher measures your machine instead of using fixed values. A short read-only sweep picks the
 queue depth for your drive, and the cache budget is sized from your installed RAM and the model's
 own geometry. Both are printed before you start, and you can change either one. The exception is a
-virtual repack, where the sweep does not run and the queue depth is fixed at 8; as of v0.3.1.1
-neither the queue depth nor the prefetch setting can be changed there. QD 8 with its matching
-prefetch is the only combination validated so far, and setting these values yourself is planned for
-the next patch. What you get at the end is an ordinary local `llama-server` endpoint on loopback,
+virtual repack, where the sweep does not run and the queue depth defaults to 8. There you can still
+set the queue depth, the prefetch request and a manual K and N pair, but the default (QD 8 with the
+catalog prefetch) is the only combination measured so far: anything else starts with a notice that
+its behaviour is unmeasured. A queue depth below the model's virtual wave width cannot work and is
+refused before start. What you get at the end is an ordinary local `llama-server` endpoint on loopback,
 speaking the implemented OpenAI-compatible subset (see
 [Connecting a client](clients.md#connecting-a-client)).
 

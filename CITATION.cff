@@ -6,8 +6,8 @@ authors:
   - name: "tmxkzm1925-max"
 repository-code: "https://github.com/tmxkzm1925-max/moe-direct"
 license: MIT
-date-released: 2026-10-09
-version: "0.3.1.1"
+date-released: 2026-10-13
+version: "0.3.2"
 preferred-citation:
   type: report
   title: "MoE-Direct: Byte-preserving MoE expert streaming from NVMe on consumer hardware"

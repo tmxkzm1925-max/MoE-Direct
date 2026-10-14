@@ -4,11 +4,11 @@
 
 Base: llama.cpp tag `b10057`, commit `0bd0ec60998d0f71ec45471b633bf2403ac81956`.
 MIT License, Copyright (c) 2023-2026 The ggml authors; full upstream text: `LICENSE.llama.cpp.txt`.
-Local release source identity: `moe-direct-v0.3.1.1-src-38a1abe5` (a catalog identity, not a public Git tag).
-Patched source tree: `38a1abe5cc46f7422ac421f028c9844b38f286fc`.
-Patch `moedirect-v0.3.1.1-b10057.patch`, SHA-256 `21050a201081e78729ae4e896df81f63159b5a371368c7fa7c9dbd735cf6ce32`.
+Local release source identity: `moe-direct-v0.3.2-src-32c8894e` (a catalog identity, not a public Git tag).
+Patched source tree: `32c8894ec9b70a8bf59271daeedee7aa2f337e12`.
+Patch `moedirect-v0.3.2-b10057.patch`, SHA-256 `c68722369a2f04d3c0bcf79adef9411ae3c315c0b1ee6af71486aca1265960b4`.
 
-Included upstream-derived runtime: `llama-server.exe`, `llama-server-impl.dll`, `llama-common.dll`, `llama.dll`, `mtmd.dll`, `ggml.dll`, `ggml-base.dll`, `ggml-cpu-alderlake.dll`, `ggml-cpu-cannonlake.dll`, `ggml-cpu-cascadelake.dll`, `ggml-cpu-haswell.dll`, `ggml-cpu-icelake.dll`, `ggml-cpu-sandybridge.dll`, `ggml-cpu-skylakex.dll`, `ggml-cpu-sse42.dll`, `ggml-cpu-x64.dll`, `ggml-cuda.dll`.
+Included upstream-derived runtime: `llama-server.exe`, `llama-server-impl.dll`, the llama.cpp fit-params tool `llama-fit-params.exe` with `llama-fit-params-impl.dll`, `llama-common.dll`, `llama.dll`, `mtmd.dll`, `ggml.dll`, `ggml-base.dll`, `ggml-cpu-alderlake.dll`, `ggml-cpu-cannonlake.dll`, `ggml-cpu-cascadelake.dll`, `ggml-cpu-haswell.dll`, `ggml-cpu-icelake.dll`, `ggml-cpu-sandybridge.dll`, `ggml-cpu-skylakex.dll`, `ggml-cpu-sse42.dll`, `ggml-cpu-x64.dll`, `ggml-cuda.dll`.
 The CUDA backend `ggml-cuda.dll` comes from the recorded runtime4 source provenance; it is not claimed as reproduced by the clean CPU builds.
 
 ## Server dependencies
@@ -23,10 +23,40 @@ The DLL descriptions identify CUDA runtime 13.3.29 and cuBLAS/cuBLASLt 13.5.1. T
 
 ## CPython embeddable runtime
 
-CPython 3.11.9 Windows amd64 embeddable distribution is included under `repacker/python/`.
-The archive SHA-256 is `009d6bf7e3b2ddca3d784fa09f90fe54336d5b60f0e0f305c37f400bf83cfd3b`.
-The complete bundled license and third-party notices are preserved at `repacker/python/LICENSE.txt`, including PSF licensing, historical licenses, bundled-software notices, and Microsoft Distributable Code terms.
-Included DLLs in this distribution: `python311.dll`, `python3.dll`, `vcruntime140.dll`, `vcruntime140_1.dll`, `libcrypto-3.dll`, `libffi-8.dll`, `libssl-3.dll`, `sqlite3.dll`. Their component notices are preserved in the complete CPython distribution LICENSE.
+CPython 3.14.8 Windows amd64 embeddable distribution is included under `repacker/python/`.
+The archive SHA-256 is `a93abe456ab01bd96d7a085b3cdb6566b3063f4241360d114142fbdb07f0a310`.
+The distribution's own license file is preserved unchanged at `repacker/python/LICENSE.txt`, byte-equal to the archive member `LICENSE.txt` of `python-3.14.8-embed-amd64.zip` (SHA-256 `935cf13e19f8c31b497d20b05d73623431a226b230c3599bc30fa3348979bc68`). It holds the history of the software, the PSF License Version 2, the historical BeOpen, CNRI and CWI licenses, the Zero-Clause BSD license, the Microsoft Distributable Code terms, and the bzip2 and libffi notices.
+Included DLLs in this distribution: `python314.dll`, `python3.dll`, `vcruntime140.dll`, `vcruntime140_1.dll`, `libcrypto-3.dll`, `libffi-8.dll`, `libssl-3.dll`, `libtommath.dll`, `sqlite3.dll`. That file covers `python314.dll` and `python3.dll` (PSF), `vcruntime140.dll` and `vcruntime140_1.dll` (Microsoft Distributable Code) and `libffi-8.dll`. It holds no notice for `libcrypto-3.dll`, `libssl-3.dll`, `sqlite3.dll` or `libtommath.dll`; their notices are reproduced in this file under the sections named below, each text copied unchanged from the source that CPython 3.14.8 pins in PCbuild/get_externals.bat (the python/cpython-source-deps tags openssl-3.5.9, sqlite-3.50.4.0 and tcl-9.0.4.0).
+
+- `libcrypto-3.dll` and `libssl-3.dll`: OpenSSL 3.5.9 (FileVersion and ProductVersion 3.5.9 in the version resource of each DLL; LegalCopyright "Copyright 1998-2026 The OpenSSL Authors. All rights reserved."), Apache License 2.0. Section "OpenSSL 3.5.9 LICENSE.txt (original notice text)", from https://raw.githubusercontent.com/python/cpython-source-deps/openssl-3.5.9/LICENSE.txt (SHA-256 `7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a`).
+- `sqlite3.dll`: SQLite 3.50.4.0 (FileVersion and ProductVersion 3.50.4.0 in the DLL version resource), dedicated to the public domain. Section "SQLite 3.50.4.0 sqlite3.h dedication (original notice text)", lines 2-9 of https://raw.githubusercontent.com/python/cpython-source-deps/sqlite-3.50.4.0/sqlite3.h (SHA-256 of the file `abd1514e0351f79393d1be882830afdb40a8099e8257f311f0bfdf8486f11bea`).
+- `libtommath.dll`: LibTomMath 1.3.0 (the DLL carries no version resource; 1.3.0 is the newest entry of https://raw.githubusercontent.com/python/cpython-source-deps/tcl-9.0.4.0/libtommath/changes.txt, SHA-256 `ccf195644f1a99ce9433f6d0de8da589f7aeb33d6c4285cd04eb06c565a3786f`, in the Tcl 9.0.4 source that CPython 3.14.8 pins), The LibTom license (public-domain dedication). Section "LibTomMath 1.3.0 LICENSE (original notice text)", from https://raw.githubusercontent.com/python/cpython-source-deps/tcl-9.0.4.0/libtommath/LICENSE (SHA-256 `2fa64b163659f41965c9815882a8296d3d03ff546b76153e11445f9bdecf955a`).
+
+## Go launcher runtime and modules
+
+`MoE-Direct-launcher.exe` is MoE-Direct's own launcher, built from its Go source with the Go toolchain `go1.27.2` (windows/amd64, CGO_ENABLED=0, trimmed paths). The binary embeds the Go standard library and runtime (BSD-3-Clause, Copyright 2009 The Go Authors, with the Go patent grant) and the following modules, as the version report of the Go tool (go version -m) on the binary lists them:
+
+- `github.com/aymanbagabas/go-osc52/v2@v2.0.1`: MIT
+- `github.com/charmbracelet/bubbletea@v1.3.10`: MIT
+- `github.com/charmbracelet/colorprofile@v0.2.3-0.20250311203215-f60798e515dc`: MIT
+- `github.com/charmbracelet/lipgloss@v1.1.0`: MIT
+- `github.com/charmbracelet/x/ansi@v0.10.1`: MIT
+- `github.com/charmbracelet/x/cellbuf@v0.0.13-0.20250311204145-2c3ea96c31dd`: MIT
+- `github.com/charmbracelet/x/term@v0.2.1`: MIT
+- `github.com/erikgeiser/coninput@v0.0.0-20211004153227-1c3628e74d0f`: MIT
+- `github.com/lucasb-eyer/go-colorful@v1.2.0`: MIT
+- `github.com/mattn/go-isatty@v0.0.20`: MIT
+- `github.com/mattn/go-localereader@v0.0.1`: MIT per the module README (the module ships no license file)
+- `github.com/mattn/go-runewidth@v0.0.16`: MIT
+- `github.com/muesli/ansi@v0.0.0-20230316100256-276c6243b2f6`: MIT
+- `github.com/muesli/cancelreader@v0.2.2`: MIT
+- `github.com/muesli/termenv@v0.16.0`: MIT
+- `github.com/rivo/uniseg@v0.4.7`: MIT
+- `github.com/xo/terminfo@v0.0.0-20220910002029-abceb7e1c41e`: MIT
+- `golang.org/x/sys@v0.49.0`: BSD-3-Clause, Go patent grant (PATENTS)
+- `golang.org/x/text@v0.3.8`: BSD-3-Clause, Go patent grant (PATENTS)
+
+Their complete license texts follow in the «(original notice text)» sections named «Go:». `github.com/mattn/go-localereader@v0.0.1` ships no license file; its README states «License: MIT» and names the author Yasuhiro Matsumoto (a.k.a. mattn).
 
 ## UI
 
@@ -38,7 +68,7 @@ No model weights are included. Users supply their own GGUF files under their res
 
 ## MoE-Direct files
 
-The remaining files are MoE-Direct's own work under the MIT License in `LICENSE` (trademark terms in `TRADEMARKS.md`, citation metadata in `CITATION.cff`): the launcher `Start-MoeDirect.cmd` and `Start-MoeDirect.ps1`, the model catalog `models.json`, the source and build receipt `BUILD_RECEIPT.txt`, this file `THIRD_PARTY_NOTICES.md`, the repacker script `repacker/repack_experts.py`, and the tensor-layout expectation files in `expects/` and `repacker/expects/` (the same ten files in each): `deepseek-v4-flash.expect.json`, `gpt-oss-120b.expect.json`, `kimi-k2.6-ram-447gb.expect.json`, `kimi-k3-ud-q2kxl.expect.json`, `minimax-m27.expect.json`, `mistral-small-4.expect.json`, `qwen35-122b-nonextn.expect.json`, `qwen35-122b.expect.json`, `qwen35-35b.expect.json`, `qwen35-397b.expect.json`.
+The remaining files are MoE-Direct's own work under the MIT License in `LICENSE` (trademark terms in `TRADEMARKS.md`, citation metadata in `CITATION.cff`): the launcher `MoE-Direct-launcher.exe` (its embedded Go runtime and modules are listed in the Go section), the model catalog `models.json`, the source and build receipt `BUILD_RECEIPT.txt`, this file `THIRD_PARTY_NOTICES.md`, the repacker script `repacker/repack_experts.py`, and the tensor-layout expectation files in `expects/` and `repacker/expects/` (the same ten files in each): `deepseek-v4-flash.expect.json`, `gpt-oss-120b.expect.json`, `kimi-k2.6-ram-447gb.expect.json`, `kimi-k3-ud-q2kxl.expect.json`, `minimax-m27.expect.json`, `mistral-small-4.expect.json`, `qwen35-122b-nonextn.expect.json`, `qwen35-122b.expect.json`, `qwen35-35b.expect.json`, `qwen35-397b.expect.json`.
 
 
 ## NVIDIA CUDA 13.3 Attachment B (original notice text)
@@ -1112,3 +1142,660 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+
+
+## OpenSSL 3.5.9 LICENSE.txt (original notice text)
+
+
+                                 Apache License
+                           Version 2.0, January 2004
+                        https://www.apache.org/licenses/
+
+   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+   1. Definitions.
+
+      "License" shall mean the terms and conditions for use, reproduction,
+      and distribution as defined by Sections 1 through 9 of this document.
+
+      "Licensor" shall mean the copyright owner or entity authorized by
+      the copyright owner that is granting the License.
+
+      "Legal Entity" shall mean the union of the acting entity and all
+      other entities that control, are controlled by, or are under common
+      control with that entity. For the purposes of this definition,
+      "control" means (i) the power, direct or indirect, to cause the
+      direction or management of such entity, whether by contract or
+      otherwise, or (ii) ownership of fifty percent (50%) or more of the
+      outstanding shares, or (iii) beneficial ownership of such entity.
+
+      "You" (or "Your") shall mean an individual or Legal Entity
+      exercising permissions granted by this License.
+
+      "Source" form shall mean the preferred form for making modifications,
+      including but not limited to software source code, documentation
+      source, and configuration files.
+
+      "Object" form shall mean any form resulting from mechanical
+      transformation or translation of a Source form, including but
+      not limited to compiled object code, generated documentation,
+      and conversions to other media types.
+
+      "Work" shall mean the work of authorship, whether in Source or
+      Object form, made available under the License, as indicated by a
+      copyright notice that is included in or attached to the work
+      (an example is provided in the Appendix below).
+
+      "Derivative Works" shall mean any work, whether in Source or Object
+      form, that is based on (or derived from) the Work and for which the
+      editorial revisions, annotations, elaborations, or other modifications
+      represent, as a whole, an original work of authorship. For the purposes
+      of this License, Derivative Works shall not include works that remain
+      separable from, or merely link (or bind by name) to the interfaces of,
+      the Work and Derivative Works thereof.
+
+      "Contribution" shall mean any work of authorship, including
+      the original version of the Work and any modifications or additions
+      to that Work or Derivative Works thereof, that is intentionally
+      submitted to Licensor for inclusion in the Work by the copyright owner
+      or by an individual or Legal Entity authorized to submit on behalf of
+      the copyright owner. For the purposes of this definition, "submitted"
+      means any form of electronic, verbal, or written communication sent
+      to the Licensor or its representatives, including but not limited to
+      communication on electronic mailing lists, source code control systems,
+      and issue tracking systems that are managed by, or on behalf of, the
+      Licensor for the purpose of discussing and improving the Work, but
+      excluding communication that is conspicuously marked or otherwise
+      designated in writing by the copyright owner as "Not a Contribution."
+
+      "Contributor" shall mean Licensor and any individual or Legal Entity
+      on behalf of whom a Contribution has been received by Licensor and
+      subsequently incorporated within the Work.
+
+   2. Grant of Copyright License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      copyright license to reproduce, prepare Derivative Works of,
+      publicly display, publicly perform, sublicense, and distribute the
+      Work and such Derivative Works in Source or Object form.
+
+   3. Grant of Patent License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      (except as stated in this section) patent license to make, have made,
+      use, offer to sell, sell, import, and otherwise transfer the Work,
+      where such license applies only to those patent claims licensable
+      by such Contributor that are necessarily infringed by their
+      Contribution(s) alone or by combination of their Contribution(s)
+      with the Work to which such Contribution(s) was submitted. If You
+      institute patent litigation against any entity (including a
+      cross-claim or counterclaim in a lawsuit) alleging that the Work
+      or a Contribution incorporated within the Work constitutes direct
+      or contributory patent infringement, then any patent licenses
+      granted to You under this License for that Work shall terminate
+      as of the date such litigation is filed.
+
+   4. Redistribution. You may reproduce and distribute copies of the
+      Work or Derivative Works thereof in any medium, with or without
+      modifications, and in Source or Object form, provided that You
+      meet the following conditions:
+
+      (a) You must give any other recipients of the Work or
+          Derivative Works a copy of this License; and
+
+      (b) You must cause any modified files to carry prominent notices
+          stating that You changed the files; and
+
+      (c) You must retain, in the Source form of any Derivative Works
+          that You distribute, all copyright, patent, trademark, and
+          attribution notices from the Source form of the Work,
+          excluding those notices that do not pertain to any part of
+          the Derivative Works; and
+
+      (d) If the Work includes a "NOTICE" text file as part of its
+          distribution, then any Derivative Works that You distribute must
+          include a readable copy of the attribution notices contained
+          within such NOTICE file, excluding those notices that do not
+          pertain to any part of the Derivative Works, in at least one
+          of the following places: within a NOTICE text file distributed
+          as part of the Derivative Works; within the Source form or
+          documentation, if provided along with the Derivative Works; or,
+          within a display generated by the Derivative Works, if and
+          wherever such third-party notices normally appear. The contents
+          of the NOTICE file are for informational purposes only and
+          do not modify the License. You may add Your own attribution
+          notices within Derivative Works that You distribute, alongside
+          or as an addendum to the NOTICE text from the Work, provided
+          that such additional attribution notices cannot be construed
+          as modifying the License.
+
+      You may add Your own copyright statement to Your modifications and
+      may provide additional or different license terms and conditions
+      for use, reproduction, or distribution of Your modifications, or
+      for any such Derivative Works as a whole, provided Your use,
+      reproduction, and distribution of the Work otherwise complies with
+      the conditions stated in this License.
+
+   5. Submission of Contributions. Unless You explicitly state otherwise,
+      any Contribution intentionally submitted for inclusion in the Work
+      by You to the Licensor shall be under the terms and conditions of
+      this License, without any additional terms or conditions.
+      Notwithstanding the above, nothing herein shall supersede or modify
+      the terms of any separate license agreement you may have executed
+      with Licensor regarding such Contributions.
+
+   6. Trademarks. This License does not grant permission to use the trade
+      names, trademarks, service marks, or product names of the Licensor,
+      except as required for reasonable and customary use in describing the
+      origin of the Work and reproducing the content of the NOTICE file.
+
+   7. Disclaimer of Warranty. Unless required by applicable law or
+      agreed to in writing, Licensor provides the Work (and each
+      Contributor provides its Contributions) on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+      implied, including, without limitation, any warranties or conditions
+      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+      PARTICULAR PURPOSE. You are solely responsible for determining the
+      appropriateness of using or redistributing the Work and assume any
+      risks associated with Your exercise of permissions under this License.
+
+   8. Limitation of Liability. In no event and under no legal theory,
+      whether in tort (including negligence), contract, or otherwise,
+      unless required by applicable law (such as deliberate and grossly
+      negligent acts) or agreed to in writing, shall any Contributor be
+      liable to You for damages, including any direct, indirect, special,
+      incidental, or consequential damages of any character arising as a
+      result of this License or out of the use or inability to use the
+      Work (including but not limited to damages for loss of goodwill,
+      work stoppage, computer failure or malfunction, or any and all
+      other commercial damages or losses), even if such Contributor
+      has been advised of the possibility of such damages.
+
+   9. Accepting Warranty or Additional Liability. While redistributing
+      the Work or Derivative Works thereof, You may choose to offer,
+      and charge a fee for, acceptance of support, warranty, indemnity,
+      or other liability obligations and/or rights consistent with this
+      License. However, in accepting such obligations, You may act only
+      on Your own behalf and on Your sole responsibility, not on behalf
+      of any other Contributor, and only if You agree to indemnify,
+      defend, and hold each Contributor harmless for any liability
+      incurred by, or claims asserted against, such Contributor by reason
+      of your accepting any such warranty or additional liability.
+
+   END OF TERMS AND CONDITIONS
+
+
+
+## SQLite 3.50.4.0 sqlite3.h dedication (original notice text)
+
+```
+** 2001-09-15
+**
+** The author disclaims copyright to this source code.  In place of
+** a legal notice, here is a blessing:
+**
+**    May you do good and not evil.
+**    May you find forgiveness for yourself and forgive others.
+**    May you share freely, never taking more than you give.
+```
+
+
+
+## LibTomMath 1.3.0 LICENSE (original notice text)
+
+                          The LibTom license
+
+This is free and unencumbered software released into the public domain.
+
+Anyone is free to copy, modify, publish, use, compile, sell, or
+distribute this software, either in source code form or as a compiled
+binary, for any purpose, commercial or non-commercial, and by any
+means.
+
+In jurisdictions that recognize copyright laws, the author or authors
+of this software dedicate any and all copyright interest in the
+software to the public domain. We make this dedication for the benefit
+of the public at large and to the detriment of our heirs and
+successors. We intend this dedication to be an overt act of
+relinquishment in perpetuity of all present and future rights to this
+software under copyright law.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
+
+For more information, please refer to <http://unlicense.org/>
+
+
+
+## Go: github.com/aymanbagabas/go-osc52/v2 v2.0.1 LICENSE (original notice text)
+
+MIT License
+
+Copyright (c) 2022 Ayman Bagabas
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+
+## Go: github.com/charmbracelet/bubbletea v1.3.10 LICENSE (original notice text)
+
+MIT License
+
+Copyright (c) 2020-2025 Charmbracelet, Inc
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+
+## Go: github.com/charmbracelet/colorprofile v0.2.3-0.20250311203215-f60798e515dc LICENSE (original notice text)
+
+MIT License
+
+Copyright (c) 2020-2024 Charmbracelet, Inc
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+
+## Go: github.com/charmbracelet/lipgloss v1.1.0 LICENSE (original notice text)
+
+MIT License
+
+Copyright (c) 2021-2023 Charmbracelet, Inc
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+
+## Go: github.com/charmbracelet/x/ansi v0.10.1 LICENSE; github.com/charmbracelet/x/cellbuf v0.0.13-0.20250311204145-2c3ea96c31dd LICENSE; github.com/charmbracelet/x/term v0.2.1 LICENSE (original notice text)
+
+MIT License
+
+Copyright (c) 2023 Charmbracelet, Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+
+## Go: github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f LICENSE (original notice text)
+
+MIT License
+
+Copyright (c) 2021 Erik G.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+
+## Go: github.com/lucasb-eyer/go-colorful v1.2.0 LICENSE (original notice text)
+
+Copyright (c) 2013 Lucas Beyer
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
+
+## Go: github.com/mattn/go-isatty v0.0.20 LICENSE (original notice text)
+
+Copyright (c) Yasuhiro MATSUMOTO <mattn.jp@gmail.com>
+
+MIT License (Expat)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
+
+## Go: github.com/mattn/go-runewidth v0.0.16 LICENSE (original notice text)
+
+The MIT License (MIT)
+
+Copyright (c) 2016 Yasuhiro Matsumoto
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+
+## Go: github.com/muesli/ansi v0.0.0-20230316100256-276c6243b2f6 LICENSE (original notice text)
+
+MIT License
+
+Copyright (c) 2021 Christian Muehlhaeuser
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+
+## Go: github.com/muesli/cancelreader v0.2.2 LICENSE (original notice text)
+
+MIT License
+
+Copyright (c) 2022 Erik Geiser and Christian Muehlhaeuser
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+
+## Go: github.com/muesli/termenv v0.16.0 LICENSE (original notice text)
+
+MIT License
+
+Copyright (c) 2019 Christian Muehlhaeuser
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+
+## Go: github.com/rivo/uniseg v0.4.7 LICENSE.txt (original notice text)
+
+MIT License
+
+Copyright (c) 2019 Oliver Kuederle
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+
+## Go: github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e LICENSE (original notice text)
+
+The MIT License (MIT)
+
+Copyright (c) 2016 Anmol Sethi
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+
+## Go: golang.org/x/sys v0.49.0 LICENSE; Go toolchain go1.27.2 LICENSE (original notice text)
+
+Copyright 2009 The Go Authors.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+   * Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+   * Redistributions in binary form must reproduce the above
+copyright notice, this list of conditions and the following disclaimer
+in the documentation and/or other materials provided with the
+distribution.
+   * Neither the name of Google LLC nor the names of its
+contributors may be used to endorse or promote products derived from
+this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+
+## Go: golang.org/x/sys v0.49.0 PATENTS; golang.org/x/text v0.3.8 PATENTS; Go toolchain go1.27.2 PATENTS (original notice text)
+
+Additional IP Rights Grant (Patents)
+
+"This implementation" means the copyrightable works distributed by
+Google as part of the Go project.
+
+Google hereby grants to You a perpetual, worldwide, non-exclusive,
+no-charge, royalty-free, irrevocable (except as stated in this section)
+patent license to make, have made, use, offer to sell, sell, import,
+transfer and otherwise run, modify and propagate the contents of this
+implementation of Go, where such license applies only to those patent
+claims, both currently owned or controlled by Google and acquired in
+the future, licensable by Google that are necessarily infringed by this
+implementation of Go.  This grant does not include claims that would be
+infringed only as a consequence of further modification of this
+implementation.  If you or your agent or exclusive licensee institute or
+order or agree to the institution of patent litigation against any
+entity (including a cross-claim or counterclaim in a lawsuit) alleging
+that this implementation of Go or any code incorporated within this
+implementation of Go constitutes direct or contributory patent
+infringement, or inducement of patent infringement, then any patent
+rights granted to you under this License for this implementation of Go
+shall terminate as of the date such litigation is filed.
+
+
+
+## Go: golang.org/x/text v0.3.8 LICENSE (original notice text)
+
+Copyright (c) 2009 The Go Authors. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+   * Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+   * Redistributions in binary form must reproduce the above
+copyright notice, this list of conditions and the following disclaimer
+in the documentation and/or other materials provided with the
+distribution.
+   * Neither the name of Google Inc. nor the names of its
+contributors may be used to endorse or promote products derived from
+this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.

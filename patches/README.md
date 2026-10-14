@@ -5,12 +5,33 @@ is out - one patch per distinct engine revision, not per release number: a
 release that changes only the launcher or the docs reuses the previous engine
 tree (v0.2.3 ships the v0.2.2 engine unchanged), and the initial v0.2 predates
 this directory. **Not every release is covered.** The latest patch here is
-v0.3.1.1. It reconstructs that release's source tree; the historical
+v0.3.2. It reconstructs that release's source tree; the historical
 v0.3-preview source state remains identified by its receipt rather than a
 reconstructible patch. The launcher, repacker, catalog and expectation files are
 published at the repository root; this is the remaining piece: what was changed
 inside the engine. The revisions are listed newest first, and the earlier ones
 are kept because their zips are still downloadable.
+
+## v0.3.2 - source and build reference
+
+- **Base**: llama.cpp release `b10057`, commit `0bd0ec60998d0f71ec45471b633bf2403ac81956`.
+- **Patch**: [moedirect-v0.3.2-b10057.patch](moedirect-v0.3.2-b10057.patch),
+  78 paths: 27 modified upstream files and 51 additions.
+- **Patch SHA-256**: `c68722369a2f04d3c0bcf79adef9411ae3c315c0b1ee6af71486aca1265960b4`.
+- **Reconstructed tree**: `32c8894ec9b70a8bf59271daeedee7aa2f337e12`.
+- **Source and build instructions**: [v0.3.2/README.md](v0.3.2/README.md),
+  with the unchanged build procedure and its recorded 19-file hash reference.
+
+The recorded CUDA-off build produced matching outputs across two clean builds
+for 18 shipped runtime files plus the unshipped engine selftest. Its full
+selftest reported 1484/1484. `ggml-cuda.dll` and three NVIDIA runtime DLLs were
+supplied separately; their exact hashes and provenance are listed in the
+instructions. Those four files and the whole ZIP are outside the two-build
+reproduction claim.
+
+The root `BUILD_RECEIPT.txt` binds this source tree and patch to the recorded
+build outputs. Its catalog identifier `moe-direct-v0.3.2-src-32c8894e` is not
+an assertion that a public Git tag exists. No v0.3.2 fork URL is asserted here.
 
 ## v0.3.1.1 - source and build reference
 

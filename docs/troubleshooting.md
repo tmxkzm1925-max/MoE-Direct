@@ -136,14 +136,18 @@ Exit `3`. *A custom value could not be accepted, so the launcher stopped.*
 
 This happens in two cases.
 
-- A value passed as a command-line option failed its type or bounds check. The message names the
-  offending value and its allowed range. A value entered in the launcher's custom editor is asked
-  for again instead of ending the run.
-- The launcher was run with a virtual repack and a queue depth or prefetch value was set. Whether
-  the value came from a command-line option, the stored preset or the custom editor, the launcher
-  stops, and the message says where the value came from and why it was refused. Running a template
-  or derived model as a virtual repack also ends with this code. In that case, run again without the
-  queue depth and prefetch settings, or use a packed repack.
+- A value passed as a command-line argument of the argument-driven mode failed its type or range
+  check. The message names the argument, its value and its allowed range. A value typed on the
+  settings page is refused there instead: the value is kept, nothing is applied, and the run goes
+  on. Saved settings of a model that hold a value failing its check are not used, the defaults
+  apply, and the launcher says so.
+- The launcher was run with a virtual repack and a queue depth below the model's virtual wave
+  width (3 for the models measured so far). Such a queue depth cannot work, so the launcher refuses
+  it before start, whether it came from a command-line argument, the saved settings or the settings
+  page, and the message names the width. Other queue depth, prefetch and K and N values are accepted
+  on a virtual repack, with a notice that their behaviour is unmeasured. Set the queue depth to the
+  width or above. Running a template or derived model as a virtual repack also ends with this code;
+  use a packed repack for it.
 
 ### fail_gate_bundle
 

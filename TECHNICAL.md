@@ -414,7 +414,7 @@ A/B, it does not replace the official ratio, and it is not used in any gate.*
 
 **Which binary this section is about.** Everything below concerns the v0.2 and v0.2.1 release
 binaries, and the pairs above that carry the headline are the v0.2.1 ones. None of them has been
-re-run since: the zips from v0.3-preview to the current v0.3.1.1 ship later engines, and no pair on
+re-run since: the zips from v0.3-preview to the current v0.3.2 ship later engines, and no pair on
 those binaries is published here.
 
 Earlier editions of this README had to explain an awkward gap: the official gate numbers came from

@@ -40,7 +40,7 @@ same kind of thing.
 
 **Which build these came from.** The `PROBE` pair in [The headline numbers](#the-headline-numbers)
 was measured on the v0.2.1 release binary and has not been rerun on any later release, including the
-current v0.3.1.1 zip. The v0.2 pair kept below is the previous generation's record; the frozen gate
+current v0.3.2 zip. The v0.2 pair kept below is the previous generation's record; the frozen gate
 predates both. That earlier pair, run on 2026-08-02 against the v0.2 binary, is kept in
 [TECHNICAL.md](../TECHNICAL.md#the-release-pair-headline-source) rather than deleted, because
 that engine is not this one.

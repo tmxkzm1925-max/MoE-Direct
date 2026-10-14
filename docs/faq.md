@@ -61,10 +61,11 @@
 on your copy. Qwen, Kimi, gpt-oss and all other model names belong to their respective owners; this
 project is affiliated with none of them.
 
-**Why PowerShell?** Because you can read it. The launcher does consequential things - it writes
-hundreds of GB, spawns a server, enforces gates - and every one of those decisions is visible in
-`Start-MoeDirect.ps1` in the bundle. That is the reason, not any interaction with Windows security
-prompts, which a script does not avoid.
+**Why is the launcher's source published?** Because you can read it. The launcher does
+consequential things - it writes hundreds of GB, spawns a server, enforces gates - and every one of
+those decisions is in the Go source in this repository's `launcher/` folder, from which the
+bundle's `MoE-Direct-launcher.exe` is built. That is the reason, not any interaction with Windows
+security prompts: the launcher is an unsigned program, and Windows may warn about it.
 
 **Can I run the engine directly instead of using the launcher?** Yes, and it is not blocked. Be
 clear about what changes: the engine itself still enforces model/manifest identity, the verify-pass
@@ -86,8 +87,11 @@ the author personally. Parts of this document were written with AI assistance.
 ## Source
 
 The launcher, the repacker and the expectation files are published in this
-repository, and the shipped copies are the same bytes: `launcher/Start-MoeDirect.ps1`,
-`launcher/Start-MoeDirect.cmd`, `repacker/repack_experts.py` and the ten `expects/*.expect.json`
+repository. The launcher's Go source is in `launcher/`, and the bundle's `MoE-Direct-launcher.exe`
+is built from that tree by its one build command, `launcher/build.ps1`, whose build record
+`launcher/MoE-Direct-launcher.build.json` names the toolchain, the flags, the go.sum and source
+digests and the binary's SHA-256 (a second build from a clean module cache gives the same binary).
+`repacker/repack_experts.py` and the ten `expects/*.expect.json`
 files are byte-identical to the copies inside the release zip (verified by SHA-256 at publish
 time). In v0.3.1 the repacker self-test recognizes both the extracted bundle and this
 repository's `launcher/` layout when finding the launcher parser. The parser contract

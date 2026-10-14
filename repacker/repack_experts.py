@@ -36,7 +36,7 @@ v1(SCHEMA v1.1, gpt-oss 전용) 대비 v2 확장(설계 §2):
        mode "virtual")+plan_report.json 만 산출한다. 데이터 이동 0·공간 원본 약 1.0×(manifest·보고서 수 MB 추가).
        --mode bin(기본)은 아래 v2 규약 그대로이며 바이트 단위로 불변이다.)
 
-요건: Python 3.11 · 표준 라이브러리만(ctypes 포함) · Windows 전용(섹터 질의·RAM 질의는
+요건: Python 3.14 · 표준 라이브러리만(ctypes 포함) · Windows 전용(섹터 질의·RAM 질의는
 ctypes로 IOCTL_STORAGE_QUERY_PROPERTY/GetDiskFreeSpaceW/GlobalMemoryStatusEx 직접 호출).
 
 설계 해석 지점(완료 보고서 "해석 지점"에도 명기):
@@ -1446,7 +1446,9 @@ def build_manifest(model, layout, plan, A, align_info, profile_id, expect_sha256
 # ★본작업 소비 표면 — launcher 의 `--plan` 텍스트 파서 계약 (26-08-08 리드 처분 ⓑ)
 #
 # 아래 stdout 줄들은 본작업 launcher 가 파싱한다:
-#   bench/moe-direct/launcher/Start-MoeDirect.ps1  함수 ConvertFrom-TemplatePlanText
+#   bench/moe-direct/launcher-go/internal/core/derive.go  함수 parseTemplatePlan
+#   (★R-FX18 v8: Go launcher 의 이식. 원래의 PowerShell 함수 ConvertFrom-TemplatePlanText 는
+#    `Start-MoeDirect.ps1` 과 함께 번들·공개 리포에서 은퇴했다 — [A-PUBL])
 # 정규식·헤더·완료줄은 그 함수의 사본이며, `--selftest` 의 OPEN_ARCH-ⓑ4~ⓑ6 관문이
 # **실제 --plan stdout** 으로 이 표를 직접 주장한다. 파서는 keyed 줄이 각각 정확히 1회
 # 나타날 것을 요구하고(중복이면 "단일 plan 캡처가 아니다"로 거부), expect 헤더 이후의
@@ -2198,6 +2200,22 @@ _REPACK_LOG_PATH = None
 def _set_repack_log_path(path):
     global _REPACK_LOG_PATH
     _REPACK_LOG_PATH = path or None
+
+
+# ★R-FX18(v8): 배포 번들의 Go launcher 바이너리 이름(`bench/moe-direct/launcher-go/build.ps1` 의
+# $BinaryName). 이 스크립트의 부모 폴더에 이 파일이 있으면 번들 형상이다 — v3-⑱ 의 형상 해석과
+# 아래 selftest 로그 생략이 같은 표지를 쓴다.
+BUNDLE_LAUNCHER_BINARY = 'MoE-Direct-launcher.exe'
+
+
+# selftest 가 띄우는 자식 CLI 에 넘길 --log-path(번들 형상에서만; cmd_selftest 가 정한다).
+_SELFTEST_CHILD_LOG = None
+
+
+def _bundle_launcher_marker():
+    """번들 형상이면 그 launcher 바이너리 경로, 아니면 None."""
+    p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), BUNDLE_LAUNCHER_BINARY)
+    return p if os.path.isfile(p) else None
 
 
 def _append_repack_log(entry):
@@ -4519,7 +4537,26 @@ def _expect_abort(fn):
 def cmd_selftest():
     print('=== --selftest 시작 ===')
     checks = []
+    # ★R-FX18(v8): SKIP 된 검사의 이름. SKIP 은 (name, True) 로 `checks` 에 들어가 판정에서
+    # 통과로 세고, 체크리스트에서만 [SKIP] 으로 표기되며 로그 항목 `skipped` 에 남는다.
+    skipped = []
     scratch = tempfile.mkdtemp(prefix='repack_selftest_')
+    # ★R-FX18(v8, R-BND 관찰): 번들 안의 selftest 는 번들 폴더에 **파일을 하나도 남기지 않는다**.
+    # 로그 기본 경로는 이 스크립트 옆(= 번들의 repacker/)이라, 거기 생긴 repack_log.jsonl 은
+    # manifest 에 없는 파일이 되고 Go launcher 의 번들 검사(GL-13)가 그것을 손상으로 센다.
+    #   - selftest 안의 리팩·검증 호출: --log-path 가 없으면 이 런의 임시 폴더로 보낸다
+    #     (finally 에서 함께 지워진다 = 어디에도 남지 않는다). --log-path 를 주면 종전대로 그 경로.
+    #   - selftest 가 띄우는 자식 CLI(`_cli`): 번들 형상이면 늘 임시 폴더의 별도 파일로 보낸다
+    #     (자식은 부모의 --log-path 를 물려받지 않아, 종전에는 --log-path 를 준 실행에서도 번들
+    #     폴더에 2줄을 남겼다). 그래서 --log-path 로 받는 기록(leg DY 의 D1)은 종전과 같은 줄만 담는다.
+    #   - 번들 밖(개발 트리·공개 checkout)은 종전과 같다. launcher 가 띄우는 실제 리팩은 --log-path 를
+    #     넘기므로 이 분기와 무관하다.
+    global _SELFTEST_CHILD_LOG
+    _st_bundle = _bundle_launcher_marker()
+    _st_log_redirected = _st_bundle is not None and _REPACK_LOG_PATH is None
+    if _st_log_redirected:
+        _set_repack_log_path(os.path.join(scratch, 'selftest_repack_log.jsonl'))
+    _SELFTEST_CHILD_LOG = os.path.join(scratch, 'selftest_child_log.jsonl') if _st_bundle else None
     model_path = os.path.join(scratch, 'synthetic.gguf')
     out_dir = os.path.join(scratch, 'out')
 
@@ -5634,6 +5671,8 @@ def cmd_selftest():
 
         # ---- ⓕ 기본 CLI 불변(gate 없으면 템플릿 경로 미진입·--profile 병용 거부·--help 미노출) ----
         def _cli(args_):
+            if _SELFTEST_CHILD_LOG:  # ★R-FX18: 번들 형상 — 자식의 로그도 번들 밖(이 런의 임시 폴더)
+                args_ = list(args_) + ['--log-path', _SELFTEST_CHILD_LOG]
             return subprocess.run([sys.executable, os.path.abspath(__file__)] + args_,
                                   capture_output=True, text=True, encoding='utf-8', timeout=90)
         cli_out = os.path.join(scratch, 'out_tpl_cli')
@@ -7267,97 +7306,104 @@ def cmd_selftest():
             print('    [%s] %-72s %s' % ('PASS' if _ok_n else 'FAIL', _lbl, _note))
 
         # ---- v3-⑱ launcher 파서 정규식 **사본 대조**(§2-8 규칙 2 — 기계 대조) ----
-        # `LAUNCHER_PLAN_KEYED_LINES` 는 스스로를 "그 함수의 사본"이라 선언하는데, 그 선언을
-        # 지키는 장치가 없었다 — ⓑ4~ⓑ6 은 **이 파일의 사본**에 대해서만 stdout 을 주장하므로,
-        # launcher 쪽 정규식이 바뀌면 selftest 는 전부 PASS 인 채로 계약만 갈라진다(§2-8 이
-        # 말하는 문면 사본 드리프트 그 자체). 원본에서 리터럴을 뽑아 직접 맞춘다.
-        # ★r1 [MED] 강화: launcher **부재 = FAIL**(fail-closed). 구판의 "스캔 범위 부재로 생략
-        # PASS" 는 파일이 사라지거나 경로가 바뀌는 드리프트를 통째로 놓친다.
-        # ★★**F2(r2 회귀 수리 26-08-13)**: 단, 경로를 개발 트리로 **고정**한 것이 실결함이었다 —
-        # 배포 번들은 launcher 를 zip 루트에, repacker 를 `repacker/` 하위에 둔다
-        # (`packaging/make_bundle.ps1` 의 `Rel 'Start-MoeDirect.ps1'` ↔ `Rel 'repacker/
-        # repack_experts.py'`). 그래서 **정상 번들에서 selftest 전체가 FAIL** 했고, 그 selftest 는
-        # 릴리스 조립 관문으로 쓰이던 표면이다.
-        # ★★**LUX-1 C1(26-08-18)**: 2형상→3형상으로 확장하고 **해석 순서를 뒤집었다**.
-        # [[C:repack.launcher-shape-resolution]] — 이 서술은 **사본**이며 원본은
-        # `HANDOFF_DEV.md` §2-7 의 규범 문장이다(§2-8 등기 제도 — 사본은 원본에 진다).
-        #   ①번들 루트 → ②공개 리포 `launcher/` → ③개발 트리 순으로 해석하고
-        #   **셋 다 부재일 때만** FAIL 한다.
-        #   ②를 추가한 이유: 공개 리포는 launcher 를 `<root>/launcher/` 에 두어 구 2형상
-        #   어느 쪽에도 안 걸렸다(공개 checkout 89/90 의 원인).
-        #   ★순서를 dev-first 에서 뒤집은 이유: 번들을 **개발 저장소 루트에 풀면**
-        #   `_lp_here=<repo>/<zip루트>/repacker` 가 돼 개발 트리 후보가
-        #   `<repo>/bench/moe-direct/launcher/…` 로 **실재 명중**해, 번들의 selftest 가 번들
-        #   자신이 아니라 개발 트리 런처를 검사하게 된다. **"가까운 배포물 우선"**이 계약이다.
+        # `LAUNCHER_PLAN_KEYED_LINES` 는 스스로를 launcher 파서의 "사본"이라 선언한다. ⓑ4~ⓑ6 은
+        # **이 파일의 사본**에 대해서만 stdout 을 주장하므로, launcher 쪽 정규식이 바뀌면 selftest
+        # 는 전부 PASS 인 채로 계약만 갈라진다. 원본에서 리터럴을 뽑아 직접 맞춘다(r1 [MED]: 원본
+        # 부재 = FAIL, fail-closed · F2/LUX-1 C1: 가까운 배포물 우선으로 형상을 해석한다).
+        # ★R-FX18(v8, Middle 상신 종류 1 M:142 승인): 본작업 launcher 는 Go 바이너리다. 파서의
+        # 원본은 Go 이식 `internal/core/derive.go` 의 `parseTemplatePlan` 이고(GL-14), 그 리터럴
+        # `planRe*` 6개·`planDone`·`planExpectHead`·`DerivedExpectFileName` 과 맞춘다. 형상:
+        #   ① 공개 리포: <root>/repacker/…  →  <root>/launcher/internal/core/derive.go
+        #      ([A-PUBL]: 공개 리포의 `launcher/` = Go launcher 소스 트리의 루트)
+        #   ② 배포 번들: <root>/MoE-Direct-launcher.exe 가 있고 Go 소스는 없다  →  **SKIP**(사유 출력).
+        #      컴파일된 launcher 에서는 리터럴을 뽑을 수 없다. 이식이 PowerShell 파서의 기록과 같음은
+        #      Go 테스트 TestS8LA31 이 지킨다. SKIP 은 판정에서 통과로 센다(`skipped` 참조).
+        #   ③ 개발 트리: <repo>/bench/repack/…  →  <repo>/bench/moe-direct/launcher-go/internal/core/derive.go
+        #   셋 다 아니면 FAIL(fail-closed 유지). 번들을 개발 저장소 루트에 풀어도 ②가 ③보다 먼저
+        #   걸려 번들은 개발 트리 소스를 검사하지 않는다(가까운 배포물 우선).
+        #   구판은 PowerShell `Start-MoeDirect.ps1` 의 `$re*` 를 같은 3형상으로 찾았고 그 서술은
+        #   계약 태그 `repack.launcher-shape-resolution` 의 사본이었다. 원본 문장(보관 문서
+        #   `archive/content/HANDOFF_DEV.md` §2-7)이 은퇴한 PowerShell 형상을 말하므로 이 판에서
+        #   사본 태그를 걷었다(원본 태그는 보관 문서에 그대로 있다).
         _lp_here = os.path.dirname(os.path.abspath(__file__))
+        _lp_root = os.path.dirname(_lp_here)
         _lp_cands = [
-            # ① 배포 번들: <root>/repacker/…  →  <root>/Start-MoeDirect.ps1
-            os.path.join(os.path.dirname(_lp_here), 'Start-MoeDirect.ps1'),
-            # ② 공개 리포: <root>/repacker/…  →  <root>/launcher/Start-MoeDirect.ps1
-            os.path.join(os.path.dirname(_lp_here), 'launcher', 'Start-MoeDirect.ps1'),
-            # ③ 개발 트리: <repo>/bench/repack/…  →  <repo>/bench/moe-direct/launcher/…
-            os.path.join(os.path.dirname(os.path.dirname(_lp_here)),
-                         'bench', 'moe-direct', 'launcher', 'Start-MoeDirect.ps1'),
+            ('공개 리포', os.path.join(_lp_root, 'launcher', 'internal', 'core', 'derive.go')),
+            ('배포 번들', os.path.join(_lp_root, BUNDLE_LAUNCHER_BINARY)),
+            ('개발 트리', os.path.join(os.path.dirname(_lp_root), 'bench', 'moe-direct', 'launcher-go',
+                                    'internal', 'core', 'derive.go')),
         ]
-        _lp_ps1 = next((p for p in _lp_cands if os.path.isfile(p)), None)
-        _lp_bad, _lp_live = [], _lp_ps1 is not None
-        if not _lp_live:
+        _lp_shape, _lp_path = next(((_sh, _p) for _sh, _p in _lp_cands if os.path.isfile(_p)), (None, None))
+        _lp_bad, _lp_skip = [], None
+        if _lp_shape is None:
             _lp_bad.append('launcher 를 세 형상 어디에서도 찾지 못했다(구조 이상) — '
-                           '번들=%s · 리포=%s · 개발 트리=%s'
-                           % (_lp_cands[0], _lp_cands[1], _lp_cands[2]))
-        if _lp_live:
-            _lp_txt = open(_lp_ps1, 'r', encoding='utf-8', errors='replace').read()
-            # ★F2 후반: 실소비 결속을 **파서 함수 블록 + 주석 제외** 범위에서 본다. 파일 전체
-            # 문자열 검색이면 주석·dead copy 도 PASS 시켜 "선언만 남고 파서는 다른 걸 본다"는
-            # 드리프트를 놓친다(r2 지적). 완전 AST 파싱은 요구 밖 — 오탐만 줄인다.
-            _lp_fn0 = _lp_txt.find('function ConvertFrom-TemplatePlanText')
-            _lp_fn1 = _lp_txt.find('\nfunction ', _lp_fn0 + 1) if _lp_fn0 >= 0 else -1
+                           '공개 리포=%s · 번들=%s · 개발 트리=%s'
+                           % (_lp_cands[0][1], _lp_cands[1][1], _lp_cands[2][1]))
+        elif _lp_shape == '배포 번들':
+            _lp_skip = ('배포 번들(%s): 컴파일된 Go launcher 뿐이고 그 소스가 없어 리터럴 대조를 할 수 없다 — '
+                        'Go 이식이 PowerShell 파서 기록과 같음은 Go 테스트 TestS8LA31 '
+                        '(bench/moe-direct/launcher-go/internal/core/la31_test.go)이 지킨다' % _lp_path)
+        else:
+            # 공개 checkout 은 CRLF 일 수 있다(Windows autocrlf) — 줄 끝을 맞춘 뒤 본다.
+            _lp_txt = open(_lp_path, 'r', encoding='utf-8', errors='replace').read().replace('\r\n', '\n')
+            # 주석 줄(`//`)을 걷은 코드에서만 본다 — 주석·dead copy 가 PASS 시키지 않게(F2 후반).
+            _lp_code = '\n'.join(_ln for _ln in _lp_txt.split('\n') if not _ln.strip().startswith('//'))
+            _lp_fn0 = _lp_code.find('\nfunc parseTemplatePlan(')
+            _lp_fn1 = _lp_code.find('\nfunc ', _lp_fn0 + 1) if _lp_fn0 >= 0 else -1
             if _lp_fn0 < 0:
-                _lp_bad.append('launcher 에 ConvertFrom-TemplatePlanText 함수가 없다(파서 표면 소실)')
+                _lp_bad.append('launcher 에 parseTemplatePlan 함수가 없다(파서 표면 소실)')
                 _lp_scope = ''
             else:
-                _lp_scope = _lp_txt[_lp_fn0:_lp_fn1 if _lp_fn1 > _lp_fn0 else len(_lp_txt)]
-            _lp_scope = '\n'.join(_ln for _ln in _lp_scope.split('\n') if not _ln.strip().startswith('#'))
-            _lp_ps, _lp_var = {}, {}
-            for _m in re.finditer(r'^\s*\$(re\w+)\s*=\s*\'(.*)\'\s*$', _lp_txt, re.M):
-                _lp_ps[_m.group(1)[2:].lower()] = _m.group(2)
-                _lp_var[_m.group(1)[2:].lower()] = _m.group(1)
+                _lp_scope = _lp_code[_lp_fn0:_lp_fn1 if _lp_fn1 > _lp_fn0 else len(_lp_code)]
+            _lp_go = {}
+            for _m in re.finditer(r'^\s*(planRe(\w+))\s*=\s*regexp\.MustCompile\(`([^`]*)`\)\s*$', _lp_code, re.M):
+                _lp_go[_m.group(2).lower()] = (_m.group(1), _m.group(3))
             for _k, _pat in LAUNCHER_PLAN_KEYED_LINES:
-                _src = _lp_ps.get(_k)
-                if _src is None:
-                    _lp_bad.append('launcher 에 $re%s 리터럴이 없다' % _k)
+                _ent = _lp_go.get(_k)
+                if _ent is None:
+                    _lp_bad.append('launcher 에 planRe%s 리터럴이 없다' % _k.capitalize())
                     continue
-                if _src != _pat:
-                    _lp_bad.append('%s 정규식 상이:\n        launcher=%r\n        repacker=%r' % (_k, _src, _pat))
-                # ★r1 [MED] 두 번째 반쪽: 리터럴이 같아도 그 변수가 **파서 loop 에서 실제로
-                # 소비되지 않으면** 계약이 아니다(선언만 남고 파서가 다른 걸 보는 드리프트).
-                # 파서는 `@('<key>', $re<Var>)` 쌍으로 순회하므로 그 쌍의 실재를 직접 맞춘다.
-                if not re.search(r"@\(\s*'%s'\s*,\s*\$%s\s*\)" % (re.escape(_k), re.escape(_lp_var[_k])), _lp_scope):
-                    _lp_bad.append('launcher 파서 함수(주석 제외)가 $%s 를 키 %r 로 소비하지 않는다(선언만 존재)'
-                                   % (_lp_var[_k], _k))
-            _lp_done = re.search(r'^\s*\$planDone\s*=\s*\'(.*)\'\s*$', _lp_txt, re.M)
+                if _ent[1] != _pat:
+                    _lp_bad.append('%s 정규식 상이:\n        launcher=%r\n        repacker=%r' % (_k, _ent[1], _pat))
+                # 리터럴이 같아도 파서가 소비하지 않으면 계약이 아니다: 파서는
+                # `{"<key>", planRe<Name>}` 쌍으로 순회한다.
+                if not re.search(r'\{\s*"%s"\s*,\s*%s\s*\}' % (re.escape(_k), re.escape(_ent[0])), _lp_scope):
+                    _lp_bad.append('launcher 파서 함수(주석 제외)가 %s 를 키 %r 로 소비하지 않는다(선언만 존재)'
+                                   % (_ent[0], _k))
+            _lp_done = re.search(r'^\s*planDone\s*=\s*"([^"\\]*)"\s*$', _lp_code, re.M)
             if not _lp_done:
-                _lp_bad.append('launcher 에 $planDone 리터럴이 없다')
+                _lp_bad.append('launcher 에 planDone 리터럴이 없다')
             elif _lp_done.group(1) != LAUNCHER_PLAN_DONE_LINE:
                 _lp_bad.append('완료 줄 상이: launcher=%r repacker=%r'
                                % (_lp_done.group(1), LAUNCHER_PLAN_DONE_LINE))
-            _lp_dname = re.search(r'^\s*\$script:DERIVED_EXPECT_FILE_NAME\s*=\s*\'(.*)\'\s*$', _lp_txt, re.M)
+            _lp_dname = re.search(r'^\s*DerivedExpectFileName\s*=\s*"([^"\\]*)"', _lp_code, re.M)
             if not _lp_dname:
-                _lp_bad.append('launcher 에 $script:DERIVED_EXPECT_FILE_NAME 리터럴이 없다')
+                _lp_bad.append('launcher 에 DerivedExpectFileName 리터럴이 없다')
             elif _lp_dname.group(1) != DERIVED_EXPECT_FILENAME:
                 _lp_bad.append('derived expect 파일명 상이: launcher=%r repacker=%r'
                                % (_lp_dname.group(1), DERIVED_EXPECT_FILENAME))
-            for _frag in ("'--- derived expect ('", "', not written in --plan) ---'"):
-                if _frag not in _lp_txt:
-                    _lp_bad.append('launcher 의 expect 헤더 조각 %s 미검출' % _frag)
+            _lp_head = re.search(r'^\s*planExpectHead\s*=\s*(.*?)\s*$', _lp_code, re.M)
+            if not _lp_head:
+                _lp_bad.append('launcher 에 planExpectHead 리터럴이 없다')
+            elif _lp_head.group(1) != '"--- derived expect (" + DerivedExpectFileName + ", not written in --plan) ---"':
+                _lp_bad.append('expect 헤더 상이: launcher=%s repacker=%r'
+                               % (_lp_head.group(1), LAUNCHER_PLAN_EXPECT_HEAD))
+            for _v in ('planDone', 'planExpectHead'):
+                if not re.search(r'\bln\s*==\s*%s\b' % _v, _lp_scope):
+                    _lp_bad.append('launcher 파서 함수(주석 제외)가 %s 로 줄을 가르지 않는다(선언만 존재)' % _v)
         ok_lp = not _lp_bad
-        checks.append(('v3-⑱ launcher 파서 계약 사본 대조 — `LAUNCHER_PLAN_KEYED_LINES` 6정규식·완료 줄·'
-                       'derived expect 파일명이 `Start-MoeDirect.ps1` 원본 리터럴과 문자 단위 일치 + 그 6변수가 '
-                       '파서 함수 블록(주석 제외)에서 **실제 소비**됨 + ★3형상(배포 번들→공개 리포→'
-                       '개발 트리 순) 해석 후 **셋 다 부재일 때만** FAIL(fail-closed) '
-                       '[[C:repack.launcher-shape-resolution]]', ok_lp))
-        print('[selftest] v3-⑱ launcher 정규식 사본 대조: %s (해석 경로=%s)'
-              % ('PASS' if ok_lp else 'FAIL', _lp_ps1 if _lp_live else '★셋 다 부재 = FAIL'))
+        _lp_name = ('v3-⑱ launcher 파서 계약 사본 대조 — `LAUNCHER_PLAN_KEYED_LINES` 6정규식·완료 줄·derived expect '
+                    '헤더·파일명이 Go launcher `internal/core/derive.go` 원본 리터럴(planRe*·planDone·planExpectHead·'
+                    'DerivedExpectFileName)과 문자 단위 일치 + 그 리터럴이 파서 `parseTemplatePlan`(주석 제외)에서 '
+                    '**실제 소비**됨 + ★3형상(공개 리포→배포 번들→개발 트리 순) 해석 · 번들은 Go 소스가 없어 SKIP'
+                    '(통과로 셈 · 이식은 TestS8LA31 이 지킴) · 셋 다 아니면 FAIL(fail-closed)')
+        checks.append((_lp_name, ok_lp))
+        if _lp_skip:
+            skipped.append(_lp_name)
+            print('[selftest] v3-⑱ launcher 정규식 사본 대조: SKIP (사유=%s)' % _lp_skip)
+        else:
+            print('[selftest] v3-⑱ launcher 정규식 사본 대조: %s (형상=%s · 해석 경로=%s)'
+                  % ('PASS' if ok_lp else 'FAIL', _lp_shape or '★셋 다 부재 = FAIL', _lp_path or '-'))
         for _n in _lp_bad:
             print('    %s' % _n)
 
@@ -7375,7 +7421,9 @@ def cmd_selftest():
         _reg_home = os.path.join(_reg_root, 'bench', 'techdev', 'repack_space')
         _reg_live = os.path.isdir(_reg_home)
         _reg_files, _reg_src, _reg_copy, _reg_bad = [], {}, {}, []
-        _REG_RE = re.compile(r'\[\[C:([A-Za-z0-9._-]+?)(\|src)?\]\]')
+        # ★K187(v8): ID 는 영문자·숫자로 시작해야 한다 — 산문 자리표시 `[[C:...]]`(E2B2 §J 머리)는
+        # 태그가 아니다. 영문자·숫자로 시작하는 ID 는 전과 같이 모두 센다.
+        _REG_RE = re.compile(r'\[\[C:([A-Za-z0-9][A-Za-z0-9._-]*?)(\|src)?\]\]')
         if _reg_live:
             _reg_files.append(os.path.abspath(__file__))
             # ★LUX-1 C1: 계약 **원본은 권위 문서에 산다**(§2-8 규칙 3) —
@@ -7383,9 +7431,23 @@ def cmd_selftest():
             # 그 파일이 범위 밖이면 이 파일의 사본 태그가 **고아**로 보여 검사가 FAIL 하므로,
             # 원본 거처를 스캔 범위에 넣는다(있을 때만 — 번들·공개 형상은 `_reg_live` 가
             # false 라 이 블록 자체가 돌지 않는다).
-            _reg_handoff = os.path.join(_reg_root, 'HANDOFF_DEV.md')
-            if os.path.isfile(_reg_handoff):
-                _reg_files.append(_reg_handoff)
+            # ★K187(v8): 8195ab6f5 가 루트 `HANDOFF_DEV.md` 를 `archive/content/` 로, 규약 문서
+            # (`AUTORUN_POLICY.md`·`CONTRACT_GOVERNANCE.md` 등)를 `archive/2026-09-15_rules/` 로
+            # 옮겼다. 스캔 범위 문서의 사본 태그는 여전히 그 원본을 가리키므로, 보관된 문서를
+            # 원본 거처로 **이름을 하나씩 적어** 스캔한다(glob 금지 — 범위가 조용히 늘지 않게).
+            for _reg_doc in (('archive', 'content', 'HANDOFF_DEV.md'),
+                             ('archive', '2026-09-15_rules', 'AGENTS_pre_surgery.md'),
+                             ('archive', '2026-09-15_rules', 'AI_TEAM_POLICY.md'),
+                             ('archive', '2026-09-15_rules', 'AUTORUN_POLICY.md'),
+                             ('archive', '2026-09-15_rules', 'CLAUDE_pre_surgery.md'),
+                             ('archive', '2026-09-15_rules', 'COMMIT_TRAILERS_DRAFT.md'),
+                             ('archive', '2026-09-15_rules', 'CONTRACT_GOVERNANCE.md'),
+                             ('archive', '2026-09-15_rules', 'DEV_TEST_HYGIENE.md'),
+                             ('archive', '2026-09-15_rules', 'FLOOR_RECEIPT_SCHEMA.md'),
+                             ('archive', '2026-09-15_rules', 'LANDING_PACKET_SPEC.md')):
+                _reg_doc_path = os.path.join(_reg_root, *_reg_doc)
+                if os.path.isfile(_reg_doc_path):
+                    _reg_files.append(_reg_doc_path)
             for _rd, _rext in ((_reg_home, ('.md',)),
                                (os.path.join(_reg_home, 'ubench'), ('.cpp', '.py', '.md'))):
                 if os.path.isdir(_rd):
@@ -7501,13 +7563,24 @@ def cmd_selftest():
     all_ok = all(ok for _, ok in checks)
     print('--- selftest 체크리스트 ---')
     for name, ok in checks:
-        print(' [%s] %s' % ('PASS' if ok else 'FAIL', name))
+        print(' [%s] %s' % (('SKIP' if name in skipped else 'PASS') if ok else 'FAIL', name))
     n_pass = sum(1 for _, ok in checks if ok)
+    if skipped:
+        print('[selftest] SKIP %d건(판정에서 통과로 셈): %s' % (len(skipped), ' · '.join(n[:24] for n in skipped)))
     print('=== selftest 최종 판정: %s (%d/%d) ===' % ('PASS' if all_ok else 'FAIL', n_pass, len(checks)))
 
-    _append_repack_log({'ts': datetime.now(timezone.utc).isoformat(), 'mode': 'selftest',
-                         'pass': all_ok, 'n_pass': n_pass, 'n_total': len(checks),
-                         'checks': [{'name': n, 'ok': o} for n, o in checks]})
+    # ★R-FX18(v8): 번들 안에서 --log-path 없이 돈 selftest 는 최종 항목도 쓰지 않는다(머리 주석 참조).
+    # 판정과 체크리스트는 위 stdout 에 그대로 있다.
+    _selftest_entry = {'ts': datetime.now(timezone.utc).isoformat(), 'mode': 'selftest',
+                       'pass': all_ok, 'n_pass': n_pass, 'n_total': len(checks),
+                       'checks': [{'name': n, 'ok': o} for n, o in checks], 'skipped': list(skipped)}
+    _SELFTEST_CHILD_LOG = None
+    if _st_log_redirected:
+        _set_repack_log_path(None)
+        print('[selftest] 번들 형상(%s) · --log-path 없음 -> selftest 로그를 기록하지 않는다'
+              '(번들 폴더에 파일을 남기지 않는다)' % _st_bundle)
+    else:
+        _append_repack_log(_selftest_entry)
     return all_ok
 
 

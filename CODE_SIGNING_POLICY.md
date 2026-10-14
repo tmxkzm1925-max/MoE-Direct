@@ -21,8 +21,8 @@ Signed per release (once signing is available):
 
 - `llama-server.exe`, `llama.exe`, `llama-cli.exe` and the other
   project-built tool executables in the bundle
-- the project-built engine DLLs (`ggml-*.dll`, `llama-server-impl.dll`)
-- `Start-MoeDirect.ps1` and `launcher_selftest.ps1` (PowerShell)
+- the project-built engine DLLs (`ggml-*.dll`, `llama-server-impl.dll`) and the fit-params pair (`llama-fit-params.exe`, `llama-fit-params-impl.dll`)
+- `MoE-Direct-launcher.exe` (the launcher, built from the Go source in `launcher/`)
 
 Explicitly not signed by this project (already signed by their vendors,
 redistributed unmodified):
@@ -52,8 +52,17 @@ redistributed unmodified):
     for 17 named outputs: 16 runtime files and the unshipped engine selftest. The
     separately supplied `ggml-cuda.dll` and three NVIDIA runtime DLLs are outside
     that reproduction claim; their provenance and hashes are in `BUILD_RECEIPT.txt`.
-- The launcher and repacker are plain-text source in this repository; the
-  bundle copy is byte-identical to the repository copy.
+  - **v0.3.2.** The [source and build package](patches/v0.3.2/README.md) reconstructs
+    release tree `32c8894ec9b70a8bf59271daeedee7aa2f337e12` from pinned llama.cpp
+    `b10057` and the exact patch. Two clean CUDA-off builds produced matching hashes
+    for 19 named outputs: 18 runtime files and the unshipped engine selftest. The
+    separately supplied `ggml-cuda.dll` and three NVIDIA runtime DLLs are outside
+    that reproduction claim; their provenance and hashes are in `BUILD_RECEIPT.txt`.
+- The launcher's Go source is in this repository (`launcher/`), and the bundle's
+  `MoE-Direct-launcher.exe` is built from it by `launcher/build.ps1`, whose build
+  record (`launcher/MoE-Direct-launcher.build.json`) names the toolchain, the
+  flags, the source digests and the binary's SHA-256. The repacker is plain-text
+  source; its bundle copy is byte-identical to the repository copy.
 - Because signing changes the bytes of a PE file, reproducibility statements
   in the docs refer to the pre-signature binaries; each signed release will
   publish both the pre-signature hashes (reproducibility surface) and the
@@ -63,8 +72,8 @@ redistributed unmodified):
 
 - Solo maintainer (`tmxkzm1925-max`). Every release is cut manually.
 - A release must pass the project's gates before a signing request is
-  submitted: launcher selftest, repacker selftest, engine selftest, and the
-  bundle inventory check (`bundle_manifest.json`, which the launcher
+  submitted: the Go launcher self-test, repacker selftest, engine selftest,
+  and the bundle inventory check (`bundle_manifest.json`, which the launcher
   verifies in full, both directions, on every start).
 - One signing request per release, submitted by the maintainer via the
   SignPath web interface or PowerShell module, and approved manually.

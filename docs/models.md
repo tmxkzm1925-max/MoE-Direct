@@ -85,27 +85,10 @@ existed to find it, which meant almost nobody did, so **in v0.2.3 the path is on
 GGUF of a **known architecture** that is not in the catalog is derived, repacked, verified and
 served, labelled `experimental`, with no flag at all.
 
-Nothing about the checks changed with the default. If you want it off, for one run or for good:
-
-```powershell
-.\Start-MoeDirect.ps1 -ArchTemplate off
-```
-
-The flag applies to that run and is not written down, so it behaves like every other command-line
-override here. To make the choice stick, flip it from the **model selection menu**, on the
-`arch template:` row - that is stored, and later starts follow it with no flag. If you start with
-`-Model` and skip the menu, the launcher asks you once, the first time a run would actually take the
-template path, and remembers your answer. The custom screen has the same item, but it says
-`applies from the next start` there and means it: by that point your model is already identified,
-and pretending otherwise would be a lie.
-
-The setting is stored per Windows user account, next to your saved preset rather than inside it,
-because the launcher has to know the answer *before* it has identified your model, and a preset is
-bound to a model it has not identified yet.
-
-`-ArchTemplate on` turns it back on the same way. The old `-ExperimentalArchTemplate` still works
-and still means "on", so scripts written against v0.2.2 keep running; it is now the older spelling
-of the same thing, and if you somehow pass both, the explicit `-ArchTemplate off` wins.
+Nothing about the checks changed with the default. The path has no off switch: the launcher keeps
+it on, and the models page marks a model outside the catalog as
+`outside the catalog · structure defaults · performance unverified`, so you see which route a file
+takes before you start it.
 
 **Known architecture is the whole of the opening.** Templates exist for three architectures today -
 `gpt-oss`, `qwen35moe` and `deepseek2` - and the end-to-end gate evidence below was run on one of

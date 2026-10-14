@@ -75,8 +75,8 @@ setting makes that free. What you can change is *when* it happens, and whether y
 sitting in front of it. Point the launcher at the file your client sends as its system prompt and
 that prefix is computed right after the server comes up, before you ask anything:
 
-```powershell
-.\Start-MoeDirect.ps1 -Warmup file:C:\path\to\systemprompt.txt
+```text
+warmup   file:C:\path\to\systemprompt.txt
 ```
 
 On the custom path, or in a saved preset, the same thing is the `warmup` key set to
