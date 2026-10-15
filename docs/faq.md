@@ -28,6 +28,9 @@
 - **Catalog prefetch is ON only for Qwen3.5-122B in v0.3.2**, with its exact source
   pin and startup checks satisfied. The other five profiles remain OFF, including
   `init` requests. Kimi K2.6 has no engine prefetch adapter; `adapt` cannot activate.
+  v0.3.2 also accepts manual K, N and QD values in the SETTINGS panel; a pair that is not a
+  validated pair for the model is marked unmeasured, and on a model that has not been checked a
+  value you pick can make things worse rather than better.
 - **The experimental arch-template path has been proven end to end on one architecture, and it is
   on by default since v0.2.3.** It accepts a GGUF of a known architecture the catalog does not
   carry; templates exist for `gpt-oss`, `qwen35moe` and `deepseek2`, every other architecture is
@@ -36,13 +39,12 @@
   changed, the evidence did not. `-ArchTemplate off` turns it off for one run; the menu row or the
   one-time question is what stores the choice - see
   [Running an unlisted model (experimental)](models.md#running-an-unlisted-model-experimental).
-- **A default start is labelled `[unmeasured]`, on purpose.** `warmup` defaults to `on` since
-  v0.2.3 and every published figure here was measured cold, so the status screen reports
-  `[unmeasured] (product warm-path baseline; official measurements are cold-cache)` instead of
-  claiming a gate the run did not sit for. `-Repro` and `-Smoke` force warm-up off and restore the
-  published condition on that axis; the other gate requirements are unchanged and still have to be
-  met on their own. A virtual run remains `[unmeasured]` even with those switches: its
-  own plan gate is shown separately, copy integrity is `N/A`, and serving is unvalidated.
+- **A default start is warmed up, and the published figures are cold.** `warmup` defaults to `on`
+  since v0.2.3 and every published figure here was measured on a cold cache, so a default start is
+  not the measured condition. Set the `warmup` row of the SETTINGS panel in 1 Models to `off`, or
+  start with `-warmup off`, to match it on that axis. A start that runs the check run skips the
+  warm-up on its own, and its `warm up` step says so. On a virtual repack, a run with anything
+  other than QD 8 and catalog prefetch is marked `behaviour unmeasured`.
 - **Warm start reuse needs an exact prefix.** A restored session is reused by a request that
   extends the saved prompt exactly. A request that diverges from it is reprocessed in full on
   hybrid-attention models, because a slot file carries no server checkpoints. Warm start also does
@@ -93,9 +95,9 @@ is built from that tree by its one build command, `launcher/build.ps1`, whose bu
 digests and the binary's SHA-256 (a second build from a clean module cache gives the same binary).
 `repacker/repack_experts.py` and the ten `expects/*.expect.json`
 files are byte-identical to the copies inside the release zip (verified by SHA-256 at publish
-time). In v0.3.1 the repacker self-test recognizes both the extracted bundle and this
-repository's `launcher/` layout when finding the launcher parser. The parser contract
-check still runs; the checkout layout is no longer rejected solely for that path.
+time). In v0.3.2 the repacker self-test compares its plan-output contract with the Go
+launcher's parser in this repository's `launcher/internal/core/derive.go`; in the extracted
+bundle, which carries no launcher source, that one check is skipped and says why.
 `launcher/models.json` is the catalog the launcher consumes, exactly as the zip resolves
 it - it is where each profile's `expect_sha256` pin lives, so the binding between the launcher and
 the expectation files can be audited end to end. What runs from a plain checkout: the repacker
@@ -110,12 +112,13 @@ reproduces the exact source tree those binaries were built from, and each tree i
 [fork branch](https://github.com/tmxkzm1925-max/llama.cpp/tree/moe-direct-v0.2.2), one branch per
 distinct engine revision, so releases that reuse an engine tree share its branch.
 
-For v0.3.1, the [source and build package](../patches/v0.3.1/README.md) reconstructs
-the exact release tree from pinned llama.cpp `b10057` and its patch, and documents
+For v0.3.2, the current release, the [source and build package](../patches/v0.3.2/README.md)
+reconstructs the exact release tree from pinned llama.cpp `b10057` and its patch, and documents
 the named binaries covered by the two-build comparison. `BUILD_RECEIPT.txt` records
 the source tree, patch hash and separately supplied CUDA files. This package identifies
-v0.3.1; it does not reconstruct the older v0.3-preview source state, whose original
-receipt provided per-file hashes rather than a complete committed tree.
+v0.3.2; it does not reconstruct the older v0.3-preview source state, whose original
+receipt provided per-file hashes rather than a complete committed tree. The packages of
+earlier releases stay in [`patches/`](../patches/README.md), newest first.
 
 ## From the roadmap
 

@@ -17,7 +17,8 @@ opened for you.
 A report is easiest to act on when it contains:
 
 - The release tag, or the SHA-256 of the `moe-direct-<version>-win-x64.zip` you are running.
-- Windows version, and whether the launcher was started from `Start-MoeDirect.cmd` or directly.
+- Windows version, and whether the launcher was started from its screen (`MoE-Direct-launcher.exe`
+  opened directly) or from a console with arguments (`-model <file.gguf>`).
 - Exact steps to reproduce, and what an attacker gains if it works.
 - Any relevant lines from `%LOCALAPPDATA%\MoE-Direct\logs\` - please skim first, since those files
   record local paths that usually contain your Windows user name.
@@ -29,9 +30,13 @@ testing to make a point - a description of the mechanism is enough.
 
 **In scope** - the parts this project actually builds and ships:
 
-- The PowerShell launcher and its `.cmd` entry point (`Start-MoeDirect.ps1`,
-  `Start-MoeDirect.cmd`) - argument and path handling, the state and log files it writes under
-  `%LOCALAPPDATA%\MoE-Direct\`, the child process it spawns, and the loopback binding.
+- The launcher, `MoE-Direct-launcher.exe`, the bundle's entry point (its Go source is in
+  `launcher/`) - argument and path handling; what it reads: the catalog (`models.json`) and the
+  bundle manifest (`bundle_manifest.json`) in its own folder, and the GGUF files in the model
+  folders it scans; the logs, presets, history and caches it writes under
+  `%LOCALAPPDATA%\MoE-Direct\`; what it executes: the engine server and the repacker that the
+  catalog names inside the bundle, `llama-fit-params.exe` beside the server, and `nvidia-smi`
+  when it is on the PATH; and the loopback binding (`127.0.0.1`).
 - The repacker (`repack_experts.py`) and the integrity gates around it - anything that lets
   unverified expert data be served, or lets a verify report be accepted when it should not be.
 - The bundle integrity chain - the internal per-file SHA manifest, the catalog

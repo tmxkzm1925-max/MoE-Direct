@@ -49,6 +49,9 @@ Notes on this table:
 - **Prefetch column.** Qwen3.5-122B is the only catalog-fixed ON profile in v0.3.2,
   using K=8 / N=4 when the source pin and startup checks pass. The other five catalog
   profiles remain OFF in the launcher, including `init` requests; `adapt` cannot activate.
+  v0.3.2 also accepts a manual K and N pair and a manual QD (see
+  [Getting started](getting-started.md)): prefetch with a manual pair runs only while QD is at
+  least N+1, and a pair that is not a validated pair for the model is labelled unmeasured.
   The catalog stores evidence separately from activation, so an OFF row does not by itself
   mean the engine lacks an adapter. Kimi K2.6 is the exception here: the shipped engine has
   no `deepseek2` prefetch adapter. Its earlier paired-run observations remain historical
@@ -111,13 +114,8 @@ writes against your file, all of them, as it does for any model. The engine does
 repacker's word for which tensors that inventory should have contained: it holds its own frozen
 table of approved templates, regenerates the expected tensor set from the architecture and layer
 formula it reads live, and only then runs the same seals a catalog model goes through. What this
-path is allowed to claim is narrower than what a catalog entry claims, and the launcher prints it in
-those words - *the template-selected routed-expert inventory was copied byte-for-byte from your
-file*. Three questions are reported separately on the status screen and never folded into one badge:
-`copy integrity` (did every selected routed slice verify byte for byte), `inventory authority` (who
-decided which tensors the inventory contains - a model entry, or the architecture template) and
-`serving validation` (has this configuration been validated for serving). They are three different
-questions, and none of them is an answer to another.
+path is allowed to claim is narrower than what a catalog entry claims: *the template-selected
+routed-expert inventory was copied byte-for-byte from your file*.
 
 **What you do not get.** No performance work. Prefetch stays off on a derived profile and the levers
 that were tuned per profile are not offered here, which is a large part of why the label is

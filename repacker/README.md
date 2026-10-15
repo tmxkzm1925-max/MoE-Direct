@@ -18,12 +18,15 @@ serving attempt fail-closes either way.
 
 With the catalog and the files in agreement, the `OPEN_ARCH-ⓐ` catalog check
 passes 10/10. The `v3-⑱ launcher parser contract copy check` compares the
-parser contract in the repacker against the literal strings in `Start-MoeDirect.ps1`.
-In v0.3.1 its resolver recognizes the development tree, the extracted bundle root,
-and this repository's `launcher/Start-MoeDirect.ps1` layout. A plain checkout is no
-longer rejected solely because the parser lives in that third location; the contract
-comparison itself remains required. The earlier v0.3-preview results of 90/90 in
-the bundle and 89/90 in the checkout describe the old resolver, not this change.
+parser contract in the repacker against the literal strings of the Go launcher's
+plan parser (`parseTemplatePlan` in `launcher/internal/core/derive.go`), which reads
+this script's `--plan --experimental-arch-template` output when an unlisted model is
+derived. In this repository the check reads that file; in the extracted bundle,
+which carries only the compiled `MoE-Direct-launcher.exe`, the check is skipped and
+prints why. The launcher's model list reads no repacker output: it only checks
+whether the setup files exist (`launcher/internal/core/models.go`, `scanstamp.go`).
+The earlier v0.3-preview results of 90/90 in the bundle and 89/90 in the checkout
+describe an older resolver.
 (History: the v0.2.1 zip carried only
 eight of the expectation files, so that zip's own `--selftest` reported 63/64
 with exactly a missing-file failure - a known issue listed in that release's

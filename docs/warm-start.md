@@ -87,18 +87,15 @@ wrote it.
 **The default changed in v0.2.3: `warmup` is now `on`, where v0.2.2 and earlier had it `off`.** `on`
 is the one-token warm-up request that has been in the launcher all along, sent once after the server
 reports ready. It is one small request, and it means the first thing you type is not also the thing
-that pays for the very first token of the run. If you preferred the old behaviour, `-Warmup off` or
+that pays for the very first token of the run. If you preferred the old behaviour, `-warmup off` or
 the `warmup` key set to `off` restores it exactly.
 
-That default has one honest consequence, and it is worth stating plainly because it changes what
-the status screen tells you. **Every published number in [Measurements](measured-results.md) was
-measured on a cold cache, and a warmed-up run is not that condition.** So a default start now reports its performance gate as
-`[unmeasured] (product warm-path baseline; official measurements are cold-cache)` rather than
-claiming a measured result it is not entitled to. This is a labelling change, not a slower run -
-warming up does not make anything worse, it just puts the machine in a state the official figures
-did not measure. `-Repro` and `-Smoke` force `warmup` back off for exactly this reason, so a
-reproduction or benchmark run stands on the same cold-cache footing as the published pairs; the
-status screen names the force on the warmup line when it happens.
+That default has one honest consequence, and it is worth stating plainly. **Every published number
+in [Measurements](measured-results.md) was measured on a cold cache, and a warmed-up run is not that
+condition.** Warming up does not make anything worse; it just puts the machine in a state the
+official figures did not measure. For a reproduction or benchmark run, set `warmup` to `off`, so it
+stands on the same cold-cache footing as the published pairs. A start that runs the check run skips
+the warm-up on its own, and the `warm up` step on 2 Server says so.
 
 It is one request, sent once, and you watch it happen: the launcher reads the file as UTF-8 and
 sends the text to the server exactly as the file holds it, with prompt caching on and one token of

@@ -140,7 +140,8 @@ once, though, and the queue becomes the bottleneck instead. The right depth is a
 drive, and the reference machine's answer is not automatically yours.
 
 **What it does.** Reads are issued concurrently rather than one at a time, at a depth the launcher
-measures on your machine. Before the status screen it runs a short read-only sweep over the repacked
+measures on your machine. Before the server starts (the `queue depth` step of the start, and the
+`speed check` that follows a first-run setup) it runs a short read-only sweep over the repacked
 file at queue depths 1, 2, 4 and 8, in both directions, and takes the shallowest depth that is
 within 90 % of the best throughput it saw; on a profile with validated prefetch it prefers, among
 those, the shallowest depth that still leaves room for the prefetch lanes (QD at least N+1), and
@@ -148,8 +149,9 @@ only falls back to the default when none qualifies. The result is remembered per
 and re-measured when any of those change. On the packed path your own setting always wins over the
 measurement: the sweep decides the default, not the final value.
 
-**How it behaves.** You see the measured points and the chosen depth on the status screen before
-anything starts. On a machine where the sweep cannot run, the launcher says so and falls back rather
+**How it behaves.** The sweep's `[sweep]` lines - what it measured and the depth it chose - go to
+4 Log before the server starts, and a run started with arguments prints them once the server is
+ready. On a machine where the sweep cannot run, the launcher says so and falls back rather
 than assuming.
 
 **In a virtual repack.** A virtual repack has no `experts.bin` to measure, so the launcher skips the
@@ -216,8 +218,9 @@ a session ends, it also saves while serving - when the timer comes due, the slot
 changed since the last save - alternating between two generations so that
 a crash during a save damages only the generation being written.
 
-**How it behaves.** It is on by default and reports itself on the status screen before you start and
-again once the server is up. What it does not cover is worth knowing: the saved state carries tokens
+**How it behaves.** It is on by default (the `warm start` row of 5 Settings), and a start that can
+restore a saved state is marked `warm start` on 2 Server while it starts. What it does not cover is
+worth knowing: the saved state carries tokens
 and cache state, not the server's own prefix checkpoints, so a request that extends the restored
 prompt exactly reuses it while a request that diverges is reprocessed in full on hybrid-attention
 models. It does nothing for the expert cache, which still fills from the drive as you go.
@@ -575,9 +578,8 @@ value travels the command line, a stored preset and the interactive custom path 
 rule those three already had. `on` is the one-token warm-up request and has been the default since
 v0.2.3, where v0.2.2 and earlier defaulted to `off`; `off` is still available and unchanged in
 behaviour. Because every published figure in this document was measured on a cold cache, a run left
-on the new default reports its performance gate as `[unmeasured] (product warm-path baseline;
-official measurements are cold-cache)`, and `-Repro` and `-Smoke` force the value back to `off` so
-a reproduction run sits on the measured condition on that axis. `file:<path>` makes the launcher,
+on the new default is not the measured condition; a reproduction run sets `warmup` to `off`, and a
+start that runs the check run skips the warm-up on its own. `file:<path>` makes the launcher,
 once the server reports ready, read that file as UTF-8
 and send its text to the server as one synchronous request, then wait for it. The request goes to
 `/completion` with `cache_prompt` on and `n_predict` 1, carrying the text exactly as the file holds
@@ -660,10 +662,7 @@ misconfiguration hides itself. An architecture with no template still stops befo
 is written. A derived profile is identified as `derived-<arch>-<digest>` from the inventory digest,
 so the same model derives to the same id on every machine, and it serves with prefetch disabled: the
 depth constants are a per-family measured thing and none exist for a model nobody has measured.
-Three axes are reported separately on the status screen rather than collapsed into one badge - copy
-integrity, meaning whether every selected routed slice verified byte for byte; inventory authority,
-meaning who decided which tensors the inventory contains; and serving validation, meaning whether
-this configuration has been validated for serving. The sentence the template path is allowed to use
+The sentence the template path is allowed to use
 is fixed and says what was copied and from where: *the template-selected routed-expert inventory was
 copied byte-for-byte from your file*. It deliberately does not say that your file is byte-verified,
 which would claim an authority nobody established.

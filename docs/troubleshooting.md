@@ -5,9 +5,11 @@
 ## Reporting problems
 
 A run started with arguments from a console (`-model <file.gguf>`) ends with one machine-readable
-line on stderr - `[moe-launcher] status=<value>` - and, for failures, two human-readable lines just
-above it saying what happened and which section to read. The interactive mode prints no status
-line. Every status value has its own section on this page, `docs/troubleshooting.md#<status>`.
+line on stderr - `[moe-launcher] status=<value>`. When a start fails, the line just above it says
+what happened: `MoE-Direct-launcher: start failed: <status> (exit <code>): <reason>` (`start:`
+instead of `start failed:` when the start is refused outright), and the step that failed is printed
+on stdout as `[start] <step> failed: <detail>`. The interactive mode prints no status line. Every
+status value has its own section on this page, `docs/troubleshooting.md#<status>`.
 
 Diagnostic files, all local:
 
@@ -52,7 +54,7 @@ force-kill was needed, and the listening port is gone. Nothing to do.
 
 ### ok_smoke
 
-Exit `0`. The `-Smoke` self-check passed end to end and the server was shut down cleanly. Nothing
+Exit `0`. The `-smoke` self-check passed end to end and the server was shut down cleanly. Nothing
 to do.
 
 ### cancelled_user
@@ -67,6 +69,9 @@ behind:
   scratch. A setup cut off with `q` twice or by closing the window is different: there is no
   resume, and the next start says `an earlier setup was cut off`; `ctrl+r` shows the setup plan,
   and its Enter deletes the half-made files and redoes setup, while `ctrl+d` only deletes them.
+
+In a run started with arguments (`-model <file.gguf>`), a console stop request (Ctrl+C or
+Ctrl+Break) before the server is ready cancels the start and ends with this status.
 
 Not an error either way; run it again when you are ready.
 
@@ -243,7 +248,7 @@ shutdown path did not work on your machine.
 
 Exit `6`. *A smoke assertion failed, while the shutdown itself completed cleanly.*
 
-Only reachable with `-Smoke`. The failing assertion is named in the output; attach the launcher
+Only reachable with `-smoke`. The failing assertion is named in the output; attach the launcher
 JSONL.
 
 Next: [Limitations and FAQ](faq.md)

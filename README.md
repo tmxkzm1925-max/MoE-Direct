@@ -143,6 +143,9 @@ In v0.3.2, catalog prefetch is enabled only for the validated Qwen3.5-122B row.
 The gpt-oss-120b, Qwen35B, Qwen397B, Kimi K2.6 and DSV4 rows remain off, including
 `init` requests. This is a prefetch policy, not a ban on serving those models.
 The launcher offers `catalog` and `init` as prefetch requests; `adapt` is not offered.
+v0.3.2 also accepts manual K, N and QD values (the SETTINGS panel of 1 Models, or `-prefetch-k`,
+`-prefetch-n` and `-qd` in a run started with arguments); on a model that has not been checked, a
+value you pick can make things worse rather than better.
 
 ## Measured results
 
@@ -178,12 +181,18 @@ Work ships one piece per release, when it is measured, not on a schedule.
 - **v0.3.1.1 is a repair-only patch.** On Windows the dense (non-expert) weights stayed in RAM
   as an unused copy after they were uploaded to VRAM. The loader now reads them straight from
   the file, so that copy is never created. No other feature changed.
-- **The virtual path remains a preview.** Packed stays the default. v0.3.1 fixes the
-  status screen's distinction between the two paths: virtual copy integrity is N/A,
-  its own 8-item plan gate is shown, serving validation remains unvalidated, and
-  performance remains unmeasured. The reference numbers are labelled as packed-path
-  measurements. This corrects what the screen claims; it does not promote virtual
-  performance or claim parity with packed.
+- **v0.3.2 replaces the launcher and opens manual prefetch**
+  ([release v0.3.2](https://github.com/tmxkzm1925-max/MoE-Direct/releases/tag/v0.3.2),
+  2026-10-14). The bundle now starts from `MoE-Direct-launcher.exe`, a launcher written in Go,
+  and K, N and QD can be set by hand. It brings no engine performance change, so speed is the
+  same as v0.3.1.1.
+- **The virtual path remains a preview.** Packed stays the default. In v0.3.1 the old
+  launcher's screen was corrected to tell the two paths apart (virtual copy integrity N/A,
+  its own 8-item plan gate, serving unvalidated, performance unmeasured, and the reference
+  numbers labelled as packed-path measurements); that corrected what the screen claimed and
+  did not promote virtual performance or claim parity with packed. In v0.3.2 every virtual start
+  is still checked by its own 8-item plan gate, and a virtual run with anything other than QD 8 and
+  catalog prefetch is marked `behaviour unmeasured`.
 - **Next, performance and virtual qualification.** In-place speed recovery and
   adaptive prefetch remain future work. v0.3.2 does not ship the adaptive controller,
   the Qwen122 prefill default change to `-ub 2048`, or the KV-Q8 opt-in switch. Those
