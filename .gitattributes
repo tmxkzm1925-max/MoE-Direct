@@ -15,3 +15,4 @@ patches/v0.3.2/BUILD_REFERENCE.txt -text
 patches/v0.3.2/reference/make_bundle.ps1 -text
 BUILD_RECEIPT.txt -text
 THIRD_PARTY_NOTICES.md -text
+engine/** -text
