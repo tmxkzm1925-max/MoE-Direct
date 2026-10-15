@@ -244,6 +244,10 @@ The `[moe-launcher] status=<value>` line that ends a run started with arguments
 | The long version: every technique and every number | [TECHNICAL.md](TECHNICAL.md) |
 | Release source and build provenance | [BUILD_RECEIPT.txt](BUILD_RECEIPT.txt), [Source package](patches/README.md) |
 
+The engine source itself is in [engine/](engine/): every llama.cpp b10057 file that the v0.3.2
+patch creates or modifies, in its patched state at its upstream path, generated from
+[the patch](patches/moedirect-v0.3.2-b10057.patch) and checked against it file for file.
+
 And if you are curious how this actually gets built: some of my working records are up in
 [docs/design-notes/](docs/design-notes/), as-is. They are in Korean — I am a Korean
 developer, the design and the decisions are mine, and my AI assistants draft and

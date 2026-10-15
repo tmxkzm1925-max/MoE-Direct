@@ -1,0 +1,5 @@
+set(TARGET moe-l2ab)
+add_executable(${TARGET} moe-l2ab.cpp)
+install(TARGETS ${TARGET} RUNTIME)
+target_link_libraries(${TARGET} PRIVATE ggml ${CMAKE_THREAD_LIBS_INIT})
+target_compile_features(${TARGET} PRIVATE cxx_std_17)
