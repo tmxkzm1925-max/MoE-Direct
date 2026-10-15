@@ -19,7 +19,7 @@ No modified weights.
 
 Earlier measurements on one consumer desktop - 32 GB RAM, one RTX 5080, a Gen5 NVMe -
 show three models it has no business holding in memory, the largest about thirteen times
-its RAM. These are historical results, not new v0.3.1 benchmarks:
+its RAM. These are historical results, not new v0.3.2 benchmarks:
 
 | the model | routed-expert data on disk | what that desktop measured | grade |
 |---|---|---|---|
@@ -98,9 +98,9 @@ from the [supported list](#supported-models).
    [docs/models.md](docs/models.md), and keep all shards in one folder. **Place your GGUF**
    under `<drive>:\moe-models\<any-folder>\` and double-click `MoE-Direct-launcher.exe`. Pick your
    model with the arrow keys.
-3. **Approve the one-time repack** (the launcher shows the exact disk cost and time before
-   writing anything), press Enter when the status screen appears, and connect any
-   OpenAI-compatible client to the printed URL.
+3. **Approve the one-time repack** (2 Server shows the exact disk cost and time before
+   writing anything; Enter sets up and starts), and when the header says `serving`, connect any
+   OpenAI-compatible client to the address 2 Server shows (`c` copies it).
    To stop the server, press Ctrl+F (unload the model); press q twice to quit the launcher. Closing the window ends the server at once without saving the cache.
 
 That is the whole loop. The first run repacks once (minutes to ~18 minutes here, with live
@@ -139,7 +139,7 @@ through the experimental template path, clearly labelled.
 Exact repositories, pinned revisions, minimum cache budgets, prefetch states and the template
 path: **[docs/models.md](docs/models.md)**.
 
-In v0.3.1, catalog prefetch is enabled only for the validated Qwen3.5-122B row.
+In v0.3.2, catalog prefetch is enabled only for the validated Qwen3.5-122B row.
 The gpt-oss-120b, Qwen35B, Qwen397B, Kimi K2.6 and DSV4 rows remain off, including
 `init` requests. This is a prefetch policy, not a ban on serving those models.
 The launcher offers `catalog` and `init` as prefetch requests; `adapt` is not offered.
@@ -147,7 +147,7 @@ The launcher offers `catalog` and `init` as prefetch requests; `adapt` is not of
 ## Measured results
 
 These historical results retain their original builds, protocols and grades; they are
-not measurements of the v0.3.1 release binary. Full conditions are linked below.
+not measurements of the v0.3.2 release binary. Full conditions are linked below.
 
 | What | Result | Evidence |
 |---|---|---|
@@ -185,7 +185,7 @@ Work ships one piece per release, when it is measured, not on a schedule.
   measurements. This corrects what the screen claims; it does not promote virtual
   performance or claim parity with packed.
 - **Next, performance and virtual qualification.** In-place speed recovery and
-  adaptive prefetch remain future work. v0.3.1 does not ship the adaptive controller,
+  adaptive prefetch remain future work. v0.3.2 does not ship the adaptive controller,
   the Qwen122 prefill default change to `-ub 2048`, or the KV-Q8 opt-in switch. Those
   features still need their release-specific implementation and validation.
   From v0.3.2 the launcher exposes manual prefetch settings: K (1-16, at most the model's
@@ -215,7 +215,8 @@ and [docs/disk-layout.md](docs/disk-layout.md).
 
 ## Troubleshooting
 
-The `status=` line the launcher prints, every status code and its fix:
+The `[moe-launcher] status=<value>` line that ends a run started with arguments
+(`-model <file.gguf>`), every status value and its fix:
 [docs/troubleshooting.md](docs/troubleshooting.md).
 
 ## Documentation

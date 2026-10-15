@@ -4,10 +4,10 @@
 
 ## Reporting problems
 
-Every run ends with one machine-readable line on stderr - `[moe-launcher] status=<enum>` - and, for
-failures, two human-readable lines just above it saying what happened and which section to read.
-The current launcher still prints its legacy pointer `see : README.md > Troubleshooting > <status>`.
-After the documentation split, the matching section is `docs/troubleshooting.md#<status>` - this page.
+A run started with arguments from a console (`-model <file.gguf>`) ends with one machine-readable
+line on stderr - `[moe-launcher] status=<value>` - and, for failures, two human-readable lines just
+above it saying what happened and which section to read. The interactive mode prints no status
+line. Every status value has its own section on this page, `docs/troubleshooting.md#<status>`.
 
 Diagnostic files, all local:
 
@@ -60,11 +60,13 @@ to do.
 Exit `2`. You cancelled before the server became ready. Two cases, and they leave different things
 behind:
 
-- **Cancelled at a prompt** - you chose `stop`, pressed Ctrl+C, or declined the repack plan or the
-  deletion of a leftover partial repack. **Nothing was started and nothing was deleted.**
-- **Cancelled while the repacker was running** - the same status, but the repack was already under
-  way, so the interrupted output stays on disk as a `.partial` file. There is no resume: the next
-  run detects the leftover, tells you, and asks before deleting it and starting over.
+- **Cancelled during the start** - you pressed `ctrl+x` while 2 Server listed the start steps.
+  **Nothing was lost.**
+- **Cancelled during the setup** - you pressed `ctrl+x` while the repack was running. The same
+  status, and the launcher removes what the repack had written, so the next start begins from
+  scratch. A setup cut off with `q` twice or by closing the window is different: there is no
+  resume, and the next start says `an earlier setup was cut off`; `ctrl+r` shows the setup plan,
+  and its Enter deletes the half-made files and redoes setup, while `ctrl+d` only deletes them.
 
 Not an error either way; run it again when you are ready.
 

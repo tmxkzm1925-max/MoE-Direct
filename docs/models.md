@@ -28,7 +28,7 @@ Every profile carries **two independent gates**, and one never implies the other
 | `format-validated` | Format gate passed. Any speed number shown is an observation, not a gate pass. |
 | `experimental` | Neither gate established. Your own risk. No pinned catalog entry ships at this tier; a profile derived by [Running an unlisted model (experimental)](#running-an-unlisted-model-experimental) is exactly this tier. |
 
-| Model (profile id) | Source | Experts | Repacked expert store | Min cache budget | Tier | Launcher prefetch in v0.3.1 |
+| Model (profile id) | Source | Experts | Repacked expert store | Min cache budget | Tier | Launcher prefetch in v0.3.2 |
 |---|---|---:|---:|---:|---|---|
 | **Qwen3.5-122B-A10B Q4_K_M** (`qwen35-122b-nonextn`) **<- start here** | [bartowski/Qwen_Qwen3.5-122B-A10B-GGUF](https://huggingface.co/bartowski/Qwen_Qwen3.5-122B-A10B-GGUF) rev `fec8b222a2eddc3346d6b6d7f7c85efea93cd6bf` | 256 (top-8) | 72.8 GB | 8192 MB | `reference-validated` | Catalog ON (K=8, N=4; exact source pin required) |
 | gpt-oss-120b MXFP4 (`gpt-oss-120b`) | [ggml-org/gpt-oss-120b-GGUF](https://huggingface.co/ggml-org/gpt-oss-120b-GGUF) rev `8d158cefb5f175c6f8842bbd8f68eca54d951ab4` | 128 (top-4) | 61 GB | 8192 MB | `format-validated` | OFF (held) |
@@ -46,7 +46,7 @@ Notes on this table:
   verdicts do not transfer to a virtual run; its status is described above.
 - **First time? Take Qwen3.5-122B.** It is the only `reference-validated` profile and the one the
   published speed number belongs to. Budget about 73 GB of disk for its expert store.
-- **Prefetch column.** Qwen3.5-122B is the only catalog-fixed ON profile in v0.3.1,
+- **Prefetch column.** Qwen3.5-122B is the only catalog-fixed ON profile in v0.3.2,
   using K=8 / N=4 when the source pin and startup checks pass. The other five catalog
   profiles remain OFF in the launcher, including `init` requests; `adapt` cannot activate.
   The catalog stores evidence separately from activation, so an OFF row does not by itself
@@ -59,7 +59,7 @@ Notes on this table:
   rather than the most measured one. Its repack verified 33,024 of 33,024 record-part pairs, and a smoke run
   on the reference machine held 3.13-3.28 tok/s across four probes with zero fallback events
   (`PROBE`: budget 8192 MB, QD 8, prefetch off, ctx 8192). This is a historical observation,
-  not a measurement of the v0.3.1 binary. Prefetch remains OFF under the current catalog
+  not a measurement of the v0.3.2 binary. Prefetch remains OFF under the current catalog
   hold; observation evidence alone does not qualify a live K/N setting. The launcher will accept a context up to 131072 on the custom path, but nothing
   above 8192 has been exercised here, so treat that headroom as untested rather than offered.
 - **Text only.** This release validates text serving. Multimodal (mmproj) inputs are **not verified** -
@@ -143,7 +143,7 @@ three checks actually does, is in
 
 | Where we are | Status |
 |---|---|
-| Prefetch for the deepseek2 family, which is what Kimi K2.6 needs | **OFF in v0.3.1.** The shipped engine has no prefetch adapter for this architecture. The catalog therefore records `unverified` evidence, `off` activation, no K/N tuple, and a promotion hold. Earlier paired-run results remain historical observations; they do not establish current engine capability or an official performance gate pass. |
+| Prefetch for the deepseek2 family, which is what Kimi K2.6 needs | **OFF in v0.3.2.** The shipped engine has no prefetch adapter for this architecture. The catalog therefore records `unverified` evidence, `off` activation, no K/N tuple, and a promotion hold. Earlier paired-run results remain historical observations; they do not establish current engine capability or an official performance gate pass. |
 | DeepSeek-V4-Flash-0731 (284B, `deepseek4`) | **In the catalog since v0.2.1.** The architecture is native to the base commit this release is built on, its expert tensors are MXFP4, which is a layout the repacker already handles, and the repack verified 33,024 of 33,024 record-part pairs. A direct-read smoke run held 3.13-3.28 tok/s across four probes with zero fallback events (`PROBE`: reference machine, budget 8192 MB, QD 8, prefetch off, ctx 8192). It ships with the format gate passed, the performance gate unpassed and prefetch disabled, which is where the evidence actually stands; the prefetch depth search for this family is queued for a later release. |
 | Any model of an already-supported architecture (`experimental` tier) | **Shipped in v0.2.2 behind `-ExperimentalArchTemplate`; on by default since v0.2.3.** The catalog still runs its six pinned models the way it always did; this adds a second way of passing the same checks for a GGUF of a known architecture, derived, repacked, verified and served labelled `experimental` with prefetch off - an honest warning, not a block and not a promise. Templates exist for three architectures (`gpt-oss`, `qwen35moe`, `deepseek2`); the end-to-end evidence is one model of one of them (`gpt-oss`), which is what keeps the label. The default moved because behind a switch nobody found it, not because the evidence grew: an architecture with no template is still refused, and the repack still stops for your approval. `-ArchTemplate off` turns it off for a run, and the model menu's `arch template:` row stores the choice. See [Running an unlisted model (experimental)](#running-an-unlisted-model-experimental). |
 | Kimi K3 (2.8T class) | **Not yet ready, but moving.** Disk-space limits ruled out the MXFP4 build for now; a Kimi-K3 Q2_K_XL sits prepared on disk instead. Its repacker catalog entry is registered (2026-08-13) and does ship: the entry and its expectation file are in the zip and in this repository, in both `expects/` copies. Serving is what is not registered, in the launcher or in the engine, so an attempt to serve it fail-closes. The remaining chain is the real repack verify, a smoke run, and engine-side support for the `kimi-k3` architecture. We will do our best to bring it in at a format-validated grade or higher as soon as possible. (updated 2026-08-14) |

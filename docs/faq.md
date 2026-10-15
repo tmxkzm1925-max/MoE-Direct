@@ -9,7 +9,7 @@
   roughly the model's size again on disk on the default packed path. A virtual repack writes a manifest
   and its plan report (about 6 MB for the 122B test model, about 16 MB for the 397B one), so it
   costs megabytes rather than the model a second time. There is no resume as of
-  v0.3.1, in either mode: an interrupted repack restarts from the beginning.
+  v0.3.2, in either mode: an interrupted repack restarts from the beginning.
 - **Windows only.** No Linux or macOS build, and no promised numbers for them.
 - **This zip carries the CUDA runtime only.** The official numbers were measured on NVIDIA CUDA.
   The expert stream - the direct reads and the slot cache - runs on the CPU and the NVMe, so it
@@ -18,14 +18,14 @@
   off-bundle - an RTX 5080 at CUDA-parity decode, and a first cross-vendor run on an AMD
   RX 9070 XT whose arms were character-identical among themselves - see
   [Non-official observations](../TECHNICAL.md#non-official-observations) - but nothing Vulkan
-  ships in v0.3.1, and other backends (ROCm/HIP, unified-memory platforms) remain **untested**. CPU-only serving (`-ngl 0`) needs no GPU at all - that is how the 35B row in
+  ships in v0.3.2, and other backends (ROCm/HIP, unified-memory platforms) remain **untested**. CPU-only serving (`-ngl 0`) needs no GPU at all - that is how the 35B row in
   [TECHNICAL.md](../TECHNICAL.md) was measured. If you run this on other hardware, the
   performance-report issue form is where we would like to see the result.
 - **Unsigned preview build.** The Windows binaries have no project code signature, which is
   separate from GitHub release artifact attestations. Expect SmartScreen friction; some
   managed machines will refuse them.
 - **One request at a time** (`-np 1`), and the queue is lost on restart.
-- **Catalog prefetch is ON only for Qwen3.5-122B in v0.3.1**, with its exact source
+- **Catalog prefetch is ON only for Qwen3.5-122B in v0.3.2**, with its exact source
   pin and startup checks satisfied. The other five profiles remain OFF, including
   `init` requests. Kimi K2.6 has no engine prefetch adapter; `adapt` cannot activate.
 - **The experimental arch-template path has been proven end to end on one architecture, and it is
@@ -50,7 +50,7 @@
 - **Long-context prefill on a disk tier is slow.** Multi-turn use is where it becomes comfortable,
   because the prefix cache absorbs the repeat - see [Measured results](measured-results.md#measured-results).
 - **K2.6 has not passed the performance gate.** The recorded 1.03 tok/s observation used
-  older staging binaries and is not a v0.3.1 performance measurement.
+  older staging binaries and is not a v0.3.2 performance measurement.
 - **Text only.** Multimodal inputs are unverified.
 - **No telemetry, and no automatic uploads.** Diagnostic logs are written locally and go nowhere
   unless you attach them to an issue yourself.
