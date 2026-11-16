@@ -155,11 +155,10 @@ ready. On a machine where the sweep cannot run, the launcher says so and falls b
 than assuming.
 
 **In a virtual repack.** A virtual repack has no `experts.bin` to measure, so the launcher skips the
-sweep and pins the queue depth to 8, the value measured in advance. Every way of setting the queue
-depth is refused rather than applied: the `-QD` option, a `qd` value in the stored preset and a `qd`
-change in the custom editor all stop the launcher with `fail_custom_args`. A `-Prefetch` value other
-than `catalog` is refused the same way. Template and derived models cannot run as a virtual repack
-in this preview.
+sweep and defaults the queue depth to 8, the value measured in advance. In v0.3.2 you can change the
+queue depth and the prefetch values there too. The launcher accepts them with a notice that anything
+other than QD 8 with the catalog prefetch is unmeasured, and it refuses a queue depth below the
+model's wave width. Template and derived models cannot run as a virtual repack in this preview.
 
 **What was measured.** In ordinary use on the reference machine, moving from queue depth 1 with
 prefetch off to queue depth 8 with prefetch on took Qwen3.5-122B from 4.31 to 6.60 tok/s, and
@@ -179,9 +178,11 @@ to guess which experts the next layer will ask for and starts warming the top K 
 most N of those speculative reads in flight. A wrong guess costs time and never correctness, because
 the expert the router actually selects is always the one that is read and used.
 
-**How it behaves.** It is off unless a profile has been through the qualification below, and both
-the launcher and the engine refuse an override on a profile that has not. That refusal is
-deliberate. Of the six profiles that ship, two serve with prefetch on.
+**How it behaves.** In v0.3.2 the catalog turns it on only for a profile that has been through the
+qualification below. Of the six profiles that ship, one serves with prefetch on from the catalog,
+the Qwen3.5-122B row. The other five stay off in the catalog. v0.3.2 also accepts manual K, N and
+QD values on any profile; on a model that has not been checked, a value you pick can make things
+worse rather than better.
 
 **How a family is qualified before the lever is switched on.** The cheap half is counterfactual
 replay: record what the router actually did during a real run without issuing a single speculative

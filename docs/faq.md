@@ -12,7 +12,7 @@
   v0.3.2, in either mode: an interrupted repack restarts from the beginning.
 - **Windows only.** No Linux or macOS build, and no promised numbers for them.
 - **This zip carries the CUDA runtime only.** The official numbers were measured on NVIDIA CUDA.
-  The expert stream - the direct reads and the slot cache - runs on the CPU and the NVMe, so it
+  In v0.3.2 the expert stream - the direct reads and the slot cache - runs on the CPU and the NVMe, so it
   does not depend on which GPU you have; what uses the GPU is the dense-layer offload, and that is
   stock llama.cpp with its dynamic backend loading. A Vulkan path has in fact been measured
   off-bundle - an RTX 5080 at CUDA-parity decode, and a first cross-vendor run on an AMD

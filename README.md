@@ -51,7 +51,7 @@ then the same run on Qwen3.5-122B. Task Manager stays on screen the whole time.*
 - It is a **hands-on preview, not a one-click app**. You bring your own GGUF; MoE-Direct never
   downloads weights. The rough edges are written down in the docs rather than hidden.
 - Today it ships for **Windows with an NVIDIA GPU (CUDA)**. Linux, macOS and more backends are
-  where this is going - see the [roadmap](#roadmap).
+  where this is going.
 
 The exact boundary — what is changed and what is provably not touched (the math, the routing,
 the weights, your files) — is stated once, in [How it works](docs/how-it-works.md). Known rough
@@ -62,6 +62,8 @@ taking longer than the earlier ones did, so from now on I will post progress upd
 (the badge at the top of this page).
 
 ## Quick start
+
+This section is for the current release, v0.3.2.
 
 You need Windows 10/11 x64, an NVMe SSD, disk space of about twice the model size on the default
 packed path (the opt-in virtual repack needs the model plus a manifest and its plan report, measured at about 6 MB for the 122B test model and about 16 MB for the 397B one), and a GGUF
@@ -122,6 +124,8 @@ Full detail for every step, including what success looks like on screen:
 
 ## Supported models
 
+This list is for the current release, v0.3.2.
+
 | Model | Experts | Expert store | Tier |
 |---|---:|---:|---|
 | **Qwen3.5-122B-A10B Q4_K_M** — start here | 256 (top-8) | 72.8 GB | `reference-validated` |
@@ -180,8 +184,8 @@ Here is what is planned for v0.3.3.
 | Keeping frequently used experts in VRAM | In testing |
 | A new prefill path that handles long prompts with fewer disk reads | In testing |
 | Handling prompts 300,000 tokens long | In testing |
-| Memory budgets computed automatically at load time, with no manual setting | In testing |
-| Saving the prompt cache to disk and restoring it | Planned |
+| Memory budgets computed automatically at load time by the new implementation, with no need to set them by hand | In testing |
+| Saving the prompt cache to disk and restoring it, for the new implementation | Planned |
 
 For public releases after v0.3.3, I am thinking about DeepSeek-V4.1-Flash-1017 support, further optimization, wider API support, a harness, and UI improvements. There are no concrete plans yet.
 

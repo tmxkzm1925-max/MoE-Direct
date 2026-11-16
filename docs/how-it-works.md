@@ -2,6 +2,9 @@
 
 [Back to the README](../README.md)
 
+This page describes the current release, v0.3.2. What is planned for v0.3.3 is in the
+[Roadmap](../README.md#roadmap).
+
 **What MoE-Direct does not touch.** The change is *where* expert weights are read from - not
 *what* the model computes. To prevent any misunderstanding, here is the boundary, stated once:
 
@@ -63,10 +66,10 @@ source bytes, while the virtual path has nothing to hash, because nothing was co
 verified there is the manifest itself, the addresses it hands the engine, and the binding to your
 file's headers, not a payload hash of every slice. **It is slower than the packed path today.**
 Reading in place means the experts sit scattered through the original file, and scattered reads cost
-more than a layout built for reading; prefetch recovers part of that and not all of it. So the
-packed path stays the default, the virtual one is something you turn on from the model menu when the
-disk matters more than the speed, and making it fast enough to be the default is the work of the
-next release. The virtual output folder is listed with everything else in
+more than a layout built for reading; prefetch recovers part of that and not all of it. So in
+v0.3.2 the packed path stays the default, and the virtual one is something you turn on from the
+model menu when the disk matters more than the speed. The virtual output folder is listed with
+everything else in
 [What gets written to your disk](disk-layout.md#what-gets-written-to-your-disk).
 
 The launcher measures your machine instead of using fixed values. A short read-only sweep picks the
