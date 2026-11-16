@@ -168,59 +168,22 @@ each release's notes.
 
 ## Roadmap
 
-Work ships one piece per release, when it is measured, not on a schedule.
+MoE-Direct is moving to a new implementation that works differently from everything up to v0.3.2, and with it I am taking on more experimental ground than before. The first model I am testing it on is GLM-5.3-Flash. Because this version is experimental, please understand that it may not work with every model right away.
 
-- **v0.3 introduced the virtual preview; v0.3.1 ships the foundation and release fixes.** Up through v0.2.3, running a model
-  here meant a one-time repack that wrote a second packed copy of the experts — your disk
-  paid the model's size again, just to get the layout the engine wanted. From v0.3 the
-  repack can be virtual: a small manifest, no data moved, space cost about 1.0x, reading
-  experts straight out of the file you already have. The preview included a preregistered A/B: prefetch made in-place decode about 14% faster at
-  under 2% extra bytes read. That number is a `PROBE`: it compares in-place with prefetch
-  against in-place without it, not against the packed path, and it was measured on a working
-  tree that predates the release binary rather than re-run on this zip's.
-- **v0.3.1.1 is a repair-only patch.** On Windows the dense (non-expert) weights stayed in RAM
-  as an unused copy after they were uploaded to VRAM. The loader now reads them straight from
-  the file, so that copy is never created. No other feature changed.
-- **v0.3.2 replaces the launcher and opens manual prefetch**
-  ([release v0.3.2](https://github.com/tmxkzm1925-max/MoE-Direct/releases/tag/v0.3.2),
-  2026-10-14). The bundle now starts from `MoE-Direct-launcher.exe`, a launcher written in Go,
-  and K, N and QD can be set by hand. It brings no engine performance change, so speed is the
-  same as v0.3.1.1.
-- **The virtual path remains a preview.** Packed stays the default. In v0.3.1 the old
-  launcher's screen was corrected to tell the two paths apart (virtual copy integrity N/A,
-  its own 8-item plan gate, serving unvalidated, performance unmeasured, and the reference
-  numbers labelled as packed-path measurements); that corrected what the screen claimed and
-  did not promote virtual performance or claim parity with packed. In v0.3.2 every virtual start
-  is still checked by its own 8-item plan gate, and a virtual run with anything other than QD 8 and
-  catalog prefetch is marked `behaviour unmeasured`.
-- **Next, performance and virtual qualification.** In-place speed recovery and
-  adaptive prefetch remain future work. v0.3.2 does not ship the adaptive controller,
-  the Qwen122 prefill default change to `-ub 2048`, or the KV-Q8 opt-in switch. Those
-  features still need their release-specific implementation and validation.
-  From v0.3.2 the launcher exposes manual prefetch settings: K (1-16, at most the model's
-  expert count) and N are set together, prefetch runs only while the queue depth is
-  at least N+1, and a pair that is not a validated catalog pair is labelled
-  unmeasured. Without a pair, unvalidated catalog profiles stay off.
-- **Then the engine gets its surgery:** the engine-neutral expert-execution core — the parts
-  this project owns (the expert store, cache, placement and prefetch) pulled behind a clean
-  boundary, with llama.cpp as the first engine behind it.
-- **Separately, the speed work stays in the release queue,** shipping in whatever order is
-  ready first — a prefill path that reads each expert once per request instead of once per
-  token (about 3x in an internal probe, not yet a published benchmark).
-- **And on that engine foundation, context.** The question this project asked about weights —
-  "does it fit my RAM?" becoming "does it fit my SSD?" — applies to the KV cache too.
-  The goal is million-token context on the same consumer hardware, by tiering KV across
-  VRAM, RAM and NVMe for the coming generation of sparse-attention models. Same contract
-  as the experts: nothing is dropped or approximated, the memory is all there and read
-  selectively. The first release will aim to prove it works and publish honest numbers;
-  the finished feature set comes after, piece by piece.
-- Code signing, wider hardware and OS support, further out.
+v0.3.3 is in progress. I can't give an exact release date yet, but I am working to finish it soon.
 
-What you are holding is the floor, not the ceiling.
+Here is what is planned for v0.3.3.
 
-Full detail on what has already shipped: [docs/models.md](docs/models.md),
-[docs/measured-results.md](docs/measured-results.md), [docs/warm-start.md](docs/warm-start.md)
-and [docs/disk-layout.md](docs/disk-layout.md).
+| Item | Status |
+|---|---|
+| A new storage format that splits expert weights across two drives | Implemented |
+| Keeping frequently used experts in VRAM | In testing |
+| A new prefill path that handles long prompts with fewer disk reads | In testing |
+| Handling prompts 300,000 tokens long | In testing |
+| Memory budgets computed automatically at load time, with no manual setting | In testing |
+| Saving the prompt cache to disk and restoring it | Planned |
+
+For public releases after v0.3.3, I am thinking about DeepSeek-V4.1-Flash-1017 support, further optimization, wider API support, a harness, and UI improvements. There are no concrete plans yet.
 
 ## Troubleshooting
 
