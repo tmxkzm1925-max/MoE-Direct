@@ -41,9 +41,8 @@ something is wrong with your download - verify the SHA-256 and decide for yourse
 PCs, or with Smart App Control enabled, the file may be blocked outright with no "Run anyway"
 option; Smart App Control has no per-app exception. We will never ask you to turn off Defender,
 SmartScreen or Smart App Control, to add antivirus exclusions, to change your machine-wide
-execution policy, or to run anything as administrator. Code signing is planned. It has not
-happened yet - the project applies as its visibility grows - so unsigned-preview warnings remain
-the expected experience for now.
+execution policy, or to run anything as administrator. The Windows executables are unsigned, so
+unsigned-preview warnings are the expected experience.
 
 ## Quick start
 

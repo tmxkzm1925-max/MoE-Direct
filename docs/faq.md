@@ -102,9 +102,9 @@ bundle, which carries no launcher source, that one check is skipped and says why
 it - it is where each profile's `expect_sha256` pin lives, so the binding between the launcher and
 the expectation files can be audited end to end. What runs from a plain checkout: the repacker
 does (its `repacker/expects/` catalog ships in place - see [repacker/README.md](../repacker/README.md));
-the launcher does not, since it needs the engine binaries and bundle manifest from the zip. The launcher's own test suite is not yet published for standalone use: it depends
-on fixture files that need to be packaged for standalone use, and it will follow in a later
-release. The engine is a patched llama.cpp build and the binaries are sealed by
+the launcher does not, since it needs the engine binaries and bundle manifest from the zip. The launcher's test sources are published under `launcher/`; the tests that read the
+maintainer's installed bundle skip when it is absent. The engine is a patched llama.cpp build
+and the binaries are sealed by
 the bundle's SHA manifest. For the engines that shipped in v0.2.1 through v0.2.3 (two revisions: v0.2.1 and v0.2.2, the
 latter reused by v0.2.3), the full delta of each is published in [`patches/`](../patches/) as a
 single reviewed patch against the pinned upstream commit, with a mechanical proof that it

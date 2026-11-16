@@ -203,9 +203,11 @@ packed repack or `plan_report.json` and `manifest.json` for a virtual one.
 Exit `4`. *The engine refused to start and printed its policy-gate reject line.*
 
 The launcher's checks passed but the engine's independent checks did not - the two sides are
-deliberately not allowed to trust each other. Typical cause: an argument or environment variable
-that enables a lever on a profile it is not validated for (prefetch on a non-`validated` profile is
-the usual one). If you set `MOE_DIRECT_*` variables yourself, clear them and retry with defaults.
+deliberately not allowed to trust each other. The launcher gives this status only when the server
+exits before it is ready and its error log holds the line
+`[moe-direct] startup_reject=engine_policy_gate` exactly once. The v0.3.2 engine does not print
+that line, so with the shipped engine a server that stops before it is ready ends as
+[`fail_server_start`](#fail_server_start) instead.
 Attach `server_*_err.log`.
 
 ### fail_server_start
